@@ -12,6 +12,36 @@ open pull requests, access AWS or Kubernetes, or claim universal optimality.
 Preserve that boundary unless an approved product requirement explicitly
 changes it.
 
+## Scope and execution discipline
+
+Treat the user's time, attention, and token budget as constrained resources.
+Work only on the requested outcome and stop when that outcome is complete.
+
+- Confirm the repository and working directory before taking action. An active
+  session directory does not override an explicit target path from the user.
+- Before using tools, state the exact scope of the intended inspection or
+  change. Keep progress updates brief.
+- Do not browse the web, inspect another repository, research providers or
+  dependencies, or look up implementation details unless the request requires
+  it or the user explicitly asks for it.
+- A request to discuss, review, or design is read-only. Do not edit files,
+  create branches, open pull requests, push changes, or contact external
+  services unless those actions are requested.
+- When implementation is requested, inspect and change only the files needed
+  for that implementation. Do not use the task as permission for adjacent
+  refactors, speculative abstractions, or broader product work.
+- Do not expand an MVP, introduce a provider, select infrastructure, or turn a
+  product idea into a technical architecture before that decision is needed.
+- Make small, reversible assumptions only when they do not change scope. Ask
+  the user before proceeding when ambiguity would materially change the
+  product, repository, deliverable, or external state.
+- Use existing local evidence first. Run checks proportionate to the change and
+  avoid unrelated diagnostics.
+- Preserve unrelated working-tree changes and commit only files belonging to
+  the requested task.
+- Keep the final response limited to the outcome, verification performed, and
+  any genuine blocker or decision still required.
+
 ## Product language
 
 - A **policy** records owner priorities, accepted trade-offs, exclusions, and
