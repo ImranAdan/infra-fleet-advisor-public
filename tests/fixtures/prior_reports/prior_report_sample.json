@@ -1,0 +1,21 @@
+{
+  "recommendations": [
+    {
+      "fingerprint": "fp_0000000000000000000000",
+      "concern_key": "static_aws_credentials_in_ci",
+      "category": "security",
+      "priority": "high",
+      "title": "CI workflow uses long-lived AWS keys instead of OIDC",
+      "summary": "example summary",
+      "evidence_ids": ["github_actions_workflow_collector:aaaaaaaaaaaaaaaa"],
+      "impact": "example impact",
+      "suggested_change": "example change",
+      "trade_offs": "example trade-off",
+      "confidence": 0.9,
+      "confidence_explanation": "example explanation",
+      "status": "new",
+      "rank": 1,
+      "rank_rationale": "priority=high, category_weight=10, confidence=0.90"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "concern_key": "static_aws_credentials_in_ci",
+  "category": "security",
+  "priority": "high",
+  "title": "cites evidence that was never captured",
+  "summary": "s",
+  "evidence_ids": ["github_actions_workflow_collector:doesnotexist0000"],
+  "impact": "i",
+  "suggested_change": "c",
+  "trade_offs": "t",
+  "confidence": 0.9,
+  "confidence_explanation": "e"
+}

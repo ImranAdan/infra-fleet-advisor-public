@@ -1,0 +1,4 @@
+name: ci
+on: push
+jobs:
+  scan: [this is not a mapping and : breaks yaml
