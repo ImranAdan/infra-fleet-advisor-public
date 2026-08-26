@@ -48,32 +48,26 @@ Wildcard IAM permissions are not acceptable for a production or persistent envir
 
 Evidence: [deferred least-privilege concern](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md#L247-L252)
 
-## S-008 · Destructive workflows
-
-Scheduled staging destruction may run without manual approval because the stack is ephemeral and rebuildable.
-
-Evidence: [accepted workflow risk](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md#L223-L228)
-
-## S-009 · CSRF
+## S-008 · CSRF
 
 CSRF protection is not required for the current API-first staging application.
 
 Evidence: [documented CSRF decision](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md#L231-L235)
 
-## S-010 · Service-account tokens
+## S-009 · Service-account tokens
 
 Automatic Kubernetes service-account token mounting is accepted for the current application.
 
 Evidence: [documented token-mount decision](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md#L239-L243)
 
-## S-011 · Security updates
+## S-010 · Security updates
 
 Security dependency updates are handled immediately rather than waiting for the routine monthly update cycle.
 
 Evidence: [Dependabot security alerts](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/DEPENDABOT.md#L54-L60)
 
-## S-012 · Image scanning
+## S-011 · Image scanning
 
-Container vulnerability scans block images with unacceptable findings before deployment.
+Trivy blocks deployment when an image has any Critical or High vulnerability; a documented exception is required to permit one.
 
 Evidence: [Trivy security control](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md#L277-L283)
