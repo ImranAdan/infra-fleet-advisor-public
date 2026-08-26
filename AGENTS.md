@@ -154,6 +154,22 @@ Keep `README.md`, `docs/product-research.md`, `docs/product-requirements.md`,
 and `docs/architecture.md` aligned with implemented behavior. Product scope
 changes belong in the requirements before they become framework abstractions.
 
+### Pull request presentation
+
+Pull request descriptions are written for a decision maker, not as generated
+release notes.
+
+- Start with the user-visible outcome and the decision being requested.
+- Use short headings and bullets for proposals, decisions, status, and grouped
+  summaries.
+- Do not use tables for proposals, decisions, status, navigation, or an
+  “at-a-glance” summary. In particular, do not create a “Proposed decisions at
+  a glance” table.
+- Use a table only when the reader must compare fixed row-by-row values, such
+  as an exact field mapping or configuration comparison.
+- Keep each decision independently answerable; link to detailed evidence in the
+  changed files instead of duplicating it in the PR body.
+
 Use Conventional Commit subjects of at most 72 characters. Do not add release,
 publishing, or deployment automation until there is an installable vertical
 slice to validate.
