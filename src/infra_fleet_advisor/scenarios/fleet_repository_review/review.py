@@ -1,7 +1,9 @@
+import time
 from pathlib import Path
 
 from infra_fleet_advisor import ADVISOR_VERSION
 from infra_fleet_advisor.config.policy import AdvisorPolicy
+from infra_fleet_advisor.core.errors import BoundedExecutionExceeded
 from infra_fleet_advisor.core.lifecycle import PriorReport
 from infra_fleet_advisor.core.limits import ExecutionLimits
 from infra_fleet_advisor.core.report import Report, RunProvenance, assemble_report
@@ -21,6 +23,21 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.synthesis import (
 )
 
 
+def check_wall_clock_budget(elapsed_seconds: float, limits: ExecutionLimits) -> None:
+    if elapsed_seconds > limits.max_wall_seconds:
+        raise BoundedExecutionExceeded(
+            f"review exceeded max_wall_seconds ({limits.max_wall_seconds}s): "
+            f"took {elapsed_seconds:.1f}s"
+        )
+
+
+def check_model_call_budget(call_count: int, limits: ExecutionLimits) -> None:
+    if call_count > limits.max_model_calls:
+        raise BoundedExecutionExceeded(
+            f"review exceeded max_model_calls ({limits.max_model_calls}): made {call_count}"
+        )
+
+
 def run_review(
     *,
     checkout_root: Path,
@@ -34,7 +51,11 @@ def run_review(
     """The one vertical scenario: select collectors, project evidence for
     synthesis, and run the bounded core pipeline. No recommendation
     semantics live here — that's core's job."""
-    result = gha_collector.collect(checkout_root, limits)
+    started = time.monotonic()
+
+    result = gha_collector.collect(
+        checkout_root, limits, excluded_paths=frozenset(policy.evidence_path_exclusions)
+    )
     evidence_by_id = {e.evidence_id: e for e in result.evidence}
 
     projection = EvidenceProjection(
@@ -45,6 +66,8 @@ def run_review(
         evidence=result.evidence,
     )
     synthesis_response = synthesizer.synthesize(projection)
+    check_model_call_budget(call_count=1, limits=limits)
+    check_wall_clock_budget(time.monotonic() - started, limits)
 
     provenance = RunProvenance(
         source_commit_sha=source.commit_sha,

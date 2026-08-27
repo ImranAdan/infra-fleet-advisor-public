@@ -23,7 +23,10 @@ def _git(checkout_path: Path, *args: str) -> str:
         check=False,
     )
     if result.returncode != 0:
-        raise ProvenanceError(f"git {args[0]} failed: {result.stderr.strip()[:200]}")
+        # git's stderr can embed the local checkout path (e.g. "fatal: cannot
+        # change to '<path>'") — redact it so it never leaves this module.
+        sanitized = result.stderr.strip().replace(str(checkout_path), "<checkout>")[:200]
+        raise ProvenanceError(f"git {args[0]} failed: {sanitized}")
     return result.stdout.strip()
 
 

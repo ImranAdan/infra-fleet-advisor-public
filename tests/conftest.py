@@ -18,9 +18,11 @@ def git_checkout(tmp_path: Path):
     populates .github/workflows/ from named fixture files, commits, and
     returns (checkout_path, sha)."""
 
+    counter = iter(range(10_000))
+
     def _make(*workflow_fixture_names: str) -> tuple[Path, str]:
-        repo = tmp_path / "checkout"
-        repo.mkdir()
+        repo = tmp_path / f"checkout-{next(counter)}"
+        repo.mkdir(parents=True)
         _run("git", "init", "-q", cwd=repo)
         _run("git", "config", "user.email", "test@example.com", cwd=repo)
         _run("git", "config", "user.name", "Test", cwd=repo)

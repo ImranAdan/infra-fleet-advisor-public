@@ -71,7 +71,11 @@ def write_report(report: Report, output_dir: Path) -> tuple[Path, Path]:
 def load_prior_report(path: Path | None) -> PriorReport | None:
     if path is None:
         return None
-    if path.stat().st_size > MAX_PRIOR_REPORT_BYTES:
+    try:
+        size = path.stat().st_size
+    except OSError as exc:
+        raise PolicyError(f"cannot read prior report: {exc}") from exc
+    if size > MAX_PRIOR_REPORT_BYTES:
         raise PolicyError(f"prior report exceeds {MAX_PRIOR_REPORT_BYTES} bytes")
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
@@ -92,6 +96,6 @@ def load_prior_report(path: Path | None) -> PriorReport | None:
             )
             for r in raw["recommendations"]
         ]
-    except (json.JSONDecodeError, KeyError, TypeError) as exc:
+    except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
         raise PolicyError(f"malformed prior report: {exc}") from exc
     return PriorReport(recommendations=recs)

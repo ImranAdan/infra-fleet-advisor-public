@@ -55,3 +55,57 @@ def test_malformed_yaml_reported_as_partial_not_a_crash(git_checkout) -> None:
     assert result.coverage.error_summary is not None
     # the one good file still contributes evidence
     assert result.evidence
+
+
+def test_detects_unquoted_yaml_bool_for_ignore_unfixed(git_checkout) -> None:
+    repo, _sha = git_checkout("trivy_ignore_unfixed_unquoted.yml")
+    result = gha_collector.collect(repo, LIMITS)
+    trivy = next(e for e in result.evidence if e.kind == EVIDENCE_KIND_TRIVY_GATE)
+    assert trivy.fact["ignore_unfixed"] is True
+
+
+def test_similarly_named_action_is_not_misattributed(git_checkout) -> None:
+    repo, _sha = git_checkout("similarly_named_action.yml")
+    result = gha_collector.collect(repo, LIMITS)
+    assert result.evidence == ()
+
+
+def test_symlink_escaping_checkout_root_is_not_read(tmp_path) -> None:
+    outside_target = tmp_path / "outside.yml"
+    outside_target.write_text("secret: content\n", encoding="utf-8")
+
+    repo = tmp_path / "checkout"
+    workflows_dir = repo / ".github" / "workflows"
+    workflows_dir.mkdir(parents=True)
+    (workflows_dir / "escape.yml").symlink_to(outside_target)
+
+    result = gha_collector.collect(repo, LIMITS)
+
+    assert result.evidence == ()
+    assert result.coverage.status == "partial"
+
+
+def test_excluded_paths_are_skipped(git_checkout) -> None:
+    repo, _sha = git_checkout("static_credentials_bad.yml", "trivy_ignore_unfixed_bad.yml")
+    excluded = frozenset({".github/workflows/static_credentials_bad.yml"})
+
+    result = gha_collector.collect(repo, LIMITS, excluded_paths=excluded)
+
+    assert all(e.kind != EVIDENCE_KIND_CREDENTIAL_METHOD for e in result.evidence)
+    assert any(e.kind == EVIDENCE_KIND_TRIVY_GATE for e in result.evidence)
+
+
+def test_truncation_beyond_max_workflow_files_reported_as_partial(git_checkout) -> None:
+    repo, _sha = git_checkout("static_credentials_bad.yml", "trivy_ignore_unfixed_bad.yml")
+    limits = ExecutionLimits(
+        max_wall_seconds=60,
+        max_model_calls=1,
+        max_workflow_files=1,
+        max_file_bytes=256 * 1024,
+        max_recommendations=10,
+    )
+
+    result = gha_collector.collect(repo, limits)
+
+    assert result.coverage.status == "partial"
+    assert "omitted" in result.coverage.error_summary

@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 
 from infra_fleet_advisor.config.loader import load_policy
@@ -78,3 +79,55 @@ def test_second_run_marks_prior_finding_unchanged(git_checkout) -> None:
     assert second.recommendations[0].status == "unchanged"
     assert second.new_count == 0
     assert second.unchanged_count == 1
+
+
+def test_third_run_marks_removed_finding_resolved(git_checkout) -> None:
+    flagged_repo, flagged_sha = git_checkout("trivy_ignore_unfixed_bad.yml")
+    first = _run(flagged_repo, flagged_sha)
+    prior = PriorReport(
+        recommendations=[
+            PriorRecommendation(
+                fingerprint=r.fingerprint,
+                concern_key=r.concern_key,
+                category=r.category,
+                priority=r.priority,
+                title=r.title,
+                summary=r.summary,
+                evidence_ids=r.evidence_ids,
+                impact=r.impact,
+                suggested_change=r.suggested_change,
+                trade_offs=r.trade_offs,
+                confidence=r.confidence,
+                confidence_explanation=r.confidence_explanation,
+            )
+            for r in first.recommendations
+        ]
+    )
+
+    clean_repo, clean_sha = git_checkout("oidc_and_trivy_good.yml")
+    second = _run(clean_repo, clean_sha, prior=prior)
+
+    assert second.recommendations[0].status == "resolved"
+    assert second.resolved_count == 1
+    assert second.coverage[0].status == "ok"
+
+
+def test_evidence_path_exclusions_are_applied(git_checkout) -> None:
+    repo, sha = git_checkout("trivy_ignore_unfixed_bad.yml")
+    policy = replace(
+        load_policy(POLICY_PATH, TAXONOMY),
+        evidence_path_exclusions=[".github/workflows/trivy_ignore_unfixed_bad.yml"],
+    )
+    source = verify_snapshot(repo, sha, "infra-fleet-public")
+
+    report = run_review(
+        checkout_root=repo,
+        policy=policy,
+        source=source,
+        synthesizer=StubSynthesizer(),
+        limits=LIMITS,
+        prior=None,
+        run_started_at="2026-08-26T00:00:00+00:00",
+    )
+
+    assert report.recommendations == ()

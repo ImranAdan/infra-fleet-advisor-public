@@ -76,6 +76,22 @@ def test_invented_evidence_id_rejected() -> None:
     assert result.rejected[0].reason == "invented_evidence_id"
 
 
+def test_unhashable_evidence_id_rejected_not_crashed() -> None:
+    evidence_by_id, _eid = _evidence()
+    result = validate_candidates(
+        [_candidate(evidence_ids=({"nested": "dict"},))], evidence_by_id, _bounds(), ALLOWED
+    )
+    assert not result.accepted
+    assert result.rejected[0].reason == "no_evidence_cited"
+
+
+def test_non_iterable_evidence_ids_rejected_not_crashed() -> None:
+    evidence_by_id, _eid = _evidence()
+    result = validate_candidates([_candidate(evidence_ids=42)], evidence_by_id, _bounds(), ALLOWED)
+    assert not result.accepted
+    assert result.rejected[0].reason == "no_evidence_cited"
+
+
 def test_prompt_injection_text_is_inert() -> None:
     evidence_by_id, eid = _evidence()
     result = validate_candidates(

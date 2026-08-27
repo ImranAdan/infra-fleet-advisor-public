@@ -63,6 +63,11 @@ def test_load_prior_report_none_when_no_path() -> None:
     assert load_prior_report(None) is None
 
 
+def test_load_prior_report_missing_file_raises_policy_error_not_crash(tmp_path: Path) -> None:
+    with pytest.raises(PolicyError):
+        load_prior_report(tmp_path / "does-not-exist.json")
+
+
 def test_load_prior_report_rejects_malformed_json(tmp_path: Path) -> None:
     bad = tmp_path / "bad.json"
     bad.write_text('{"recommendations": [{"fingerprint": "x"}]}', encoding="utf-8")

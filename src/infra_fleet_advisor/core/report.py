@@ -55,7 +55,10 @@ def assemble_report(
 ) -> tuple[Report, tuple[RejectedCandidate, ...]]:
     """Bounded pipeline coordination: validate → compare with prior → rank."""
     validated = validate_candidates(candidates, evidence_by_id, bounds, allowed_concern_keys)
-    lifecycle = compare_with_prior(validated.accepted, prior, bounds.suppressed_concerns)
+    collection_complete = all(c.status == "ok" for c in coverage)
+    lifecycle = compare_with_prior(
+        validated.accepted, prior, bounds, allowed_concern_keys, collection_complete
+    )
     ranked = rank(lifecycle.recommendations, bounds.category_priority)
 
     report = Report(

@@ -12,6 +12,7 @@ EXIT_OK = 0
 EXIT_POLICY_ERROR = 2
 EXIT_PROVENANCE_ERROR = 3
 EXIT_PIPELINE_ERROR = 4
+EXIT_UNSAFE_OUTPUT_ERROR = 5
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -27,8 +28,24 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _output_dir_is_safe(checkout: Path, output_dir: Path) -> bool:
+    """The review is read-only by contract — writing the report inside the
+    verified checkout would mutate the target and leave it dirty."""
+    checkout_real = checkout.resolve()
+    output_real = output_dir.resolve()
+    return output_real != checkout_real and not output_real.is_relative_to(checkout_real)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
+
+    if not _output_dir_is_safe(args.checkout, args.output_dir):
+        print(
+            f"unsafe output error: --output-dir ({args.output_dir}) must not be "
+            f"inside --checkout ({args.checkout})",
+            file=sys.stderr,
+        )
+        return EXIT_UNSAFE_OUTPUT_ERROR
 
     inputs = RunInputs(
         checkout=args.checkout,
