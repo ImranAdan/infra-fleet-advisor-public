@@ -1,0 +1,9 @@
+version: "1.0"
+max_recommendations: 10
+max_wall_seconds: 60
+max_model_calls: 1
+enabled_categories: [security]
+category_priority: {security: "high"}
+accepted_trade_offs: []
+suppressed_concerns: []
+evidence_path_exclusions: []

@@ -1,0 +1,13 @@
+{
+  "concern_key": "static_aws_credentials_in_ci",
+  "category": "security",
+  "priority": "not_a_real_priority",
+  "title": "bad priority",
+  "summary": "s",
+  "evidence_ids": [],
+  "impact": "i",
+  "suggested_change": "c",
+  "trade_offs": "t",
+  "confidence": 0.9,
+  "confidence_explanation": "e"
+}

@@ -1,0 +1,11 @@
+name: ci
+on: push
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - id: trivy
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true

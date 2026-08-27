@@ -1,0 +1,33 @@
+{
+  "recommendations": [
+    {
+      "fingerprint": "fp_0000000000000000000000",
+      "concern_key": "static_aws_credentials_in_ci",
+      "category": "security",
+      "priority": "high",
+      "title": "CI workflow uses long-lived AWS keys instead of OIDC",
+      "summary": "example summary",
+      "evidence_ids": ["github_actions_workflow_collector:aaaaaaaaaaaaaaaa"],
+      "impact": "example impact",
+      "suggested_change": "example change",
+      "trade_offs": "example trade-off",
+      "confidence": 0.9,
+      "confidence_explanation": "example explanation",
+      "status": "new",
+      "rank": 1,
+      "rank_rationale": "priority=high, category_weight=10, confidence=0.90"
+    }
+  ],
+  "evidence": [
+    {
+      "evidence_id": "github_actions_workflow_collector:aaaaaaaaaaaaaaaa",
+      "kind": "gha_credential_method",
+      "source_path": ".github/workflows/example.yml",
+      "locator": "jobs.deploy.steps[aws-creds]",
+      "excerpt": "uses: aws-actions/configure-aws-credentials@v4",
+      "fact": {"uses_role_to_assume": false, "uses_static_keys": true},
+      "collector_id": "github_actions_workflow_collector",
+      "collector_version": "1.0.0"
+    }
+  ]
+}
