@@ -103,6 +103,7 @@ def collect(
     checkout_root: Path,
     limits: ExecutionLimits,
     excluded_paths: frozenset[str] = frozenset(),
+    tracked_paths: frozenset[str] | None = None,
 ) -> CollectorResult:
     checkout_real = checkout_root.resolve()
     workflows_dir = checkout_root / ".github" / "workflows"
@@ -124,10 +125,17 @@ def collect(
     evidence: list[Evidence] = []
     failures = 0
     excluded_count = 0
+    untracked_count = 0
     for path in files:
         rel_path = str(path.relative_to(checkout_root))
         if _is_excluded(rel_path, excluded_paths):
             excluded_count += 1
+            continue
+        if tracked_paths is not None and rel_path not in tracked_paths:
+            # On disk but not part of the verified commit (e.g. .gitignore'd)
+            # — git status doesn't flag ignored files as dirty, so this must
+            # be checked explicitly rather than trusting the filesystem glob.
+            untracked_count += 1
             continue
         try:
             resolved = path.resolve()
@@ -153,7 +161,7 @@ def collect(
 
     if not all_files:
         status = "failed"
-    elif failures or truncated_count:
+    elif failures or truncated_count or untracked_count:
         status = "partial"
     else:
         status = "ok"
@@ -165,6 +173,8 @@ def collect(
         summary_parts.append(f"{truncated_count} workflow file(s) omitted past max_workflow_files")
     if excluded_count:
         summary_parts.append(f"{excluded_count} workflow file(s) excluded by policy")
+    if untracked_count:
+        summary_parts.append(f"{untracked_count} workflow file(s) not part of the verified commit")
 
     return CollectorResult(
         evidence=tuple(evidence),

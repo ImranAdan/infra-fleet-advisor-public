@@ -36,6 +36,7 @@ class Report:
     provenance: RunProvenance
     coverage: tuple[CollectorCoverage, ...]
     recommendations: tuple[Recommendation, ...]
+    evidence: tuple[Evidence, ...]
     rejected_count: int
     new_count: int
     unchanged_count: int
@@ -61,10 +62,22 @@ def assemble_report(
     )
     ranked = rank(lifecycle.recommendations, bounds.category_priority)
 
+    # Persist a redacted evidence table keyed by ID so the JSON report can
+    # resolve each recommendation's evidence_ids without re-running
+    # collectors — merging this run's evidence with whatever the prior
+    # report carried, so carried-forward "resolved" entries stay verifiable.
+    merged_evidence: dict[str, Evidence] = dict(prior.evidence_by_id) if prior else {}
+    merged_evidence.update(evidence_by_id)
+    cited_ids = {eid for rec in ranked for eid in rec.evidence_ids}
+    report_evidence = tuple(
+        merged_evidence[eid] for eid in sorted(cited_ids) if eid in merged_evidence
+    )
+
     report = Report(
         provenance=provenance,
         coverage=tuple(coverage),
         recommendations=ranked,
+        evidence=report_evidence,
         rejected_count=len(validated.rejected),
         new_count=lifecycle.new_count,
         unchanged_count=lifecycle.unchanged_count,

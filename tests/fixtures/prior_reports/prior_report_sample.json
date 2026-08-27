@@ -17,5 +17,17 @@
       "rank": 1,
       "rank_rationale": "priority=high, category_weight=10, confidence=0.90"
     }
+  ],
+  "evidence": [
+    {
+      "evidence_id": "github_actions_workflow_collector:aaaaaaaaaaaaaaaa",
+      "kind": "gha_credential_method",
+      "source_path": ".github/workflows/example.yml",
+      "locator": "jobs.deploy.steps[aws-creds]",
+      "excerpt": "uses: aws-actions/configure-aws-credentials@v4",
+      "fact": {"uses_role_to_assume": false, "uses_static_keys": true},
+      "collector_id": "github_actions_workflow_collector",
+      "collector_version": "1.0.0"
+    }
   ]
 }

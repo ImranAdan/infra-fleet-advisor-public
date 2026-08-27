@@ -28,4 +28,5 @@ class AdvisorPolicy:
             category_priority=self.category_priority,
             max_recommendations=self.max_recommendations,
             suppressed_concerns=self.suppressed_concerns,
+            accepted_trade_offs={t.concern_key: t.rationale for t in self.accepted_trade_offs},
         )

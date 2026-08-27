@@ -1,5 +1,6 @@
 from infra_fleet_advisor.core.contracts import PolicyBounds, RawRecommendationCandidate
 from infra_fleet_advisor.core.evidence import build_evidence
+from infra_fleet_advisor.core.lifecycle import PriorRecommendation, PriorReport
 from infra_fleet_advisor.core.report import RunProvenance, assemble_report
 
 PROVENANCE = RunProvenance(
@@ -83,3 +84,46 @@ def test_valid_candidate_flows_through_to_a_ranked_report() -> None:
     assert len(report.recommendations) == 1
     assert report.recommendations[0].rank == 1
     assert report.new_count == 1
+    assert report.evidence == (ev,)
+
+
+def test_resolved_recommendation_carries_its_prior_evidence_into_the_report() -> None:
+    prior_ev = build_evidence(
+        collector_id="c",
+        collector_version="1.0.0",
+        kind="k",
+        source_path="gone.yml",
+        locator="loc",
+        excerpt="e",
+        fact={},
+    )
+    prior = PriorReport(
+        recommendations=[
+            PriorRecommendation(
+                fingerprint="fp_resolved",
+                concern_key="concern",
+                category="security",
+                priority="high",
+                title="t",
+                summary="s",
+                evidence_ids=(prior_ev.evidence_id,),
+                impact="i",
+                suggested_change="c",
+                trade_offs="t",
+                confidence=0.9,
+                confidence_explanation="e",
+            )
+        ],
+        evidence_by_id={prior_ev.evidence_id: prior_ev},
+    )
+    report, _rejected = assemble_report(
+        provenance=PROVENANCE,
+        coverage=[],
+        candidates=[],
+        evidence_by_id={},
+        bounds=BOUNDS,
+        allowed_concern_keys=frozenset({"concern"}),
+        prior=prior,
+    )
+    assert report.recommendations[0].status == "resolved"
+    assert report.evidence == (prior_ev,)

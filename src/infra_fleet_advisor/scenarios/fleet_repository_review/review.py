@@ -7,7 +7,7 @@ from infra_fleet_advisor.core.errors import BoundedExecutionExceeded
 from infra_fleet_advisor.core.lifecycle import PriorReport
 from infra_fleet_advisor.core.limits import ExecutionLimits
 from infra_fleet_advisor.core.report import Report, RunProvenance, assemble_report
-from infra_fleet_advisor.provenance.source_verification import SourceProvenance
+from infra_fleet_advisor.provenance.source_verification import SourceProvenance, list_tracked_paths
 from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
     github_actions_workflow_collector as gha_collector,
 )
@@ -53,8 +53,12 @@ def run_review(
     semantics live here — that's core's job."""
     started = time.monotonic()
 
+    tracked_paths = list_tracked_paths(checkout_root, ".github/workflows")
     result = gha_collector.collect(
-        checkout_root, limits, excluded_paths=frozenset(policy.evidence_path_exclusions)
+        checkout_root,
+        limits,
+        excluded_paths=frozenset(policy.evidence_path_exclusions),
+        tracked_paths=tracked_paths,
     )
     evidence_by_id = {e.evidence_id: e for e in result.evidence}
 

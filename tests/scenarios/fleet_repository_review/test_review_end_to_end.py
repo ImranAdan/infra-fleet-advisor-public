@@ -1,3 +1,4 @@
+import subprocess
 from dataclasses import replace
 from pathlib import Path
 
@@ -131,3 +132,37 @@ def test_evidence_path_exclusions_are_applied(git_checkout) -> None:
     )
 
     assert report.recommendations == ()
+
+
+def _git(*args: str, cwd: Path) -> None:
+    subprocess.run(args, cwd=cwd, check=True, capture_output=True)  # noqa: S603
+
+
+def test_gitignored_workflow_file_is_not_collected_as_evidence(git_checkout) -> None:
+    repo, sha = git_checkout("oidc_and_trivy_good.yml")
+    (repo / ".gitignore").write_text(".github/workflows/ignored.yml\n", encoding="utf-8")
+    _git("git", "add", ".gitignore", cwd=repo)
+    _git("git", "commit", "-q", "-m", "add gitignore", cwd=repo)
+    sha = subprocess.run(  # fixed argv, test-only
+        ["git", "rev-parse", "HEAD"],  # noqa: S603,S607
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    (repo / ".github" / "workflows" / "ignored.yml").write_text(
+        (
+            "name: ignored\non: push\njobs:\n  deploy:\n    runs-on: ubuntu-latest\n"
+            "    steps:\n      - uses: aws-actions/configure-aws-credentials@v4\n"
+            "        with:\n          aws-access-key-id: x\n"
+        ),
+        encoding="utf-8",
+    )
+
+    report = _run(repo, sha)
+
+    # oidc_and_trivy_good.yml has no findings; the gitignored file — which
+    # WOULD trigger a finding — must never be read as verified evidence.
+    assert report.recommendations == ()
+    assert report.coverage[0].status == "partial"
+    assert "not part of the verified commit" in report.coverage[0].error_summary

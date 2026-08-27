@@ -15,9 +15,11 @@ class SourceProvenance:
 
 
 def _git(checkout_path: Path, *args: str) -> str:
-    # fixed argv, no shell, no config-supplied commands
+    # fixed argv, no shell, no config-supplied commands. -c core.fsmonitor=false
+    # stops a checkout with an attacker-controlled .git/config from running an
+    # arbitrary hook as this process via `git status`.
     result = subprocess.run(  # noqa: S603
-        ["git", "-C", str(checkout_path), *args],  # noqa: S607
+        ["git", "-c", "core.fsmonitor=false", "-C", str(checkout_path), *args],  # noqa: S607
         capture_output=True,
         text=True,
         check=False,
@@ -28,6 +30,16 @@ def _git(checkout_path: Path, *args: str) -> str:
         sanitized = result.stderr.strip().replace(str(checkout_path), "<checkout>")[:200]
         raise ProvenanceError(f"git {args[0]} failed: {sanitized}")
     return result.stdout.strip()
+
+
+def list_tracked_paths(checkout_path: Path, subdir: str) -> frozenset[str]:
+    """Files git actually tracks at HEAD under `subdir` — the ground truth
+    for what's "part of the verified commit". A .gitignore'd file sitting on
+    disk inside the checkout is invisible to `git status`'s dirty-checkout
+    check (ignored files aren't reported as untracked) but is NOT part of
+    the verified snapshot; collectors must not treat it as evidence."""
+    output = _git(checkout_path, "ls-tree", "-r", "--name-only", "HEAD", "--", subdir)
+    return frozenset(line for line in output.splitlines() if line)
 
 
 def verify_snapshot(checkout_path: Path, expected_sha: str, source_label: str) -> SourceProvenance:

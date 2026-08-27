@@ -1,16 +1,21 @@
 from infra_fleet_advisor.core.contracts import PolicyBounds, RawRecommendationCandidate
 from infra_fleet_advisor.core.evidence import build_evidence
-from infra_fleet_advisor.core.validation import validate_candidates
+from infra_fleet_advisor.core.validation import is_prior_recommendation_valid, validate_candidates
 
 ALLOWED = frozenset({"concern"})
 
 
-def _bounds(max_recommendations: int = 5, suppressed: frozenset = frozenset()) -> PolicyBounds:
+def _bounds(
+    max_recommendations: int = 5,
+    suppressed: frozenset = frozenset(),
+    accepted_trade_offs: dict | None = None,
+) -> PolicyBounds:
     return PolicyBounds(
         enabled_categories=frozenset({"security"}),
         category_priority={"security": 10},
         max_recommendations=max_recommendations,
         suppressed_concerns=suppressed,
+        accepted_trade_offs=accepted_trade_offs or {},
     )
 
 
@@ -133,3 +138,49 @@ def test_secret_pattern_rejected() -> None:
     )
     assert not result.accepted
     assert result.rejected[0].reason == "secret_pattern_detected"
+
+
+def test_owner_accepted_trade_off_surfaces_on_the_recommendation() -> None:
+    evidence_by_id, eid = _evidence()
+    bounds = _bounds(accepted_trade_offs={"concern": "Owner accepted this for staging."})
+    result = validate_candidates([_candidate(evidence_ids=(eid,))], evidence_by_id, bounds, ALLOWED)
+    assert result.accepted[0].owner_accepted_trade_off == "Owner accepted this for staging."
+
+
+def test_no_accepted_trade_off_leaves_field_none() -> None:
+    evidence_by_id, eid = _evidence()
+    result = validate_candidates(
+        [_candidate(evidence_ids=(eid,))], evidence_by_id, _bounds(), ALLOWED
+    )
+    assert result.accepted[0].owner_accepted_trade_off is None
+
+
+def _prior(**overrides):
+    from infra_fleet_advisor.core.lifecycle import PriorRecommendation
+
+    base = {
+        "fingerprint": "fp_x",
+        "concern_key": "concern",
+        "category": "security",
+        "priority": "high",
+        "title": "t",
+        "summary": "s",
+        "evidence_ids": ("e1",),
+        "impact": "i",
+        "suggested_change": "c",
+        "trade_offs": "t",
+        "confidence": 0.9,
+        "confidence_explanation": "e",
+    }
+    base.update(overrides)
+    return PriorRecommendation(**base)
+
+
+def test_prior_recommendation_with_secret_looking_evidence_id_rejected() -> None:
+    prior = _prior(evidence_ids=("AKIAABCDEFGHIJKLMNOP",))
+    assert is_prior_recommendation_valid(prior, _bounds(), ALLOWED) is False
+
+
+def test_prior_recommendation_with_clean_evidence_id_accepted() -> None:
+    prior = _prior(evidence_ids=("collector:abcdef1234567890",))
+    assert is_prior_recommendation_valid(prior, _bounds(), ALLOWED) is True

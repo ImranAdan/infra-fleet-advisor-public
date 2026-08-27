@@ -109,3 +109,23 @@ def test_truncation_beyond_max_workflow_files_reported_as_partial(git_checkout) 
 
     assert result.coverage.status == "partial"
     assert "omitted" in result.coverage.error_summary
+
+
+def test_untracked_file_not_in_tracked_paths_is_skipped(git_checkout) -> None:
+    repo, _sha = git_checkout("static_credentials_bad.yml", "trivy_ignore_unfixed_bad.yml")
+    # Simulate a .gitignore'd file present on disk but not part of HEAD: only
+    # one of the two committed files is listed as "tracked".
+    tracked = frozenset({".github/workflows/trivy_ignore_unfixed_bad.yml"})
+
+    result = gha_collector.collect(repo, LIMITS, tracked_paths=tracked)
+
+    assert all(e.kind != EVIDENCE_KIND_CREDENTIAL_METHOD for e in result.evidence)
+    assert any(e.kind == EVIDENCE_KIND_TRIVY_GATE for e in result.evidence)
+    assert result.coverage.status == "partial"
+    assert "not part of the verified commit" in result.coverage.error_summary
+
+
+def test_tracked_paths_none_skips_the_check(git_checkout) -> None:
+    repo, _sha = git_checkout("trivy_ignore_unfixed_bad.yml")
+    result = gha_collector.collect(repo, LIMITS, tracked_paths=None)
+    assert result.coverage.status == "ok"

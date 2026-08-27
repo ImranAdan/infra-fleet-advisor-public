@@ -131,6 +131,8 @@ def is_prior_recommendation_valid(
         or any(not isinstance(e, str) for e in prior.evidence_ids)
     ):
         return False
+    if any(p.search(eid) for eid in prior.evidence_ids for p in _SECRET_PATTERNS):
+        return False
     text_fields = (
         prior.title,
         prior.summary,
@@ -218,6 +220,7 @@ def validate_candidates(
                 confidence=c.confidence,
                 confidence_explanation=c.confidence_explanation,
                 status="new",
+                owner_accepted_trade_off=bounds.accepted_trade_offs.get(c.concern_key),
             )
         )
 

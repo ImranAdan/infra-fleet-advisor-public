@@ -1,6 +1,6 @@
 import hashlib
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 
 PRIORITIES = ("critical", "high", "medium", "low")
 STATUSES = ("new", "unchanged", "resolved", "suppressed")
@@ -43,6 +43,7 @@ class Recommendation:
     status: str
     rank: int | None = None
     rank_rationale: str | None = None
+    owner_accepted_trade_off: str | None = None
 
     def with_status(self, status: str) -> "Recommendation":
         return replace(self, status=status)
@@ -59,6 +60,7 @@ class PolicyBounds:
     category_priority: Mapping[str, int]
     max_recommendations: int
     suppressed_concerns: frozenset[str]
+    accepted_trade_offs: Mapping[str, str] = field(default_factory=dict)
 
 
 def compute_fingerprint(category: str, concern_key: str, evidence_ids: Sequence[str]) -> str:

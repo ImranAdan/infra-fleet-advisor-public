@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from infra_fleet_advisor.core.contracts import PolicyBounds, Recommendation
 from infra_fleet_advisor.core.lifecycle import PriorRecommendation, PriorReport, compare_with_prior
 
@@ -97,3 +99,19 @@ def test_invalid_prior_recommendation_is_dropped_not_republished() -> None:
     result = compare_with_prior([], prior, _bounds(), ALLOWED, collection_complete=True)
     assert result.recommendations == ()
     assert result.resolved_count == 0
+
+
+def test_non_string_fingerprint_in_prior_report_is_ignored_not_crashed() -> None:
+    prior = PriorReport(recommendations=[_prior_rec(["not", "a", "string"])])
+    result = compare_with_prior([], prior, _bounds(), ALLOWED, collection_complete=True)
+    assert result.recommendations == ()
+    assert result.resolved_count == 0
+
+
+def test_owner_accepted_trade_off_carried_onto_resolved_recommendation() -> None:
+    prior = PriorReport(recommendations=[_prior_rec("fp_resolved")])
+    bounds = replace(_bounds(), accepted_trade_offs={"concern": "Owner accepted this."})
+
+    result = compare_with_prior([], prior, bounds, ALLOWED, collection_complete=True)
+
+    assert result.recommendations[0].owner_accepted_trade_off == "Owner accepted this."
