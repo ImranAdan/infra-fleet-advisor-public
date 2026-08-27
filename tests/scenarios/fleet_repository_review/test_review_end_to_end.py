@@ -105,12 +105,31 @@ def test_third_run_marks_removed_finding_resolved(git_checkout) -> None:
         ]
     )
 
-    clean_repo, clean_sha = git_checkout("oidc_and_trivy_good.yml")
+    # Both collectors must report complete ("ok") coverage this run before a
+    # missing finding can be trusted as genuinely resolved rather than just
+    # not looked for — so this checkout needs a (clean) Terraform fixture too.
+    clean_repo, clean_sha = git_checkout(
+        "oidc_and_trivy_good.yml", terraform_files=("scoped_iam_policy.tf",)
+    )
     second = _run(clean_repo, clean_sha, prior=prior)
 
     assert second.recommendations[0].status == "resolved"
     assert second.resolved_count == 1
-    assert second.coverage[0].status == "ok"
+    assert all(c.status == "ok" for c in second.coverage)
+
+
+def test_both_collectors_contribute_to_one_report(git_checkout) -> None:
+    repo, sha = git_checkout(
+        "trivy_ignore_unfixed_bad.yml", terraform_files=("wildcard_iam_policy.tf",)
+    )
+    report = _run(repo, sha)
+
+    concern_keys = {r.concern_key for r in report.recommendations}
+    assert "trivy_ignore_unfixed" in concern_keys
+    assert "wildcard_iam_permissions" in concern_keys
+    assert len(report.coverage) == 2
+    assert all(c.status == "ok" for c in report.coverage)
+    assert len(report.evidence) == 2
 
 
 def test_evidence_path_exclusions_are_applied(git_checkout) -> None:

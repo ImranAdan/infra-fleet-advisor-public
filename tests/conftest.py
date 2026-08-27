@@ -20,7 +20,9 @@ def git_checkout(tmp_path: Path):
 
     counter = iter(range(10_000))
 
-    def _make(*workflow_fixture_names: str) -> tuple[Path, str]:
+    def _make(
+        *workflow_fixture_names: str, terraform_files: tuple[str, ...] = ()
+    ) -> tuple[Path, str]:
         repo = tmp_path / f"checkout-{next(counter)}"
         repo.mkdir(parents=True)
         _run("git", "init", "-q", cwd=repo)
@@ -35,6 +37,14 @@ def git_checkout(tmp_path: Path):
             (workflows_dir / name).write_text(
                 (FIXTURES / "workflows" / name).read_text(encoding="utf-8"), encoding="utf-8"
             )
+
+        if terraform_files:
+            tf_dir = repo / "infrastructure" / "permanent"
+            tf_dir.mkdir(parents=True)
+            for name in terraform_files:
+                (tf_dir / name).write_text(
+                    (FIXTURES / "terraform" / name).read_text(encoding="utf-8"), encoding="utf-8"
+                )
 
         _run("git", "add", "-A", cwd=repo)
         _run("git", "commit", "-q", "-m", "fixture commit", cwd=repo)
