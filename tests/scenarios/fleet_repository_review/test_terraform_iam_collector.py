@@ -28,6 +28,31 @@ def test_detects_wildcard_iam_policy(git_checkout) -> None:
     assert result.coverage.status == "ok"
 
 
+def test_commented_out_wildcard_resource_is_ignored(git_checkout) -> None:
+    repo, _sha = git_checkout(terraform_files=("commented_out_wildcard.tf",))
+    result = tf_collector.collect(repo, LIMITS)
+    assert result.evidence == ()
+    assert result.coverage.status == "ok"
+
+
+def test_single_statement_object_is_detected(git_checkout) -> None:
+    repo, _sha = git_checkout(terraform_files=("single_statement_object.tf",))
+    result = tf_collector.collect(repo, LIMITS)
+    assert len(result.evidence) == 1
+    assert "eks:*" in result.evidence[0].fact["wildcard_actions"]
+
+
+def test_wildcard_statement_count_counts_statements_not_actions(git_checkout) -> None:
+    repo, _sha = git_checkout(terraform_files=("multi_action_single_statement.tf",))
+    result = tf_collector.collect(repo, LIMITS)
+    assert len(result.evidence) == 1
+    ev = result.evidence[0]
+    assert "s3:*" in ev.fact["wildcard_actions"]
+    assert "ec2:*" in ev.fact["wildcard_actions"]
+    # one statement, two wildcard actions -> statement count is 1, not 2
+    assert ev.fact["wildcard_statement_count"] == 1
+
+
 def test_scoped_policy_produces_no_evidence(git_checkout) -> None:
     repo, _sha = git_checkout(terraform_files=("scoped_iam_policy.tf",))
     result = tf_collector.collect(repo, LIMITS)
@@ -42,8 +67,25 @@ def test_non_iam_resource_produces_no_evidence_or_failure(git_checkout) -> None:
     assert result.coverage.status == "ok"
 
 
-def test_missing_infrastructure_dir(tmp_path) -> None:
+def test_missing_infrastructure_dir_is_ok_not_failed(tmp_path) -> None:
+    # No Terraform in this repo at all is a legitimate zero-evidence result —
+    # it must not permanently block other collectors' findings from ever
+    # being marked resolved (collection_complete spans every collector).
     result = tf_collector.collect(tmp_path, LIMITS)
+    assert result.coverage.status == "ok"
+    assert result.evidence == ()
+
+
+def test_infrastructure_dir_escaping_checkout_is_failed(tmp_path) -> None:
+    outside_target = tmp_path / "outside_infra"
+    outside_target.mkdir()
+
+    repo = tmp_path / "checkout"
+    repo.mkdir()
+    (repo / "infrastructure").symlink_to(outside_target)
+
+    result = tf_collector.collect(repo, LIMITS)
+
     assert result.coverage.status == "failed"
     assert result.evidence == ()
 

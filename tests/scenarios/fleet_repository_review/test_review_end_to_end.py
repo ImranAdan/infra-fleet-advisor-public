@@ -105,12 +105,10 @@ def test_third_run_marks_removed_finding_resolved(git_checkout) -> None:
         ]
     )
 
-    # Both collectors must report complete ("ok") coverage this run before a
-    # missing finding can be trusted as genuinely resolved rather than just
-    # not looked for — so this checkout needs a (clean) Terraform fixture too.
-    clean_repo, clean_sha = git_checkout(
-        "oidc_and_trivy_good.yml", terraform_files=("scoped_iam_policy.tf",)
-    )
+    # This repo has no Terraform at all — the Terraform collector's "missing
+    # infrastructure directory" case reports "ok" with zero evidence rather
+    # than "failed", so it doesn't block the GHA finding from resolving.
+    clean_repo, clean_sha = git_checkout("oidc_and_trivy_good.yml")
     second = _run(clean_repo, clean_sha, prior=prior)
 
     assert second.recommendations[0].status == "resolved"

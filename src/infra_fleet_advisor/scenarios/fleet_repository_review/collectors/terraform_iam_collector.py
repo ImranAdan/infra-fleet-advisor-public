@@ -19,6 +19,7 @@ _RESOURCE_HEADER = re.compile(
 )
 _POLICY_CALL = re.compile(r"(?<!\w)policy\s*=\s*jsonencode\s*\(")
 _WILDCARD_ACTION = re.compile(r"^([a-zA-Z0-9_-]+:)?\*$")
+_BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
 _LINE_COMMENT = re.compile(r"(#|//).*$", re.MULTILINE)
 _TRAILING_COMMA = re.compile(r",(\s*[\]}])")
 _BARE_KEY = re.compile(r'(?<!")\b([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)')
@@ -57,7 +58,11 @@ def _iter_resource_blocks(text: str) -> tuple[list[tuple[str, str, str]], int]:
     """Returns (resource_type, resource_name, block_body) for every
     aws_iam_policy/aws_iam_role_policy resource block in the file, plus a
     count of resource headers whose braces never balanced (a real parse
-    failure — worth surfacing, not silently dropping)."""
+    failure — worth surfacing, not silently dropping).
+
+    Strips `/* ... */` block comments first — otherwise a retired resource
+    left inside one would still be recognized as active configuration."""
+    text = _BLOCK_COMMENT.sub("", text)
     blocks = []
     unbalanced = 0
     for m in _RESOURCE_HEADER.finditer(text):
@@ -134,12 +139,18 @@ def _build_resource_evidence(
     if policy is None:
         return None, failed
     statements = policy.get("Statement")
+    if isinstance(statements, dict):
+        statements = [statements]  # AWS allows a single Statement object, not just a list
     if not isinstance(statements, list):
         return None, False
 
     offending: list[str] = []
+    matching_statement_count = 0
     for statement in statements:
-        offending.extend(_statement_is_wildcard_grant(statement))
+        wildcards = _statement_is_wildcard_grant(statement)
+        if wildcards:
+            matching_statement_count += 1
+            offending.extend(wildcards)
     if not offending:
         return None, False
 
@@ -152,7 +163,7 @@ def _build_resource_evidence(
         excerpt=f'wildcard actions on Resource="*": {", ".join(offending[:10])}',
         fact={
             "wildcard_actions": ", ".join(offending[:10]),
-            "wildcard_statement_count": len(offending),
+            "wildcard_statement_count": matching_statement_count,
         },
     )
     return evidence, False
@@ -172,14 +183,28 @@ def collect(
 ) -> CollectorResult:
     checkout_real = checkout_root.resolve()
     infra_dir = checkout_root / "infrastructure"
-    if not infra_dir.is_dir() or not infra_dir.resolve().is_relative_to(checkout_real):
+    if not infra_dir.is_dir():
+        # No Terraform in this repo at all — that's a legitimate, complete
+        # (zero-evidence) result, not a failure. Unlike the GitHub Actions
+        # workflow collector, a missing directory here must not block every
+        # other collector's findings from ever being marked resolved.
+        return CollectorResult(
+            evidence=(),
+            coverage=CollectorCoverage(
+                collector_id=TF_IAM_COLLECTOR_ID,
+                status="ok",
+                evidence_count=0,
+                error_summary=None,
+            ),
+        )
+    if not infra_dir.resolve().is_relative_to(checkout_real):
         return CollectorResult(
             evidence=(),
             coverage=CollectorCoverage(
                 collector_id=TF_IAM_COLLECTOR_ID,
                 status="failed",
                 evidence_count=0,
-                error_summary="no infrastructure directory found",
+                error_summary="infrastructure directory escapes the verified checkout",
             ),
         )
 
@@ -200,6 +225,13 @@ def collect(
             untracked_count += 1
             continue
         try:
+            if path.is_symlink():
+                # A tracked symlink can point at an ignored/untracked file
+                # still physically inside the checkout — containment alone
+                # doesn't prove the *target* was part of the verified
+                # commit, so symlinks are never followed here at all.
+                failures += 1
+                continue
             resolved = path.resolve()
             if not resolved.is_relative_to(checkout_real):
                 failures += 1
