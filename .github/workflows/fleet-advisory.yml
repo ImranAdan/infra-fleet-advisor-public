@@ -167,7 +167,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -c "$BRANCH"
           git add reports
-          git commit -m "report: fleet advisory for ${TARGET_REPO}@${sha:0:7}"
+          git commit -m "chore(advisory): report for ${TARGET_REPO}@${sha:0:7}"
           # The checkouts persist no credentials, so authenticate this push
           # explicitly. GITHUB_TOKEN is masked in logs.
           git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
@@ -180,6 +180,6 @@ jobs:
             gh pr create \
               --base "${{ github.event.repository.default_branch }}" \
               --head "$BRANCH" \
-              --title "Fleet advisory: ${TARGET_REPO}@${sha:0:7}" \
+              --title "chore(advisory): fleet report for ${TARGET_REPO}@${sha:0:7}" \
               --body-file "$RUNNER_TEMP/pr-body.md"
           fi
