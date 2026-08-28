@@ -16,3 +16,8 @@ class UnsafePathError(AdvisorError):
 
 class BoundedExecutionExceeded(AdvisorError):
     pass
+
+
+class SynthesisError(AdvisorError):
+    """Synthesis could not complete. Never degraded to an empty result: an
+    empty synthesis would mark every prior finding resolved."""

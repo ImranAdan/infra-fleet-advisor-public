@@ -20,7 +20,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
 from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
     terraform_iam_collector as tf_iam_collector,
 )
-from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import ALLOWED_CONCERN_KEYS
+from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import CONCERN_RULES
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     GHA_COLLECTOR_ID,
     GHA_COLLECTOR_VERSION,
@@ -87,6 +87,7 @@ def run_review(
             max_recommendations=policy.max_recommendations,
         ),
         evidence=all_evidence,
+        remaining_seconds=limits.max_wall_seconds - (time.monotonic() - started),
     )
     synthesis_response = synthesizer.synthesize(projection)
     check_model_call_budget(call_count=1, limits=limits)
@@ -111,7 +112,7 @@ def run_review(
         candidates=synthesis_response.recommendations,
         evidence_by_id=evidence_by_id,
         bounds=policy.to_bounds(),
-        allowed_concern_keys=ALLOWED_CONCERN_KEYS,
+        concern_rules=CONCERN_RULES,
         prior=prior,
     )
     return report

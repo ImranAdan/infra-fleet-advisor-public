@@ -1,0 +1,17 @@
+{
+  "recommendations": [
+    {
+      "concern_key": "wildcard_iam_permissions",
+      "category": "security",
+      "priority": "critical",
+      "title": "IAM policy grants a wildcard action on all resources",
+      "summary": "A finding the model asserts but cannot ground: the cited evidence identifier was never produced by any collector in this run.",
+      "evidence_ids": ["terraform_iam:ffffffffffffffff"],
+      "impact": "If published, this would present an unverifiable claim as evidence-backed.",
+      "suggested_change": "Scope the action list and constrain Resource to specific ARNs.",
+      "trade_offs": "None stated.",
+      "confidence": 0.95,
+      "confidence_explanation": "Asserted without a resolvable evidence citation."
+    }
+  ]
+}

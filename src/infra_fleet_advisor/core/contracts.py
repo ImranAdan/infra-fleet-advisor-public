@@ -53,6 +53,18 @@ class Recommendation:
 
 
 @dataclass(frozen=True, slots=True)
+class ConcernRule:
+    """What a concern means and what the evidence must deterministically show
+    before it may be published. The analyst decides whether to raise a concern
+    and how to describe it; it cannot decide what counts as support for one,
+    nor file a concern under a category that isn't its own."""
+
+    category: str
+    evidence_kind: str
+    required_facts: Mapping[str, bool | str | int] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
 class PolicyBounds:
     """Pure core projection of AdvisorPolicy, so core doesn't depend on config."""
 

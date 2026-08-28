@@ -57,11 +57,31 @@ Every recommendation must identify concrete evidence, expected impact,
 trade-offs, and confidence. Unsupported model output is rejected rather than
 published.
 
+## Usage
+
+```bash
+export ANTHROPIC_API_KEY=...   # required by the default --synthesizer anthropic
+
+uv run infra-fleet-advisor review \
+  --checkout ../infra-fleet-public \
+  --sha <full-40-char-commit-sha> \
+  --policy path/to/policy.yaml \
+  --output-dir ./review-output \
+  --prior-report ./previous-run/report.json   # optional, enables lifecycle tracking
+```
+
+`--synthesizer stub` swaps the model for a deterministic table-driven
+stand-in, which needs no API key and is what the test suite runs on.
+
+If synthesis fails, the run exits non-zero and writes no report. It never
+degrades to an empty result, because an empty result would mark every
+outstanding finding resolved.
+
 ## Status
 
-The project is in product-definition and foundation phase. Implementation will
-start with one end-to-end `fleet_repository_review` scenario after its contracts
-are agreed.
+The `fleet_repository_review` scenario runs end to end: two deterministic
+collectors (GitHub Actions workflows, Terraform IAM policies) feeding
+model-backed synthesis, validation, and lifecycle tracking.
 
 ## Documentation
 

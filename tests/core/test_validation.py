@@ -1,8 +1,12 @@
-from infra_fleet_advisor.core.contracts import PolicyBounds, RawRecommendationCandidate
-from infra_fleet_advisor.core.evidence import build_evidence
+from infra_fleet_advisor.core.contracts import (
+    ConcernRule,
+    PolicyBounds,
+    RawRecommendationCandidate,
+)
+from infra_fleet_advisor.core.evidence import Evidence, build_evidence
 from infra_fleet_advisor.core.validation import is_prior_recommendation_valid, validate_candidates
 
-ALLOWED = frozenset({"concern"})
+ALLOWED = {"concern": ConcernRule(category="security", evidence_kind="k")}
 
 
 def _bounds(
@@ -58,6 +62,67 @@ def test_valid_candidate_accepted() -> None:
     assert len(result.accepted) == 1
     assert result.accepted[0].status == "new"
     assert not result.rejected
+
+
+def test_concern_filed_under_a_different_enabled_category_is_rejected() -> None:
+    # "security" is this concern's category; "reliability" is merely enabled.
+    # Relabelling must not let a concern escape a category the owner disabled.
+    evidence_by_id, eid = _evidence()
+    bounds = PolicyBounds(
+        enabled_categories=frozenset({"security", "reliability"}),
+        category_priority={"security": 10, "reliability": 5},
+        max_recommendations=5,
+        suppressed_concerns=frozenset(),
+    )
+    result = validate_candidates(
+        [_candidate(evidence_ids=(eid,), category="reliability")], evidence_by_id, bounds, ALLOWED
+    )
+    assert not result.accepted
+    assert result.rejected[0].reason == "category_does_not_match_concern"
+
+
+def test_real_evidence_of_the_wrong_kind_does_not_support_the_concern() -> None:
+    other = build_evidence(
+        collector_id="c",
+        collector_version="1.0.0",
+        kind="a_different_kind",
+        source_path="b.yml",
+        locator="loc",
+        excerpt="e",
+        fact={},
+    )
+    result = validate_candidates(
+        [_candidate(evidence_ids=(other.evidence_id,))],
+        {other.evidence_id: other},
+        _bounds(),
+        ALLOWED,
+    )
+    assert not result.accepted
+    assert result.rejected[0].reason == "evidence_does_not_support_concern"
+
+
+def test_evidence_whose_facts_contradict_the_concern_is_rejected() -> None:
+    # The collector emits this evidence for every credential step it finds,
+    # including correctly configured ones. Only the fact makes it a finding.
+    rules = {
+        "concern": ConcernRule(
+            category="security", evidence_kind="k", required_facts={"uses_static_keys": True}
+        )
+    }
+    ev = build_evidence(
+        collector_id="c",
+        collector_version="1.0.0",
+        kind="k",
+        source_path="a.yml",
+        locator="loc",
+        excerpt="e",
+        fact={"uses_static_keys": False},
+    )
+    result = validate_candidates(
+        [_candidate(evidence_ids=(ev.evidence_id,))], {ev.evidence_id: ev}, _bounds(), rules
+    )
+    assert not result.accepted
+    assert result.rejected[0].reason == "evidence_does_not_support_concern"
 
 
 def test_malformed_priority_rejected() -> None:
@@ -176,11 +241,30 @@ def _prior(**overrides):
     return PriorRecommendation(**base)
 
 
+def _prior_evidence(eid: str, keyed_as: str | None = None):
+    """The evidence table a prior report carries, keyed the way the loader
+    keys it: by each entry's own evidence_id."""
+    ev = Evidence(
+        evidence_id=eid, kind="k", source_path="a.yml", locator="loc", excerpt="e", fact={}
+    )
+    return {keyed_as or eid: ev}
+
+
 def test_prior_recommendation_with_secret_looking_evidence_id_rejected() -> None:
-    prior = _prior(evidence_ids=("AKIAABCDEFGHIJKLMNOP",))
-    assert is_prior_recommendation_valid(prior, _bounds(), ALLOWED) is False
+    eid = "AKIAABCDEFGHIJKLMNOP"
+    prior = _prior(evidence_ids=(eid,))
+    assert is_prior_recommendation_valid(prior, _bounds(), ALLOWED, _prior_evidence(eid)) is False
 
 
 def test_prior_recommendation_with_clean_evidence_id_accepted() -> None:
-    prior = _prior(evidence_ids=("collector:abcdef1234567890",))
-    assert is_prior_recommendation_valid(prior, _bounds(), ALLOWED) is True
+    eid = "collector:abcdef1234567890"
+    prior = _prior(evidence_ids=(eid,))
+    assert is_prior_recommendation_valid(prior, _bounds(), ALLOWED, _prior_evidence(eid)) is True
+
+
+def test_prior_evidence_filed_under_an_id_that_is_not_its_own_is_rejected() -> None:
+    # The citation resolves, but to evidence that identifies something else.
+    cited = "collector:abcdef1234567890"
+    prior = _prior(evidence_ids=(cited,))
+    table = _prior_evidence("collector:0000000000000000", keyed_as=cited)
+    assert is_prior_recommendation_valid(prior, _bounds(), ALLOWED, table) is False

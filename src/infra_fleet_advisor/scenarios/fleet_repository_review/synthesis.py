@@ -26,6 +26,9 @@ class PolicyContext:
 class EvidenceProjection:
     policy_context: PolicyContext
     evidence: tuple[Evidence, ...]
+    # What is left of the run's wall-clock budget once collection has taken
+    # its share. None means the caller imposes no deadline.
+    remaining_seconds: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,0 +1,17 @@
+{
+  "recommendations": [
+    {
+      "concern_key": "wildcard_iam_permissions",
+      "category": "security",
+      "priority": "critical",
+      "title": "GitHub OIDC role grants eks:* and ec2:* on every resource",
+      "summary": "The aws_iam_policy attached to the GitHub Actions OIDC role allows eks:* and ec2:* with Resource set to \"*\", so any workflow assuming this role can make any EKS or EC2 API call against every resource in the account.",
+      "evidence_ids": ["__EVIDENCE_ID__"],
+      "impact": "A compromised or malicious workflow could delete clusters, alter node groups, or launch instances anywhere in the account, and the audit trail would not distinguish that from a normal deploy.",
+      "suggested_change": "Replace eks:* and ec2:* with the specific API calls the deploy job actually makes, and constrain Resource to the cluster and node group ARNs this pipeline manages.",
+      "trade_offs": "Enumerating the exact call set takes iteration against a real deploy, and a missed permission fails the pipeline until it is added.",
+      "confidence": 0.9,
+      "confidence_explanation": "The wildcard actions and Resource \"*\" are read directly from the parsed policy statement."
+    }
+  ]
+}
