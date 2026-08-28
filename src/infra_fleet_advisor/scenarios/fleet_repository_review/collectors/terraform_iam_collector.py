@@ -1,7 +1,7 @@
 import json
 import re
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from infra_fleet_advisor.core.errors import UnsafePathError
@@ -155,6 +155,7 @@ def _build_resource_evidence(
         return None, False
 
     locator = f"resource.{resource_type}.{resource_name}.policy"
+    root_module = PurePosixPath(rel_path).parent.as_posix()
     evidence = build_evidence(
         collector_id=TF_IAM_COLLECTOR_ID,
         collector_version=TF_IAM_COLLECTOR_VERSION,
@@ -166,9 +167,10 @@ def _build_resource_evidence(
             "wildcard_actions": ", ".join(offending[:10]),
             "wildcard_statement_count": matching_statement_count,
         },
-        # A Terraform resource address survives a file move, so source_path
-        # would make this identity positional without adding uniqueness.
-        identity_parts=(locator,),
+        # A resource address is unique only within its root module. Keep that
+        # directory namespace while excluding the .tf filename so file moves
+        # within a module preserve identity without conflating separate roots.
+        identity_parts=(root_module, locator),
     )
     return evidence, False
 

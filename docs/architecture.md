@@ -76,11 +76,12 @@ verified snapshot and return closed evidence types. Configuration cannot supply
 commands or import paths.
 
 Collectors also declare the identity components used to derive each evidence
-ID. Terraform IAM evidence uses its stable resource address without the source
-path, so moving a resource between files preserves lifecycle identity. GitHub
-Actions evidence remains keyed by workflow path and step locator because steps
-without explicit IDs have no stable resource handle; file moves or inserted
-steps can therefore still produce a one-time lifecycle change.
+ID. Terraform IAM evidence uses its root-module directory and stable resource
+address without the `.tf` filename, so moving a resource between files in the
+same module preserves lifecycle identity without conflating separate root
+modules. GitHub Actions evidence remains keyed by workflow path and step locator
+because steps without explicit IDs have no stable resource handle; file moves
+or inserted steps can therefore still produce a one-time lifecycle change.
 
 ### Model
 

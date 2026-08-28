@@ -41,6 +41,22 @@ def test_evidence_identity_survives_a_terraform_file_rename(git_checkout) -> Non
     assert before.evidence_id == after.evidence_id
 
 
+def test_same_resource_address_in_separate_root_modules_has_distinct_identity(
+    git_checkout,
+) -> None:
+    repo, _sha = git_checkout(terraform_files=("wildcard_iam_policy.tf",))
+    original = repo / "infrastructure" / "permanent" / "wildcard_iam_policy.tf"
+    second_root = repo / "infrastructure" / "ephemeral"
+    second_root.mkdir()
+    (second_root / "policy.tf").write_text(original.read_text(encoding="utf-8"), encoding="utf-8")
+
+    evidence = tf_collector.collect(repo, LIMITS).evidence
+
+    assert len(evidence) == 2
+    assert evidence[0].locator == evidence[1].locator
+    assert evidence[0].evidence_id != evidence[1].evidence_id
+
+
 def test_commented_out_wildcard_resource_is_ignored(git_checkout) -> None:
     repo, _sha = git_checkout(terraform_files=("commented_out_wildcard.tf",))
     result = tf_collector.collect(repo, LIMITS)
