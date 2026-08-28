@@ -4,9 +4,14 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from infra_fleet_advisor.core.errors import AdvisorError, PolicyError, ProvenanceError
+from infra_fleet_advisor.provenance.source_verification import verify_snapshot
 from infra_fleet_advisor.runtime.clock import SystemClock
 from infra_fleet_advisor.runtime.composition import SYNTHESIZERS, RunInputs, compose_and_run
-from infra_fleet_advisor.runtime.report_writer import load_prior_report, write_report
+from infra_fleet_advisor.runtime.report_writer import (
+    load_prior_report,
+    read_report_source_sha,
+    write_report,
+)
 from infra_fleet_advisor.scenarios.fleet_repository_review.remediation import (
     apply_patches,
     build_patches,
@@ -59,8 +64,17 @@ def _remediate(args: argparse.Namespace) -> int:
         print("no report to act on", file=sys.stderr)
         return EXIT_POLICY_ERROR
 
+    # The evidence describes one commit. If the checkout has moved on, those
+    # line numbers and paths describe a tree nobody analyzed or accepted, so
+    # refuse rather than patch blind. Also rejects a dirty checkout.
+    verify_snapshot(args.checkout, read_report_source_sha(args.report), "infra-fleet-public")
+
     applied: list[str] = []
     for rec in prior.recommendations:
+        # A suppressed concern is one the owner deliberately excluded; a
+        # resolved one is already fixed. Neither justifies touching the fleet.
+        if rec.status not in ("new", "unchanged"):
+            continue
         patches = build_patches(
             checkout_root=args.checkout,
             concern_key=rec.concern_key,
@@ -92,6 +106,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         except PolicyError as exc:
             print(f"policy error: {exc}", file=sys.stderr)
             return EXIT_POLICY_ERROR
+        except ProvenanceError as exc:
+            print(f"provenance error: {exc}", file=sys.stderr)
+            return EXIT_PROVENANCE_ERROR
         except AdvisorError as exc:
             print(f"pipeline error: {exc}", file=sys.stderr)
             return EXIT_PIPELINE_ERROR

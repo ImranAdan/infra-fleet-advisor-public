@@ -37,14 +37,26 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
+      # The report's evidence describes one commit. Materialize that commit
+      # rather than a moving ref, so paths and locators describe the tree being
+      # patched. remediate re-checks this and refuses on any mismatch.
+      - name: Resolve the commit the report was built from
+        id: report
+        run: |
+          if [ ! -f reports/report.json ]; then
+            echo "No merged advisory report on the default branch; nothing to act on." >&2
+            exit 1
+          fi
+          echo "sha=$(jq -r '.provenance.source_commit_sha' reports/report.json)" >> "$GITHUB_OUTPUT"
+
       # FLEET_TOKEN is a GitHub App installation token or PAT with contents and
       # pull-requests write on the fleet. GITHUB_TOKEN cannot reach another
       # repository. This is the only workflow that holds it.
-      - name: Check out the fleet
+      - name: Check out the fleet at that commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: ${{ env.TARGET_REPO }}
-          ref: ${{ inputs.target_ref }}
+          ref: ${{ steps.report.outputs.sha }}
           path: target
           token: ${{ secrets.FLEET_TOKEN }}
           persist-credentials: false
@@ -67,10 +79,6 @@ jobs:
       - name: Apply the mechanical fixes the report justifies
         id: patch
         run: |
-          if [ ! -f reports/report.json ]; then
-            echo "No merged advisory report on the default branch; nothing to act on." >&2
-            exit 1
-          fi
           uv run infra-fleet-advisor remediate \
             --checkout target \
             --report reports/report.json \
@@ -84,8 +92,13 @@ jobs:
 
       - name: Open the fleet pull request
         if: steps.patch.outputs.changed == 'true' && !inputs.dry_run
+        # TARGET_REF goes through the environment, never into the script body.
+        # GitHub interpolates ${{ }} before bash runs, so a dispatcher could
+        # otherwise break out of the quoting and run commands with FLEET_TOKEN
+        # in scope.
         env:
           GH_TOKEN: ${{ secrets.FLEET_TOKEN }}
+          TARGET_REF: ${{ inputs.target_ref }}
           ADVISORY_RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           sha="$(git -C target rev-parse HEAD)"
@@ -117,7 +130,7 @@ jobs:
 
           if [ -z "$(gh pr list --repo "$TARGET_REPO" --head "$FLEET_BRANCH" --state open --json number -q '.[].number')" ]; then
             gh pr create --repo "$TARGET_REPO" \
-              --base "${{ inputs.target_ref }}" \
+              --base "$TARGET_REF" \
               --head "$FLEET_BRANCH" \
               --title "ci: stop ignoring unfixed vulnerabilities in the Trivy gate" \
               --body-file "${RUNNER_TEMP}/pr-body.md"

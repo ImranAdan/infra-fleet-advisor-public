@@ -167,3 +167,31 @@ def test_value_inside_a_longer_expression_is_left_alone(tmp_path: Path) -> None:
         evidence_by_id=_evidence(),
     )
     assert patches == ()
+
+
+def test_quoted_truthy_value_is_patched(tmp_path: Path) -> None:
+    # The collector's _is_truthy_yaml_value accepts "true" and TRUE, so a form
+    # the analysis flags must be a form remediation can fix.
+    for index, literal in enumerate(('"true"', "'true'", "TRUE")):
+        body = WORKFLOW.replace("ignore-unfixed: true", f"ignore-unfixed: {literal}")
+        patches = build_patches(
+            checkout_root=_checkout(tmp_path / str(index), body),
+            concern_key=CONCERN_TRIVY_IGNORE_UNFIXED,
+            evidence_ids=("e1",),
+            evidence_by_id=_evidence(),
+        )
+        assert len(patches) == 1, literal
+        assert "ignore-unfixed" not in patches[0].patched
+
+
+def test_file_with_several_entries_is_refused(tmp_path: Path) -> None:
+    # Evidence names one step via its locator; this transform works on text and
+    # cannot tell which. Editing all of them would exceed the evidence boundary.
+    body = WORKFLOW + WORKFLOW
+    patches = build_patches(
+        checkout_root=_checkout(tmp_path, body),
+        concern_key=CONCERN_TRIVY_IGNORE_UNFIXED,
+        evidence_ids=("e1",),
+        evidence_by_id=_evidence(),
+    )
+    assert patches == ()

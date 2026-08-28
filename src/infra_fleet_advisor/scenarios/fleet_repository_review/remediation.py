@@ -23,8 +23,12 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
 )
 
 # `ignore-unfixed: true` as its own YAML mapping entry. Anchored to the whole
-# line so a value inside a longer expression is left alone.
-_IGNORE_UNFIXED_LINE = re.compile(r"(?m)^[ \t]*ignore-unfixed[ \t]*:[ \t]*true[ \t]*\r?\n")
+# line so a value inside a longer expression is left alone. Quoted and
+# mixed-case forms are matched because the collector's _is_truthy_yaml_value
+# accepts them, and a form the analysis flags must be a form remediation can fix.
+_IGNORE_UNFIXED_LINE = re.compile(
+    r"(?m)^[ \t]*ignore-unfixed[ \t]*:[ \t]*(['\"]?)[Tt][Rr][Uu][Ee]\1[ \t]*\r?\n"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,10 +46,15 @@ class Patch:
 
 
 def _drop_ignore_unfixed(text: str) -> tuple[str, str]:
-    patched, count = _IGNORE_UNFIXED_LINE.subn("", text)
+    count = len(_IGNORE_UNFIXED_LINE.findall(text))
     if count == 0:
         return text, "no ignore-unfixed entry found"
-    return patched, f"removed {count} ignore-unfixed entry/entries"
+    if count > 1:
+        # Evidence identifies one exact step through its locator, but this
+        # transform works on text and cannot tell which entry that is. Editing
+        # all of them would touch steps the report never cited.
+        return text, f"{count} entries present; refusing to guess which step was cited"
+    return _IGNORE_UNFIXED_LINE.sub("", text, count=1), "removed the ignore-unfixed entry"
 
 
 # concern_key -> (text transform). Deliberately tiny. Adding an entry here is a

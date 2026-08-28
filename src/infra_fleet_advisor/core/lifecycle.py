@@ -20,6 +20,10 @@ class PriorRecommendation:
     trade_offs: str
     confidence: float
     confidence_explanation: str
+    # Carried so consumers can tell an active finding from one the owner
+    # suppressed or that is already resolved. Lifecycle comparison itself does
+    # not read this — it recomputes status from the current run.
+    status: str = "new"
 
 
 @dataclass(frozen=True, slots=True)
