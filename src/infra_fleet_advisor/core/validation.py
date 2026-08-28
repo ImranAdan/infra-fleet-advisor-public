@@ -143,7 +143,13 @@ def is_prior_recommendation_valid(
         return False
     if any(p.search(eid) for eid in prior.evidence_ids for p in _SECRET_PATTERNS):
         return False
-    if any(eid not in prior_evidence_by_id for eid in prior.evidence_ids):
+    # Membership alone isn't identity: an entry filed under the cited ID must
+    # also *be* that evidence, or the citation names one thing while the
+    # report's evidence table carries another.
+    if any(
+        eid not in prior_evidence_by_id or prior_evidence_by_id[eid].evidence_id != eid
+        for eid in prior.evidence_ids
+    ):
         return False
     rule = concern_rules.get(prior.concern_key) if isinstance(prior.concern_key, str) else None
     if rule is not None and not _evidence_supports(rule, prior.evidence_ids, prior_evidence_by_id):

@@ -3,7 +3,7 @@ from infra_fleet_advisor.core.contracts import (
     PolicyBounds,
     RawRecommendationCandidate,
 )
-from infra_fleet_advisor.core.evidence import build_evidence
+from infra_fleet_advisor.core.evidence import Evidence, build_evidence
 from infra_fleet_advisor.core.validation import is_prior_recommendation_valid, validate_candidates
 
 ALLOWED = {"concern": ConcernRule(category="security", evidence_kind="k")}
@@ -241,17 +241,13 @@ def _prior(**overrides):
     return PriorRecommendation(**base)
 
 
-def _prior_evidence(eid: str):
-    ev = build_evidence(
-        collector_id="c",
-        collector_version="1.0.0",
-        kind="k",
-        source_path="a.yml",
-        locator="loc",
-        excerpt="e",
-        fact={},
+def _prior_evidence(eid: str, keyed_as: str | None = None):
+    """The evidence table a prior report carries, keyed the way the loader
+    keys it: by each entry's own evidence_id."""
+    ev = Evidence(
+        evidence_id=eid, kind="k", source_path="a.yml", locator="loc", excerpt="e", fact={}
     )
-    return {eid: ev}
+    return {keyed_as or eid: ev}
 
 
 def test_prior_recommendation_with_secret_looking_evidence_id_rejected() -> None:
@@ -264,3 +260,11 @@ def test_prior_recommendation_with_clean_evidence_id_accepted() -> None:
     eid = "collector:abcdef1234567890"
     prior = _prior(evidence_ids=(eid,))
     assert is_prior_recommendation_valid(prior, _bounds(), ALLOWED, _prior_evidence(eid)) is True
+
+
+def test_prior_evidence_filed_under_an_id_that_is_not_its_own_is_rejected() -> None:
+    # The citation resolves, but to evidence that identifies something else.
+    cited = "collector:abcdef1234567890"
+    prior = _prior(evidence_ids=(cited,))
+    table = _prior_evidence("collector:0000000000000000", keyed_as=cited)
+    assert is_prior_recommendation_valid(prior, _bounds(), ALLOWED, table) is False
