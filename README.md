@@ -87,20 +87,53 @@ against, which is why it is tracked rather than ignored. Lifecycle therefore
 advances only when an advisory pull request is **merged** — an open, unmerged
 report is not yet the baseline.
 
-A run that finds nothing new opens no pull request. That decision compares
-findings and collector coverage, not file contents: every report carries a fresh
+A run opens no pull request only when *every* compared field is unchanged:
+findings, cited evidence, collector coverage, and rejection reasons. A change in
+any one of them proposes a report — so a run whose accepted findings are
+identical but whose rejections differ still opens one.
+
+That comparison deliberately ignores file contents. Every report carries a fresh
 run timestamp, and a finding legitimately moves from `new` to `unchanged` on the
-next run over an identical fleet.
+next run over an identical fleet, so a plain diff is never empty.
+
+Reports also record *why* candidates were refused, not just how many. A
+synthesizer that starts rejecting candidates has drifted, and that is the case
+the rejection comparison exists to surface.
 
 If synthesis fails, the run exits non-zero and writes no report. It never
 degrades to an empty result, because an empty result would mark every
 outstanding finding resolved.
 
+## Development
+
+```bash
+make setup      # sync the locked environment
+make check      # lint, strict typing, and the full test suite
+```
+
+`.github/workflows/quality.yml` runs the same gates on every pull request, plus
+`gitlint` over commit messages, `actionlint` over the workflows, and a Trivy
+filesystem scan. `tests/fixtures` is excluded from that scan: it holds
+deliberately insecure Terraform, because that is what the collectors are tested
+against.
+
+Tests are deterministic and offline — no network, cloud credentials, or cluster.
+The Anthropic synthesizer is exercised through recorded responses.
+
 ## Status
 
 The `fleet_repository_review` scenario runs end to end: two deterministic
-collectors (GitHub Actions workflows, Terraform IAM policies) feeding
-model-backed synthesis, validation, and lifecycle tracking.
+collectors (GitHub Actions workflows, Terraform IAM policies) feeding synthesis,
+validation, and lifecycle tracking.
+
+The Anthropic synthesizer is implemented and unit-tested against recorded
+responses, but **has never been run against the live API**. Every report produced
+so far used `--synthesizer stub`, so the findings are real — the collectors are
+deterministic — while the prose around them is templated.
+
+`docs/decisions/0001-advisory-delivery-and-feedback-loop.md` records what closing
+the loop requires: issues raised against the fleet, a decline record, and a
+feedback path back into policy. None of that is built yet.
 
 ## Documentation
 
