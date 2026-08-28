@@ -7,6 +7,9 @@ from infra_fleet_advisor.core.report import Report
 from infra_fleet_advisor.provenance.source_verification import verify_snapshot
 from infra_fleet_advisor.runtime.clock import Clock
 from infra_fleet_advisor.runtime.report_writer import load_prior_report
+from infra_fleet_advisor.scenarios.fleet_repository_review.anthropic_synthesis import (
+    AnthropicSynthesizer,
+)
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import TAXONOMY
 from infra_fleet_advisor.scenarios.fleet_repository_review.review import run_review
 from infra_fleet_advisor.scenarios.fleet_repository_review.synthesis import (
@@ -16,6 +19,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.synthesis import (
 
 MAX_WORKFLOW_FILES = 50
 MAX_WORKFLOW_FILE_BYTES = 256 * 1024
+SYNTHESIZERS = ("anthropic", "stub")
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +29,11 @@ class RunInputs:
     policy_path: Path
     source_label: str
     prior_report_path: Path | None
+    synthesizer_name: str = "anthropic"
+
+
+def _select_synthesizer(name: str) -> Synthesizer:
+    return StubSynthesizer() if name == "stub" else AnthropicSynthesizer()
 
 
 def compose_and_run(
@@ -46,7 +55,7 @@ def compose_and_run(
         checkout_root=inputs.checkout,
         policy=policy,
         source=source,
-        synthesizer=synthesizer or StubSynthesizer(),
+        synthesizer=synthesizer or _select_synthesizer(inputs.synthesizer_name),
         limits=limits,
         prior=prior,
         run_started_at=clock.now_iso(),

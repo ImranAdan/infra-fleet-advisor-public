@@ -5,7 +5,7 @@ from pathlib import Path
 
 from infra_fleet_advisor.core.errors import AdvisorError, PolicyError, ProvenanceError
 from infra_fleet_advisor.runtime.clock import SystemClock
-from infra_fleet_advisor.runtime.composition import RunInputs, compose_and_run
+from infra_fleet_advisor.runtime.composition import SYNTHESIZERS, RunInputs, compose_and_run
 from infra_fleet_advisor.runtime.report_writer import write_report
 
 EXIT_OK = 0
@@ -25,6 +25,7 @@ def _build_parser() -> argparse.ArgumentParser:
     review.add_argument("--output-dir", required=True, type=Path)
     review.add_argument("--prior-report", type=Path, default=None)
     review.add_argument("--source-label", default="infra-fleet-public")
+    review.add_argument("--synthesizer", choices=SYNTHESIZERS, default=SYNTHESIZERS[0])
     return parser
 
 
@@ -53,6 +54,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         policy_path=args.policy,
         source_label=args.source_label,
         prior_report_path=args.prior_report,
+        synthesizer_name=args.synthesizer,
     )
     try:
         report = compose_and_run(inputs, SystemClock())

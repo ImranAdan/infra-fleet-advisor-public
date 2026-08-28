@@ -22,6 +22,9 @@ def _argv(repo: Path, sha: str, output_dir: Path, prior: Path | None = None) -> 
         str(POLICY),
         "--output-dir",
         str(output_dir),
+        # Keeps the suite hermetic: the CLI now defaults to the real model.
+        "--synthesizer",
+        "stub",
     ]
     if prior is not None:
         argv += ["--prior-report", str(prior)]
