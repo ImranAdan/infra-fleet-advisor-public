@@ -51,6 +51,11 @@ Work only on the requested outcome and stop when that outcome is complete.
   pushing to a shared branch; publishing a package; and calling any paid or
   rate-limited API. When such an action is the obvious next step, propose it and
   wait.
+- One standing exception exists, recorded in `CLAUDE.md`: a pull request you
+  raised may be resolved and merged without per-action approval, subject to the
+  conditions and stop conditions stated there. It is deliberately narrow — it
+  covers only your own pull requests, and extends to no other outward-facing
+  action. Every rule above still governs everything else.
 - Verifying your own work is not an exception. If the only way to confirm a
   change is an outward-facing action, say so, state what it would do and what it
   would cost, and let the user decide. An unverified change reported honestly as
