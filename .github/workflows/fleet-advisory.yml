@@ -30,8 +30,16 @@ jobs:
   advise:
     runs-on: ubuntu-latest
     steps:
+      # Pinned to the default branch, not the dispatch ref: the prior report
+      # and the policy must come from merged state. Dispatching from a feature
+      # branch would otherwise baseline lifecycle against an unmerged report.
+      # persist-credentials is off on both checkouts so no token is left in
+      # .git/config while repository code runs; the push authenticates itself.
       - name: Check out the advisor
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
 
       - name: Check out the fleet under review
         uses: actions/checkout@v4
@@ -39,6 +47,7 @@ jobs:
           repository: ${{ env.TARGET_REPO }}
           ref: ${{ inputs.target_ref }}
           path: target
+          persist-credentials: false
 
       - name: Resolve the reviewed commit
         id: target
@@ -48,8 +57,14 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install the advisor
-        run: pip install .
+      # --frozen installs exactly what uv.lock pins and fails if the lock is
+      # stale, so a rerun over the same advisor and fleet commits resolves the
+      # same dependency set rather than picking up whatever satisfies
+      # `anthropic>=1.2` that day.
+      - name: Install the advisor from the lockfile
+        run: |
+          pip install "uv==0.9.14"
+          uv sync --frozen --no-dev
 
       # Fails the job on any synthesis or provenance error rather than writing
       # an empty report: a report with no findings is indistinguishable from
@@ -62,7 +77,7 @@ jobs:
           if [ -f reports/report.json ]; then
             prior=(--prior-report reports/report.json)
           fi
-          infra-fleet-advisor review \
+          uv run infra-fleet-advisor review \
             --checkout target \
             --sha "${{ steps.target.outputs.sha }}" \
             --policy policy.yaml \
@@ -77,11 +92,25 @@ jobs:
       - name: Decide whether the findings changed
         id: publish
         run: |
+          # Deterministic, collector- and policy-derived material only. The
+          # cited evidence facts are included so that a finding whose supporting
+          # detail changed at the same path still counts as changed, even though
+          # its evidence ID and fingerprint are stable by design.
+          #
+          # Model-authored fields (title, summary, priority, confidence, rank)
+          # are deliberately excluded: they are re-generated on every run and
+          # would make every run look changed, which is the exact failure this
+          # comparison exists to avoid.
           signature() {
             jq -Sr '{
               findings: [.recommendations[]
-                | "\(.fingerprint):\(if .status == "new" or .status == "unchanged"
-                                     then "open" else .status end)"] | sort,
+                | "\(.fingerprint)"
+                + ":\(if .status == "new" or .status == "unchanged"
+                      then "open" else .status end)"
+                + ":\(.owner_accepted_trade_off // "")"] | sort,
+              evidence: [.evidence[]
+                | {id: .evidence_id, kind: .kind, fact: .fact, excerpt: .excerpt}]
+                | sort_by(.id),
               coverage: [.coverage[] | "\(.collector_id):\(.status)"] | sort
             }' "$1"
           }
@@ -131,7 +160,10 @@ jobs:
           git switch -c "$BRANCH"
           git add reports
           git commit -m "report: fleet advisory for ${TARGET_REPO}@${sha:0:7}"
-          git push -f origin "$BRANCH"
+          # The checkouts persist no credentials, so authenticate this push
+          # explicitly. GITHUB_TOKEN is masked in logs.
+          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "HEAD:refs/heads/$BRANCH"
 
           if [ -n "$(gh pr list --head "$BRANCH" --state open --json number -q '.[].number')" ]; then
             gh pr edit "$BRANCH" --body-file "$RUNNER_TEMP/pr-body.md"

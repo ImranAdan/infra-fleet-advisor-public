@@ -149,11 +149,27 @@ Runtime enforces time, input-size, collector, model-call, and recommendation
 limits. A failed or malformed model response ends safely without publishing an
 unvalidated report.
 
+### FR11: Report delivery
+
+A run may be triggered from CI and deliver its report as a pull request in the
+advisor's own repository. This is delivery of the report, not remediation: the
+pull request carries `reports/report.json` and `reports/report.md` and nothing
+else, and the fleet repository is cloned, analyzed, and left untouched.
+
+The committed report is the baseline the next run compares against, so lifecycle
+advances only when an advisory pull request is merged. A run whose findings,
+cited evidence, and collector coverage all match the committed report proposes
+nothing, so an unchanged fleet does not accumulate pull requests.
+
 ## Non-functional requirements
 
 ### Safety and security
 
-- Use read-only GitHub permissions in CI.
+- Use read-only GitHub permissions against the fleet repository in CI. The
+  `fleet-advisory` workflow additionally holds `contents: write` and
+  `pull-requests: write` **on this repository only**, solely to propose the
+  report it just produced. It holds no credential for the fleet beyond public
+  read, and no workflow may acquire one.
 - Never require cloud or cluster credentials for the MVP.
 - Treat repository content, scanner output, and model output as untrusted.
 - Do not log environment values, credentials, unbounded file contents, or raw
@@ -212,7 +228,10 @@ During the initial pilot:
 - General-purpose infrastructure advice for arbitrary repositories.
 - Live AWS, Kubernetes, Prometheus, or Terraform-state inspection.
 - Parameter tuning or experimentation against running services.
-- Automated source changes, pull requests, merges, deployments, or rollback.
+- Automated source changes, pull requests, merges, deployments, or rollback
+  **against the fleet repository**. Delivering the advisor's own report as a
+  pull request in this repository is in scope (see "Report delivery" below);
+  proposing changes to the fleet is not.
 - A plugin marketplace, dynamic imports, arbitrary shell execution, or remote
   tool installation selected by configuration.
 - Claims of complete coverage or universal optimality.
@@ -224,7 +243,9 @@ Future work must be justified by demonstrated value from the previous phase:
 1. Add selected GitHub CI, dependency, and release metadata as read-only input.
 2. Add optional read-only runtime observations with explicit credentials and
    provenance boundaries.
-3. Generate reviewable patches or draft pull requests with human approval.
+3. Generate reviewable patches or draft pull requests **against the fleet** with
+   human approval. (Delivering the advisor's own report as a pull request here
+   is FR11 and already in scope; proposing fleet changes is not.)
 4. Introduce narrowly constrained remediation or parameter optimization only
    where rollback and deterministic evaluation exist.
 
