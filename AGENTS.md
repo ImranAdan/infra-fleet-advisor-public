@@ -42,6 +42,19 @@ Work only on the requested outcome and stop when that outcome is complete.
   product, repository, deliverable, or external state.
 - Use existing local evidence first. Run checks proportionate to the change and
   avoid unrelated diagnostics.
+- Never cause an effect outside this working tree that the user did not ask for
+  in this session. Authorization is per action, not per session, and it does not
+  generalize: approving a fix does not approve executing it, and approving one
+  run does not approve the next. This covers at least — triggering, re-running,
+  or cancelling a CI workflow; changing repository, org, or branch-protection
+  settings; creating, editing, merging, or closing a pull request or issue;
+  pushing to a shared branch; publishing a package; and calling any paid or
+  rate-limited API. When such an action is the obvious next step, propose it and
+  wait.
+- Verifying your own work is not an exception. If the only way to confirm a
+  change is an outward-facing action, say so, state what it would do and what it
+  would cost, and let the user decide. An unverified change reported honestly as
+  unverified is better than a surprise side effect.
 - Preserve unrelated working-tree changes and commit only files belonging to
   the requested task.
 - Keep the final response limited to the outcome, verification performed, and
