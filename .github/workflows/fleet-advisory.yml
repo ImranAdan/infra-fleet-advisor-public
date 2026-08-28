@@ -97,6 +97,12 @@ jobs:
           # detail changed at the same path still counts as changed, even though
           # its evidence ID and fingerprint are stable by design.
           #
+          # Rejection *reasons* are included — a synthesizer that starts
+          # refusing candidates has drifted, and that must reach a human even
+          # when the accepted findings are identical. Only the reasons, which
+          # are a closed vocabulary; the rejected concern keys are arbitrary
+          # synthesizer output and would churn the signature.
+          #
           # Model-authored fields (title, summary, priority, confidence, rank)
           # are deliberately excluded: they are re-generated on every run and
           # would make every run look changed, which is the exact failure this
@@ -111,7 +117,8 @@ jobs:
               evidence: [.evidence[]
                 | {id: .evidence_id, kind: .kind, fact: .fact, excerpt: .excerpt}]
                 | sort_by(.id),
-              coverage: [.coverage[] | "\(.collector_id):\(.status)"] | sort
+              coverage: [.coverage[] | "\(.collector_id):\(.status)"] | sort,
+              rejections: [.rejected[] | .reason] | sort
             }' "$1"
           }
 

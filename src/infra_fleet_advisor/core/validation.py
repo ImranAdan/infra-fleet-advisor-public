@@ -43,10 +43,30 @@ class ValidatedRecommendations:
     rejected: tuple[RejectedCandidate, ...]
 
 
+_SAFE_IDENTIFIER = re.compile(r"^[a-z0-9_]{1,64}$")
+
+
+def _safe_identifier(value: object) -> str:
+    """A rejected candidate's concern_key and category are, by definition,
+    values that failed validation — so they are arbitrary synthesizer output
+    that now gets published. Restricting to a known identifier shape is
+    stronger than escaping: it rules out backticks and newlines breaking out of
+    the Markdown code span, and it keeps an unbounded string out of the report
+    entirely. The secret scan catches the residue an all-lowercase token would
+    otherwise slip through."""
+    if not isinstance(value, str) or not _SAFE_IDENTIFIER.match(value):
+        return "unknown"
+    if any(p.search(value) for p in _SECRET_PATTERNS):
+        return "unknown"
+    return value
+
+
 def _reject(candidate: RawRecommendationCandidate, reason: str) -> RejectedCandidate:
-    key = candidate.concern_key if isinstance(candidate.concern_key, str) else "unknown"
-    cat = candidate.category if isinstance(candidate.category, str) else "unknown"
-    return RejectedCandidate(concern_key=key[:80], category=cat[:80], reason=reason)
+    return RejectedCandidate(
+        concern_key=_safe_identifier(candidate.concern_key),
+        category=_safe_identifier(candidate.category),
+        reason=reason,
+    )
 
 
 def _field_violation(

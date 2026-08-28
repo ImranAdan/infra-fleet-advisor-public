@@ -38,6 +38,10 @@ class Report:
     coverage: tuple[CollectorCoverage, ...]
     recommendations: tuple[Recommendation, ...]
     evidence: tuple[Evidence, ...]
+    # Why candidates were refused, never their text. A run that rejects a lot is
+    # the earliest signal that a model has drifted, so the count alone is not
+    # enough to act on.
+    rejected: tuple[RejectedCandidate, ...]
     rejected_count: int
     new_count: int
     unchanged_count: int
@@ -54,7 +58,7 @@ def assemble_report(
     bounds: PolicyBounds,
     concern_rules: Mapping[str, ConcernRule],
     prior: PriorReport | None,
-) -> tuple[Report, tuple[RejectedCandidate, ...]]:
+) -> Report:
     """Bounded pipeline coordination: validate → compare with prior → rank."""
     validated = validate_candidates(candidates, evidence_by_id, bounds, concern_rules)
     collection_complete = all(c.status == "ok" for c in coverage)
@@ -74,15 +78,15 @@ def assemble_report(
         merged_evidence[eid] for eid in sorted(cited_ids) if eid in merged_evidence
     )
 
-    report = Report(
+    return Report(
         provenance=provenance,
         coverage=tuple(coverage),
         recommendations=ranked,
         evidence=report_evidence,
+        rejected=validated.rejected,
         rejected_count=len(validated.rejected),
         new_count=lifecycle.new_count,
         unchanged_count=lifecycle.unchanged_count,
         resolved_count=lifecycle.resolved_count,
         suppressed_count=lifecycle.suppressed_count,
     )
-    return report, validated.rejected

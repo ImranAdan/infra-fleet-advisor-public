@@ -268,3 +268,34 @@ def test_prior_evidence_filed_under_an_id_that_is_not_its_own_is_rejected() -> N
     prior = _prior(evidence_ids=(cited,))
     table = _prior_evidence("collector:0000000000000000", keyed_as=cited)
     assert is_prior_recommendation_valid(prior, _bounds(), ALLOWED, table) is False
+
+
+def test_rejected_identifiers_cannot_inject_markdown() -> None:
+    evidence_by_id, eid = _evidence()
+    hostile = _candidate(
+        evidence_ids=(eid,),
+        concern_key="`\n## Injected heading\n[click](http://evil)",
+        category="also`hostile",
+    )
+    result = validate_candidates([hostile], evidence_by_id, _bounds(), ALLOWED)
+
+    assert result.rejected[0].concern_key == "unknown"
+    assert result.rejected[0].category == "unknown"
+
+
+def test_secret_looking_identifier_is_not_published_in_a_rejection() -> None:
+    evidence_by_id, eid = _evidence()
+    leaky = _candidate(evidence_ids=(eid,), concern_key="ghp_" + "a" * 36)
+    result = validate_candidates([leaky], evidence_by_id, _bounds(), ALLOWED)
+
+    assert result.rejected[0].concern_key == "unknown"
+
+
+def test_valid_looking_identifier_is_kept_for_diagnostics() -> None:
+    evidence_by_id, eid = _evidence()
+    wrong_category = _candidate(evidence_ids=(eid,), category="reliability")
+    result = validate_candidates([wrong_category], evidence_by_id, _bounds(), ALLOWED)
+
+    # The whole point of publishing rejections is knowing which concern failed.
+    assert result.rejected[0].concern_key == "concern"
+    assert result.rejected[0].category == "reliability"

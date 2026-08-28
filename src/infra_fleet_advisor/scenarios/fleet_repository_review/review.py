@@ -106,7 +106,7 @@ def run_review(
         run_started_at=run_started_at,
     )
 
-    report, _rejected = assemble_report(
+    return assemble_report(
         provenance=provenance,
         coverage=coverage,
         candidates=synthesis_response.recommendations,
@@ -115,4 +115,3 @@ def run_review(
         concern_rules=CONCERN_RULES,
         prior=prior,
     )
-    return report
