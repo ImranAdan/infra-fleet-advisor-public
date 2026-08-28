@@ -1,0 +1,14 @@
+[general]
+# Enforces the `type(scope): subject` form used throughout this repository.
+contrib=contrib-title-conventional-commits
+# A pull request title is linted as a one-line message, so a missing body is
+# expected there rather than an error.
+ignore=body-is-missing
+
+[title-max-length]
+line-length=72
+
+[body-max-line-length]
+# Wider than git's conventional 72 to match this project's prose style, still
+# narrow enough to read in a terminal without wrapping.
+line-length=88
