@@ -158,8 +158,13 @@ else, and the fleet repository is cloned, analyzed, and left untouched.
 
 The committed report is the baseline the next run compares against, so lifecycle
 advances only when an advisory pull request is merged. A run whose findings,
-cited evidence, and collector coverage all match the committed report proposes
-nothing, so an unchanged fleet does not accumulate pull requests.
+cited evidence, collector coverage, and rejection reasons all match the committed
+report proposes nothing, so an unchanged fleet does not accumulate pull requests.
+
+Rejection reasons are part of that comparison deliberately. A synthesizer that
+begins refusing candidates has drifted, and that must reach a reviewer even when
+the accepted findings are identical — so a rejection-only change does propose a
+pull request.
 
 ## Non-functional requirements
 
