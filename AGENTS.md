@@ -8,9 +8,14 @@ Git repository snapshot and deterministic findings into a short, prioritized,
 evidence-backed improvement report.
 
 The MVP serves one repository and one maintainer. It does not modify the fleet,
-open pull requests, access AWS or Kubernetes, or claim universal optimality.
-Preserve that boundary unless an approved product requirement explicitly
-changes it.
+open pull requests against it, access AWS or Kubernetes, or claim universal
+optimality. Preserve that boundary unless an approved product requirement
+explicitly changes it.
+
+The `fleet-advisory` workflow does open a pull request, but only in *this*
+repository and only to propose the report it just produced. The fleet remains
+read-only: it is cloned, analyzed, and left untouched. Delivering a report is
+not remediation, and nothing in that path may grow into writing to the fleet.
 
 ## Scope and execution discipline
 

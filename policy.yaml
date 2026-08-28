@@ -1,0 +1,29 @@
+# Advisor policy for reviewing infra-fleet-public.
+#
+# This is the owner's declared position: which categories matter, how they rank
+# against each other, and which concerns have already been considered and
+# accepted. Recommendations are judged against this, not against a notion of one
+# universally optimal configuration.
+version: "1.0"
+
+# Bounded execution. The advisor makes exactly one model call per run.
+max_recommendations: 10
+max_wall_seconds: 300
+max_model_calls: 1
+
+enabled_categories: [security, reliability]
+
+# Higher wins when ranking two findings of the same priority.
+category_priority:
+  security: 10
+  reliability: 5
+
+# Concerns the owner has consciously accepted. These still appear in the report,
+# annotated with the rationale, rather than being hidden.
+accepted_trade_offs: []
+
+# Concerns to omit entirely.
+suppressed_concerns: []
+
+# Paths whose contents must never be captured as evidence.
+evidence_path_exclusions: []

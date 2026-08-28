@@ -8,4 +8,8 @@ __pycache__/
 build/
 dist/
 .env
-reports/
+
+# reports/ is deliberately tracked: the committed report is the prior report the
+# next run compares against, and that comparison is what makes a finding
+# "unchanged" or "resolved" rather than perpetually "new".
+target/

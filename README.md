@@ -34,8 +34,10 @@ The first version will:
 - remain read-only with respect to both the fleet repository and its runtime
   infrastructure.
 
-The MVP will not modify infrastructure, open pull requests, inspect a live
-cluster, support arbitrary repositories, or implement autonomous remediation.
+The MVP will not modify infrastructure, open pull requests against the fleet,
+inspect a live cluster, support arbitrary repositories, or implement autonomous
+remediation. Reports are proposed as pull requests in *this* repository; the
+fleet itself is only ever read.
 
 ## Review flow
 
@@ -72,6 +74,23 @@ uv run infra-fleet-advisor review \
 
 `--synthesizer stub` swaps the model for a deterministic table-driven
 stand-in, which needs no API key and is what the test suite runs on.
+
+### As a GitHub Actions workflow
+
+`.github/workflows/fleet-advisory.yml` runs the same review on demand
+(**Actions → Fleet advisory report → Run workflow**) and proposes the result as
+a pull request on the `advisory/latest` branch. It needs an `ANTHROPIC_API_KEY`
+repository secret; pick the `stub` synthesizer to dry-run it without one.
+
+The committed `reports/report.json` is the prior report the next run compares
+against, which is why it is tracked rather than ignored. Lifecycle therefore
+advances only when an advisory pull request is **merged** — an open, unmerged
+report is not yet the baseline.
+
+A run that finds nothing new opens no pull request. That decision compares
+findings and collector coverage, not file contents: every report carries a fresh
+run timestamp, and a finding legitimately moves from `new` to `unchanged` on the
+next run over an identical fleet.
 
 If synthesis fails, the run exits non-zero and writes no report. It never
 degrades to an empty result, because an empty result would mark every
