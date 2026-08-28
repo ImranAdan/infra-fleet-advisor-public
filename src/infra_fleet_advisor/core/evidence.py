@@ -25,7 +25,8 @@ class Evidence:
 def assign_evidence_id(collector_id: str, *identity_parts: str) -> str:
     if not identity_parts:
         raise ValueError("evidence identity must have at least one part")
-    digest = hashlib.sha256("|".join(identity_parts).encode()).hexdigest()[:16]
+    encoded_identity = "".join(f"{len(part)}:{part}" for part in identity_parts)
+    digest = hashlib.sha256(encoded_identity.encode()).hexdigest()[:16]
     return f"{collector_id}:{digest}"
 
 

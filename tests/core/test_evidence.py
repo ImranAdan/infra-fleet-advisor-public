@@ -14,6 +14,13 @@ def test_evidence_id_differs_by_locator() -> None:
     assert a != b
 
 
+def test_evidence_id_structurally_encodes_delimiter_characters() -> None:
+    first = assign_evidence_id("collector", "a|b", "c")
+    second = assign_evidence_id("collector", "a", "b|c")
+
+    assert first != second
+
+
 def test_evidence_id_requires_an_identity_part() -> None:
     try:
         assign_evidence_id("collector")
