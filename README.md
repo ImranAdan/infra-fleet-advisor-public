@@ -87,14 +87,18 @@ against, which is why it is tracked rather than ignored. Lifecycle therefore
 advances only when an advisory pull request is **merged** — an open, unmerged
 report is not yet the baseline.
 
-A run that finds nothing new opens no pull request. That decision compares
-findings, cited evidence, collector coverage, and rejection reasons — not file
-contents: every report carries a fresh run timestamp, and a finding legitimately
-moves from `new` to `unchanged` on the next run over an identical fleet.
+A run opens no pull request only when *every* compared field is unchanged:
+findings, cited evidence, collector coverage, and rejection reasons. A change in
+any one of them proposes a report — so a run whose accepted findings are
+identical but whose rejections differ still opens one.
+
+That comparison deliberately ignores file contents. Every report carries a fresh
+run timestamp, and a finding legitimately moves from `new` to `unchanged` on the
+next run over an identical fleet, so a plain diff is never empty.
 
 Reports also record *why* candidates were refused, not just how many. A
-synthesizer that starts rejecting candidates has drifted, and that reaches a
-reviewer even when the accepted findings are unchanged.
+synthesizer that starts rejecting candidates has drifted, and that is the case
+the rejection comparison exists to surface.
 
 If synthesis fails, the run exits non-zero and writes no report. It never
 degrades to an empty result, because an empty result would mark every
