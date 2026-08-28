@@ -87,6 +87,7 @@ def run_review(
             max_recommendations=policy.max_recommendations,
         ),
         evidence=all_evidence,
+        remaining_seconds=limits.max_wall_seconds - (time.monotonic() - started),
     )
     synthesis_response = synthesizer.synthesize(projection)
     check_model_call_budget(call_count=1, limits=limits)

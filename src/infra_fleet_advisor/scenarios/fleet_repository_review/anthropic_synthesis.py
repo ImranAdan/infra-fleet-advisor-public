@@ -4,7 +4,7 @@ from typing import Any
 import anthropic
 
 from infra_fleet_advisor.core.contracts import PRIORITIES, RawRecommendationCandidate
-from infra_fleet_advisor.core.errors import SynthesisError
+from infra_fleet_advisor.core.errors import BoundedExecutionExceeded, SynthesisError
 from infra_fleet_advisor.core.evidence import Evidence
 from infra_fleet_advisor.core.validation import (
     MAX_EXPLANATION_LENGTH,
@@ -129,16 +129,27 @@ class AnthropicSynthesizer:
         self, client: anthropic.Anthropic | None = None, timeout_seconds: float = 60.0
     ) -> None:
         self._client = client
-        # run_review can only check the wall-clock budget once synthesize()
-        # returns, so the request carries the deadline itself. Otherwise a
-        # stalled endpoint blocks well past max_wall_seconds before the
-        # overrun is ever noticed.
         self._timeout_seconds = timeout_seconds
+
+    def _request_timeout(self, projection: EvidenceProjection) -> float:
+        """run_review can only check the wall-clock budget once synthesize()
+        returns, so the request carries the deadline itself. Collection has
+        already spent part of that budget, so honour what's left rather than
+        the policy ceiling — otherwise a stalled endpoint still overruns."""
+        remaining = projection.remaining_seconds
+        if remaining is None:
+            return self._timeout_seconds
+        if remaining <= 0:
+            raise BoundedExecutionExceeded(
+                "wall-clock budget was exhausted by collection; no time left to synthesize"
+            )
+        return min(self._timeout_seconds, remaining)
 
     def synthesize(self, projection: EvidenceProjection) -> SynthesisResponse:
         if not projection.evidence:
             return SynthesisResponse(recommendations=(), model_identifier=self.model_identifier)
 
+        timeout = self._request_timeout(projection)
         try:
             client = self._client or anthropic.Anthropic()
             message = client.messages.create(
@@ -153,7 +164,7 @@ class AnthropicSynthesizer:
                     }
                 },
                 messages=[{"role": "user", "content": build_prompt(projection)}],
-                timeout=self._timeout_seconds,
+                timeout=timeout,
             )
         # TypeError included deliberately: the SDK reports unresolvable
         # authentication that way, not as an AnthropicError.

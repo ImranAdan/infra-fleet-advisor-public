@@ -5,7 +5,7 @@ import anthropic
 import pytest
 
 from infra_fleet_advisor.config.loader import load_policy
-from infra_fleet_advisor.core.errors import SynthesisError
+from infra_fleet_advisor.core.errors import BoundedExecutionExceeded, SynthesisError
 from infra_fleet_advisor.core.evidence import build_evidence
 from infra_fleet_advisor.core.limits import ExecutionLimits
 from infra_fleet_advisor.provenance.source_verification import verify_snapshot
@@ -195,6 +195,28 @@ def test_unparseable_response_raises_rather_than_returning_nothing(body: str) ->
 def test_sdk_errors_become_synthesis_errors(error: Exception) -> None:
     with pytest.raises(SynthesisError):
         _synthesize(error)
+
+
+def test_request_timeout_uses_what_is_left_of_the_budget_not_the_ceiling() -> None:
+    client = _FakeClient(_recorded("wildcard_iam_finding"))
+    projection = EvidenceProjection(
+        policy_context=CONTEXT, evidence=(_iam_evidence(),), remaining_seconds=12.0
+    )
+    AnthropicSynthesizer(client=client, timeout_seconds=60.0).synthesize(projection)
+
+    # Collection already spent most of the 60s ceiling; a stalled request must
+    # not be allowed to wait out the full policy budget on top of that.
+    assert client.messages.calls[0]["timeout"] == 12.0
+
+
+def test_exhausted_budget_fails_instead_of_spending_a_doomed_call() -> None:
+    client = _FakeClient(_recorded("wildcard_iam_finding"))
+    projection = EvidenceProjection(
+        policy_context=CONTEXT, evidence=(_iam_evidence(),), remaining_seconds=0.0
+    )
+    with pytest.raises(BoundedExecutionExceeded):
+        AnthropicSynthesizer(client=client).synthesize(projection)
+    assert client.messages.calls == []
 
 
 def test_prompt_carries_every_evidence_id_and_renders_excerpts_as_json_data() -> None:

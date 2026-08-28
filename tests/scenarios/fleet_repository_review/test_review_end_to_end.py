@@ -102,7 +102,8 @@ def test_third_run_marks_removed_finding_resolved(git_checkout) -> None:
                 confidence_explanation=r.confidence_explanation,
             )
             for r in first.recommendations
-        ]
+        ],
+        evidence_by_id={e.evidence_id: e for e in first.evidence},
     )
 
     # This repo has no Terraform at all — the Terraform collector's "missing

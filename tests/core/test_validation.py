@@ -241,11 +241,26 @@ def _prior(**overrides):
     return PriorRecommendation(**base)
 
 
+def _prior_evidence(eid: str):
+    ev = build_evidence(
+        collector_id="c",
+        collector_version="1.0.0",
+        kind="k",
+        source_path="a.yml",
+        locator="loc",
+        excerpt="e",
+        fact={},
+    )
+    return {eid: ev}
+
+
 def test_prior_recommendation_with_secret_looking_evidence_id_rejected() -> None:
-    prior = _prior(evidence_ids=("AKIAABCDEFGHIJKLMNOP",))
-    assert is_prior_recommendation_valid(prior, _bounds(), ALLOWED) is False
+    eid = "AKIAABCDEFGHIJKLMNOP"
+    prior = _prior(evidence_ids=(eid,))
+    assert is_prior_recommendation_valid(prior, _bounds(), ALLOWED, _prior_evidence(eid)) is False
 
 
 def test_prior_recommendation_with_clean_evidence_id_accepted() -> None:
-    prior = _prior(evidence_ids=("collector:abcdef1234567890",))
-    assert is_prior_recommendation_valid(prior, _bounds(), ALLOWED) is True
+    eid = "collector:abcdef1234567890"
+    prior = _prior(evidence_ids=(eid,))
+    assert is_prior_recommendation_valid(prior, _bounds(), ALLOWED, _prior_evidence(eid)) is True

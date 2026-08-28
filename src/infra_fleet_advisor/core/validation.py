@@ -125,12 +125,16 @@ def is_prior_recommendation_valid(
     prior: PriorRecommendationLike,
     bounds: PolicyBounds,
     concern_rules: Mapping[str, ConcernRule],
+    prior_evidence_by_id: Mapping[str, Evidence],
 ) -> bool:
     """Gate for republishing a prior-report entry (as resolved/carried-forward).
-    A prior report is untrusted input — it gets the same field checks as a
-    fresh candidate, minus the evidence-resolution check (its evidence is
-    expected to no longer be in the current evidence set; that's what makes
-    it prior)."""
+    A prior report is a file on disk and therefore untrusted input — it gets
+    the same checks as a fresh candidate, resolved against the evidence table
+    the report carries with it rather than this run's evidence (its evidence
+    is expected to be gone from the current set; that's what makes it prior).
+    Without that, a hand-edited prior report could republish a finding citing
+    evidence it never had, and assemble_report would merge that fabricated
+    evidence straight into the new report's evidence table."""
     if (
         not isinstance(prior.evidence_ids, (list, tuple))
         or not prior.evidence_ids
@@ -138,6 +142,11 @@ def is_prior_recommendation_valid(
     ):
         return False
     if any(p.search(eid) for eid in prior.evidence_ids for p in _SECRET_PATTERNS):
+        return False
+    if any(eid not in prior_evidence_by_id for eid in prior.evidence_ids):
+        return False
+    rule = concern_rules.get(prior.concern_key) if isinstance(prior.concern_key, str) else None
+    if rule is not None and not _evidence_supports(rule, prior.evidence_ids, prior_evidence_by_id):
         return False
     text_fields = (
         prior.title,

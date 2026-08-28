@@ -83,6 +83,7 @@ def compare_with_prior(
         if prior
         else {}
     )
+    prior_evidence = prior.evidence_by_id if prior else {}
 
     results: list[Recommendation] = []
     new = unchanged = suppressed = 0
@@ -102,7 +103,7 @@ def compare_with_prior(
     for fp, prior_rec in prior_by_fp.items():
         if fp in current_fps or prior_rec.concern_key in bounds.suppressed_concerns:
             continue
-        if not is_prior_recommendation_valid(prior_rec, bounds, concern_rules):
+        if not is_prior_recommendation_valid(prior_rec, bounds, concern_rules, prior_evidence):
             continue
         if collection_complete:
             results.append(_prior_as_recommendation(prior_rec, "resolved", bounds))
