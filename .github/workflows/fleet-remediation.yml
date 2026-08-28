@@ -1,0 +1,139 @@
+name: Fleet remediation proposal
+
+# Proposes a code change to infra-fleet-public for the narrow set of findings
+# that can be fixed without human judgement. Manual dispatch only: this is the
+# one path where the advisor writes to the fleet, and it should never fire on a
+# schedule or on merge.
+on:
+  workflow_dispatch:
+    inputs:
+      target_ref:
+        description: Ref of infra-fleet-public to patch
+        default: main
+      dry_run:
+        description: Report what would change without opening a pull request
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fleet-remediation
+
+env:
+  TARGET_REPO: ImranAdan/infra-fleet-public
+  FLEET_BRANCH: advisor/remediation
+
+jobs:
+  propose:
+    name: Propose a fix
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the advisor
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      # The report's evidence describes one commit. Materialize that commit
+      # rather than a moving ref, so paths and locators describe the tree being
+      # patched. remediate re-checks this and refuses on any mismatch.
+      - name: Resolve the commit the report was built from
+        id: report
+        run: |
+          if [ ! -f reports/report.json ]; then
+            echo "No merged advisory report on the default branch; nothing to act on." >&2
+            exit 1
+          fi
+          echo "sha=$(jq -r '.provenance.source_commit_sha' reports/report.json)" >> "$GITHUB_OUTPUT"
+
+      # FLEET_TOKEN is a GitHub App installation token or PAT with contents and
+      # pull-requests write on the fleet. GITHUB_TOKEN cannot reach another
+      # repository. This is the only workflow that holds it.
+      - name: Check out the fleet at that commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ env.TARGET_REPO }}
+          ref: ${{ steps.report.outputs.sha }}
+          path: target
+          token: ${{ secrets.FLEET_TOKEN }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Install locked dependencies
+        run: make setup
+
+      # The merged report is the authority: only findings it published, against
+      # only the files it cited as evidence. Nothing is discovered by scanning.
+      - name: Apply the mechanical fixes the report justifies
+        id: patch
+        run: |
+          uv run infra-fleet-advisor remediate \
+            --checkout target \
+            --report reports/report.json \
+            ${{ inputs.dry_run && '--dry-run' || '' }} | tee "${RUNNER_TEMP}/remediation.txt"
+
+          if git -C target diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open the fleet pull request
+        if: steps.patch.outputs.changed == 'true' && !inputs.dry_run
+        # TARGET_REF goes through the environment, never into the script body.
+        # GitHub interpolates ${{ }} before bash runs, so a dispatcher could
+        # otherwise break out of the quoting and run commands with FLEET_TOKEN
+        # in scope.
+        env:
+          GH_TOKEN: ${{ secrets.FLEET_TOKEN }}
+          TARGET_REF: ${{ inputs.target_ref }}
+          ADVISORY_RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          sha="$(git -C target rev-parse HEAD)"
+          {
+            echo "Proposed by the Infra Fleet Advisor from its merged report."
+            echo
+            echo "Each change below was justified by a published recommendation and applied"
+            echo "only to files that recommendation cited as evidence. Nothing here was found"
+            echo "by scanning this repository."
+            echo
+            sed 's/^/    /' "${RUNNER_TEMP}/remediation.txt"
+            echo
+            echo "Trade-off, stated in the report itself: removing \`ignore-unfixed\` means a"
+            echo "Critical or High vulnerability with no vendor fix available will now block"
+            echo "this pipeline. Close this pull request if that is not the trade you want."
+            echo
+            echo "Advisor run: ${ADVISORY_RUN}"
+          } > "${RUNNER_TEMP}/pr-body.md"
+
+          cd target
+          git config user.name "infra-fleet-advisor[bot]"
+          git config user.email "infra-fleet-advisor@users.noreply.github.com"
+          git switch -c "$FLEET_BRANCH"
+          git commit -aq \
+            -m "ci: stop ignoring unfixed vulnerabilities in the Trivy gate" \
+            -m "Proposed by the Infra Fleet Advisor from evidence at ${sha:0:7}."
+          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${TARGET_REPO}.git" \
+            "HEAD:refs/heads/$FLEET_BRANCH"
+
+          if [ -z "$(gh pr list --repo "$TARGET_REPO" --head "$FLEET_BRANCH" --state open --json number -q '.[].number')" ]; then
+            gh pr create --repo "$TARGET_REPO" \
+              --base "$TARGET_REF" \
+              --head "$FLEET_BRANCH" \
+              --title "ci: stop ignoring unfixed vulnerabilities in the Trivy gate" \
+              --body-file "${RUNNER_TEMP}/pr-body.md"
+          else
+            gh pr edit "$FLEET_BRANCH" --repo "$TARGET_REPO" --body-file "${RUNNER_TEMP}/pr-body.md"
+          fi

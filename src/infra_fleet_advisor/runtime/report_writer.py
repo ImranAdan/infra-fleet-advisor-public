@@ -37,6 +37,7 @@ def _parse_prior_recommendation(r: dict[str, Any]) -> PriorRecommendation:
         trade_offs=_require_str(r["trade_offs"], "trade_offs"),
         confidence=confidence,
         confidence_explanation=_require_str(r["confidence_explanation"], "confidence_explanation"),
+        status=_require_str(r.get("status", "new"), "status"),
     )
 
 
@@ -122,6 +123,18 @@ def write_report(report: Report, output_dir: Path) -> tuple[Path, Path]:
     json_path.write_text(to_json(report), encoding="utf-8")
     md_path.write_text(to_markdown(report), encoding="utf-8")
     return json_path, md_path
+
+
+def read_report_source_sha(path: Path) -> str:
+    """The commit the report's evidence was collected from. Anything acting on a
+    report must check the tree it is about to touch is that same commit."""
+    try:
+        if path.stat().st_size > MAX_PRIOR_REPORT_BYTES:
+            raise PolicyError(f"report exceeds {MAX_PRIOR_REPORT_BYTES} bytes")
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return _require_str(raw["provenance"]["source_commit_sha"], "source_commit_sha")
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        raise PolicyError(f"cannot read report provenance: {type(exc).__name__}") from exc
 
 
 def load_prior_report(path: Path | None) -> PriorReport | None:

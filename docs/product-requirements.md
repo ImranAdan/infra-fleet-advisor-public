@@ -166,6 +166,21 @@ begins refusing candidates has drifted, and that must reach a reviewer even when
 the accepted findings are identical — so a rejection-only change does propose a
 pull request.
 
+### FR12: Mechanical remediation
+
+The advisor may propose a code change to the fleet as a pull request, for the
+narrow set of concerns fixable without human judgement. It may never merge one.
+
+Patches derive only from a published recommendation and the evidence it cites; a
+file containing the same pattern but never cited is out of bounds. The source is
+the merged report, so a human has accepted the finding before any patch exists.
+Remediation is manually dispatched, defaults to a dry run, and is the only path
+holding a fleet write credential.
+
+Concerns requiring judgement — scoping a wildcard IAM policy, for instance — must
+not be added to the patcher registry. A confident wrong answer there is a
+security regression. See PDR 0002.
+
 ## Non-functional requirements
 
 ### Safety and security
@@ -233,10 +248,10 @@ During the initial pilot:
 - General-purpose infrastructure advice for arbitrary repositories.
 - Live AWS, Kubernetes, Prometheus, or Terraform-state inspection.
 - Parameter tuning or experimentation against running services.
-- Automated source changes, pull requests, merges, deployments, or rollback
-  **against the fleet repository**. Delivering the advisor's own report as a
-  pull request in this repository is in scope (see "Report delivery" below);
-  proposing changes to the fleet is not.
+- Automated merges, deployments, or rollback against the fleet repository, and
+  automated source changes applied without human review. Proposing a mechanical
+  fix as a pull request against the fleet is in scope under PDR 0002 and FR12;
+  merging one is not, and never will be.
 - A plugin marketplace, dynamic imports, arbitrary shell execution, or remote
   tool installation selected by configuration.
 - Claims of complete coverage or universal optimality.
@@ -248,9 +263,8 @@ Future work must be justified by demonstrated value from the previous phase:
 1. Add selected GitHub CI, dependency, and release metadata as read-only input.
 2. Add optional read-only runtime observations with explicit credentials and
    provenance boundaries.
-3. Generate reviewable patches or draft pull requests **against the fleet** with
-   human approval. (Delivering the advisor's own report as a pull request here
-   is FR11 and already in scope; proposing fleet changes is not.)
+3. ~~Generate reviewable patches or draft pull requests against the fleet with
+   human approval.~~ Brought forward and delivered as FR12; see PDR 0002.
 4. Introduce narrowly constrained remediation or parameter optimization only
    where rollback and deterministic evaluation exist.
 

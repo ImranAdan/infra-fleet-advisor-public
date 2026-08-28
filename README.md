@@ -34,10 +34,14 @@ The first version will:
 - remain read-only with respect to both the fleet repository and its runtime
   infrastructure.
 
-The MVP will not modify infrastructure, open pull requests against the fleet,
-inspect a live cluster, support arbitrary repositories, or implement autonomous
-remediation. Reports are proposed as pull requests in *this* repository; the
-fleet itself is only ever read.
+The MVP will not modify infrastructure, merge anything, inspect a live cluster,
+support arbitrary repositories, or implement autonomous remediation. Reports are
+proposed as pull requests in *this* repository.
+
+Reviewing the fleet is read-only. Separately, a manually dispatched workflow may
+**propose** a mechanical fix as a pull request against the fleet — never merge
+one — for the narrow set of concerns fixable without judgement. See
+[PDR 0002](docs/decisions/0002-mechanical-remediation-of-the-fleet.md).
 
 ## Review flow
 
@@ -104,6 +108,28 @@ If synthesis fails, the run exits non-zero and writes no report. It never
 degrades to an empty result, because an empty result would mark every
 outstanding finding resolved.
 
+### Proposing a fix to the fleet
+
+```bash
+uv run infra-fleet-advisor remediate \
+  --checkout ../infra-fleet-public \
+  --report reports/report.json \
+  --dry-run
+```
+
+Applies only what a merged report already justified, to only the files that
+report cited as evidence. A file containing the same pattern but never cited is
+out of bounds, and re-running over an already-fixed fleet changes nothing.
+
+`.github/workflows/fleet-remediation.yml` does the same in CI and opens the pull
+request against the fleet. It needs a `FLEET_TOKEN` secret with contents and
+pull-requests write there — a GitHub App installation rather than a personal
+token — and defaults to a dry run.
+
+Only `trivy_ignore_unfixed` is patchable today. `wildcard_iam_permissions` is
+deliberately excluded: scoping it requires knowing which API calls the pipeline
+makes, and a confident wrong answer is a security regression.
+
 ## Development
 
 ```bash
@@ -141,6 +167,7 @@ feedback path back into policy. None of that is built yet.
 - [Product requirements](docs/product-requirements.md)
 - [Architecture](docs/architecture.md)
 - [PDR 0001: Advisory delivery and the fleet feedback loop](docs/decisions/0001-advisory-delivery-and-feedback-loop.md)
+- [PDR 0002: Mechanical remediation of the fleet](docs/decisions/0002-mechanical-remediation-of-the-fleet.md)
 - [Repository guidance](AGENTS.md)
 
 ## License
