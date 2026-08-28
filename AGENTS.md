@@ -8,9 +8,14 @@ Git repository snapshot and deterministic findings into a short, prioritized,
 evidence-backed improvement report.
 
 The MVP serves one repository and one maintainer. It does not modify the fleet,
-open pull requests against it, access AWS or Kubernetes, or claim universal
-optimality. Preserve that boundary unless an approved product requirement
-explicitly changes it.
+access AWS or Kubernetes, or claim universal optimality. Preserve that boundary
+unless an approved product requirement explicitly changes it.
+
+Reviewing is read-only: the fleet is cloned with no credential beyond public
+read. Under PDR 0002 a separate, manually dispatched workflow may *propose* a
+mechanical fix as a pull request against the fleet, derived only from a merged
+report's evidence. It may never merge one. Concerns needing judgement — scoping a
+wildcard IAM policy, say — must stay out of the patcher registry.
 
 The `fleet-advisory` workflow does open a pull request, but only in *this*
 repository and only to propose the report it just produced. The fleet remains
