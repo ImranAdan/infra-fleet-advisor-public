@@ -1,9 +1,12 @@
 from dataclasses import replace
 
-from infra_fleet_advisor.core.contracts import PolicyBounds, Recommendation
+from infra_fleet_advisor.core.contracts import ConcernRule, PolicyBounds, Recommendation
 from infra_fleet_advisor.core.lifecycle import PriorRecommendation, PriorReport, compare_with_prior
 
-ALLOWED = frozenset({"concern", "new_concern", "resolved_concern", "muted_concern"})
+ALLOWED = {
+    key: ConcernRule(category="security", evidence_kind="k")
+    for key in ("concern", "new_concern", "resolved_concern", "muted_concern")
+}
 
 
 def _bounds(suppressed: frozenset = frozenset()) -> PolicyBounds:

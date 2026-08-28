@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from infra_fleet_advisor.config.loader import load_policy
+from infra_fleet_advisor.core.errors import PolicyError
 from infra_fleet_advisor.core.limits import ExecutionLimits
 from infra_fleet_advisor.core.report import Report
 from infra_fleet_advisor.provenance.source_verification import verify_snapshot
@@ -32,8 +33,14 @@ class RunInputs:
     synthesizer_name: str = "anthropic"
 
 
-def _select_synthesizer(name: str) -> Synthesizer:
-    return StubSynthesizer() if name == "stub" else AnthropicSynthesizer()
+def _select_synthesizer(name: str, timeout_seconds: float) -> Synthesizer:
+    """Unknown names are an error, not a default. Falling through to the real
+    model on a typo would silently leave offline mode and spend an API call."""
+    if name == "stub":
+        return StubSynthesizer()
+    if name == "anthropic":
+        return AnthropicSynthesizer(timeout_seconds=timeout_seconds)
+    raise PolicyError(f"unknown synthesizer {name!r}: expected one of {', '.join(SYNTHESIZERS)}")
 
 
 def compose_and_run(
@@ -55,7 +62,8 @@ def compose_and_run(
         checkout_root=inputs.checkout,
         policy=policy,
         source=source,
-        synthesizer=synthesizer or _select_synthesizer(inputs.synthesizer_name),
+        synthesizer=synthesizer
+        or _select_synthesizer(inputs.synthesizer_name, policy.max_wall_seconds),
         limits=limits,
         prior=prior,
         run_started_at=clock.now_iso(),

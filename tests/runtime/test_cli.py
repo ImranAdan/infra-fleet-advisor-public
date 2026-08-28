@@ -1,12 +1,17 @@
 import json
 from pathlib import Path
 
+import pytest
+
+from infra_fleet_advisor.core.errors import PolicyError
 from infra_fleet_advisor.runtime.cli import (
     EXIT_OK,
     EXIT_PROVENANCE_ERROR,
     EXIT_UNSAFE_OUTPUT_ERROR,
     main,
 )
+from infra_fleet_advisor.runtime.clock import SystemClock
+from infra_fleet_advisor.runtime.composition import RunInputs, compose_and_run
 
 POLICY = Path(__file__).parent.parent / "fixtures" / "policies" / "valid_policy.yaml"
 
@@ -70,3 +75,20 @@ def test_second_run_reports_lifecycle_changes(git_checkout, tmp_path: Path) -> N
     payload = json.loads((second_out / "report.json").read_text(encoding="utf-8"))
     assert payload["unchanged_count"] == 1
     assert payload["new_count"] == 0
+
+
+def test_unknown_synthesizer_name_is_rejected_rather_than_defaulting(
+    git_checkout, tmp_path: Path
+) -> None:
+    # A typo must not silently leave stub mode and spend a real model call.
+    repo, sha = git_checkout("trivy_ignore_unfixed_bad.yml")
+    inputs = RunInputs(
+        checkout=repo,
+        expected_sha=sha,
+        policy_path=POLICY,
+        source_label="infra-fleet-public",
+        prior_report_path=None,
+        synthesizer_name="stub ",
+    )
+    with pytest.raises(PolicyError):
+        compose_and_run(inputs, SystemClock())

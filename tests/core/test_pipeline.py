@@ -1,4 +1,8 @@
-from infra_fleet_advisor.core.contracts import PolicyBounds, RawRecommendationCandidate
+from infra_fleet_advisor.core.contracts import (
+    ConcernRule,
+    PolicyBounds,
+    RawRecommendationCandidate,
+)
 from infra_fleet_advisor.core.evidence import build_evidence
 from infra_fleet_advisor.core.lifecycle import PriorRecommendation, PriorReport
 from infra_fleet_advisor.core.report import RunProvenance, assemble_report
@@ -12,6 +16,7 @@ PROVENANCE = RunProvenance(
     model_identifier="stub-synthesizer-v1",
     run_started_at="2026-08-26T00:00:00+00:00",
 )
+RULES = {"concern": ConcernRule(category="security", evidence_kind="k")}
 BOUNDS = PolicyBounds(
     enabled_categories=frozenset({"security"}),
     category_priority={"security": 10},
@@ -40,7 +45,7 @@ def test_all_rejected_still_produces_a_report() -> None:
         candidates=[bad_candidate],
         evidence_by_id={},
         bounds=BOUNDS,
-        allowed_concern_keys=frozenset({"concern"}),
+        concern_rules=RULES,
         prior=None,
     )
     assert report.recommendations == ()
@@ -77,7 +82,7 @@ def test_valid_candidate_flows_through_to_a_ranked_report() -> None:
         candidates=[candidate],
         evidence_by_id={ev.evidence_id: ev},
         bounds=BOUNDS,
-        allowed_concern_keys=frozenset({"concern"}),
+        concern_rules=RULES,
         prior=None,
     )
     assert not rejected
@@ -122,7 +127,7 @@ def test_resolved_recommendation_carries_its_prior_evidence_into_the_report() ->
         candidates=[],
         evidence_by_id={},
         bounds=BOUNDS,
-        allowed_concern_keys=frozenset({"concern"}),
+        concern_rules=RULES,
         prior=prior,
     )
     assert report.recommendations[0].status == "resolved"

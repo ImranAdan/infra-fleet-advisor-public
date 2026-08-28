@@ -1,12 +1,39 @@
 from dataclasses import dataclass
 
+from infra_fleet_advisor.core.contracts import ConcernRule
+from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
+    EVIDENCE_KIND_CREDENTIAL_METHOD,
+    EVIDENCE_KIND_IAM_WILDCARD,
+    EVIDENCE_KIND_TRIVY_GATE,
+)
+
 CONCERN_STATIC_AWS_CREDENTIALS = "static_aws_credentials_in_ci"
 CONCERN_TRIVY_IGNORE_UNFIXED = "trivy_ignore_unfixed"
 CONCERN_WILDCARD_IAM_PERMISSIONS = "wildcard_iam_permissions"
 
-ALLOWED_CONCERN_KEYS = frozenset(
-    {CONCERN_STATIC_AWS_CREDENTIALS, CONCERN_TRIVY_IGNORE_UNFIXED, CONCERN_WILDCARD_IAM_PERMISSIONS}
-)
+# The deterministic support conditions for each concern: which evidence kind
+# can back it, and which collector-derived facts must hold. A collector emits
+# credential/trivy evidence for every step it finds, including correctly
+# configured ones, so the facts — not the mere existence of evidence — are what
+# make a claim publishable.
+CONCERN_RULES: dict[str, ConcernRule] = {
+    CONCERN_STATIC_AWS_CREDENTIALS: ConcernRule(
+        category="security",
+        evidence_kind=EVIDENCE_KIND_CREDENTIAL_METHOD,
+        required_facts={"uses_static_keys": True},
+    ),
+    CONCERN_TRIVY_IGNORE_UNFIXED: ConcernRule(
+        category="security",
+        evidence_kind=EVIDENCE_KIND_TRIVY_GATE,
+        required_facts={"ignore_unfixed": True},
+    ),
+    CONCERN_WILDCARD_IAM_PERMISSIONS: ConcernRule(
+        category="security",
+        evidence_kind=EVIDENCE_KIND_IAM_WILDCARD,
+    ),
+}
+
+ALLOWED_CONCERN_KEYS = frozenset(CONCERN_RULES)
 
 
 @dataclass(frozen=True, slots=True)

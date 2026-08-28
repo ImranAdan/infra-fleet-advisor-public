@@ -5,6 +5,7 @@ from typing import Protocol
 
 from infra_fleet_advisor.core.contracts import (
     PRIORITIES,
+    ConcernRule,
     PolicyBounds,
     RawRecommendationCandidate,
     Recommendation,
@@ -57,16 +58,21 @@ def _field_violation(
     title: str,
     text_fields: Sequence[str],
     bounds: PolicyBounds,
-    allowed_concern_keys: frozenset[str],
+    concern_rules: Mapping[str, ConcernRule],
 ) -> str | None:
     """Shared closed-schema/publication checks for anything about to be
     published as a Recommendation — a freshly synthesized candidate or a
     prior-report entry being carried forward. Same rules either way: an
     untrusted prior report gets no less scrutiny than a fresh synthesis."""
-    if not isinstance(concern_key, str) or concern_key not in allowed_concern_keys:
+    if not isinstance(concern_key, str) or concern_key not in concern_rules:
         return "unknown_concern_key"
     if not isinstance(category, str) or category not in bounds.enabled_categories:
         return "category_not_enabled"
+    # Each concern belongs to exactly one category. Without this, a policy that
+    # enables `reliability` but not `security` would still publish a security
+    # concern relabelled as reliability.
+    if category != concern_rules[concern_key].category:
+        return "category_does_not_match_concern"
     if not isinstance(priority, str) or priority not in PRIORITIES:
         return "invalid_priority"
     if not isinstance(confidence, (int, float)) or isinstance(confidence, bool):
@@ -118,7 +124,7 @@ class PriorRecommendationLike(Protocol):
 def is_prior_recommendation_valid(
     prior: PriorRecommendationLike,
     bounds: PolicyBounds,
-    allowed_concern_keys: frozenset[str],
+    concern_rules: Mapping[str, ConcernRule],
 ) -> bool:
     """Gate for republishing a prior-report entry (as resolved/carried-forward).
     A prior report is untrusted input — it gets the same field checks as a
@@ -149,16 +155,34 @@ def is_prior_recommendation_valid(
         title=prior.title,
         text_fields=text_fields,
         bounds=bounds,
-        allowed_concern_keys=allowed_concern_keys,
+        concern_rules=concern_rules,
     )
     return reason is None
+
+
+def _evidence_supports(
+    rule: ConcernRule,
+    evidence_ids: Sequence[str],
+    evidence_by_id: Mapping[str, Evidence],
+) -> bool:
+    """Every cited item must be of the concern's evidence kind and carry the
+    facts that concern requires. Citing a real-but-unrelated evidence ID — or
+    one whose facts contradict the claim, e.g. an OIDC-only credential step
+    cited as proof of static keys — is not support."""
+    for eid in evidence_ids:
+        item = evidence_by_id[eid]
+        if item.kind != rule.evidence_kind:
+            return False
+        if any(item.fact.get(k) != v for k, v in rule.required_facts.items()):
+            return False
+    return True
 
 
 def validate_candidates(
     candidates: Sequence[RawRecommendationCandidate],
     evidence_by_id: Mapping[str, Evidence],
     bounds: PolicyBounds,
-    allowed_concern_keys: frozenset[str],
+    concern_rules: Mapping[str, ConcernRule],
 ) -> ValidatedRecommendations:
     """The sole publication gate. Text fields are only measured and
     pattern-matched, never interpolated into control flow — injected
@@ -198,8 +222,12 @@ def validate_candidates(
                 title=c.title,
                 text_fields=text_fields,
                 bounds=bounds,
-                allowed_concern_keys=allowed_concern_keys,
+                concern_rules=concern_rules,
             )
+            if reason is None and not _evidence_supports(
+                concern_rules[c.concern_key], c.evidence_ids, evidence_by_id
+            ):
+                reason = "evidence_does_not_support_concern"
 
         if reason:
             rejected.append(_reject(c, reason))

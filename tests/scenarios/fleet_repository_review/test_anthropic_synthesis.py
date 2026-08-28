@@ -14,6 +14,10 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.anthropic_synthesis i
     AnthropicSynthesizer,
     build_prompt,
 )
+from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
+    CONCERN_RULES,
+    CONCERN_TEMPLATES,
+)
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     EVIDENCE_KIND_IAM_WILDCARD,
     TAXONOMY,
@@ -138,6 +142,34 @@ def test_response_schema_constrains_concern_key_category_and_priority() -> None:
     assert candidate["properties"]["category"]["enum"] == ["security"]
     assert candidate["properties"]["priority"]["enum"] == ["critical", "high", "medium", "low"]
     assert candidate["additionalProperties"] is False
+
+
+def test_concerns_of_a_disabled_category_are_not_offered_to_the_model() -> None:
+    client = _FakeClient(_recorded("wildcard_iam_finding"))
+    projection = EvidenceProjection(
+        policy_context=PolicyContext(
+            enabled_categories=frozenset({"reliability"}), max_recommendations=10
+        ),
+        evidence=(_iam_evidence(),),
+    )
+    try:
+        AnthropicSynthesizer(client=client).synthesize(projection)
+    except SynthesisError:
+        pass  # the recorded response names a security concern; irrelevant here
+
+    schema = client.messages.calls[0]["output_config"]["format"]["schema"]
+    candidate = schema["properties"]["recommendations"]["items"]
+    # Every concern in this scenario is a security concern, so enabling only
+    # reliability must leave the model nothing to report.
+    assert candidate["properties"]["concern_key"]["enum"] == []
+
+
+def test_concern_rules_and_stub_templates_agree_on_category() -> None:
+    # Two tables name a concern's category; a divergence would let the stub
+    # emit something validation rejects.
+    assert {k: r.category for k, r in CONCERN_RULES.items()} == {
+        k: t.category for k, t in CONCERN_TEMPLATES.items()
+    }
 
 
 @pytest.mark.parametrize(

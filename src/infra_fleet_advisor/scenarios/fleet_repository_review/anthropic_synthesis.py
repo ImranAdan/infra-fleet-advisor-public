@@ -11,7 +11,7 @@ from infra_fleet_advisor.core.validation import (
     MAX_TEXT_FIELD_LENGTH,
     MAX_TITLE_LENGTH,
 )
-from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import ALLOWED_CONCERN_KEYS
+from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import CONCERN_RULES
 from infra_fleet_advisor.scenarios.fleet_repository_review.synthesis import (
     EvidenceProjection,
     SynthesisResponse,
@@ -39,11 +39,14 @@ _TEXT = {"type": "string", "maxLength": MAX_TEXT_FIELD_LENGTH}
 
 
 def _response_schema(enabled_categories: frozenset[str]) -> dict[str, Any]:
+    # Only offer concerns whose own category the policy enables, so a disabled
+    # category's concerns are never on the table in the first place.
+    offered = sorted(k for k, r in CONCERN_RULES.items() if r.category in enabled_categories)
     candidate: dict[str, Any] = {
         "type": "object",
         "additionalProperties": False,
         "properties": {
-            "concern_key": {"type": "string", "enum": sorted(ALLOWED_CONCERN_KEYS)},
+            "concern_key": {"type": "string", "enum": offered},
             "category": {"type": "string", "enum": sorted(enabled_categories)},
             "priority": {"type": "string", "enum": list(PRIORITIES)},
             "title": {"type": "string", "maxLength": MAX_TITLE_LENGTH},
@@ -122,8 +125,15 @@ class AnthropicSynthesizer:
 
     model_identifier = f"anthropic:{MODEL}"
 
-    def __init__(self, client: anthropic.Anthropic | None = None) -> None:
+    def __init__(
+        self, client: anthropic.Anthropic | None = None, timeout_seconds: float = 60.0
+    ) -> None:
         self._client = client
+        # run_review can only check the wall-clock budget once synthesize()
+        # returns, so the request carries the deadline itself. Otherwise a
+        # stalled endpoint blocks well past max_wall_seconds before the
+        # overrun is ever noticed.
+        self._timeout_seconds = timeout_seconds
 
     def synthesize(self, projection: EvidenceProjection) -> SynthesisResponse:
         if not projection.evidence:
@@ -143,6 +153,7 @@ class AnthropicSynthesizer:
                     }
                 },
                 messages=[{"role": "user", "content": build_prompt(projection)}],
+                timeout=self._timeout_seconds,
             )
         # TypeError included deliberately: the SDK reports unresolvable
         # authentication that way, not as an AnthropicError.

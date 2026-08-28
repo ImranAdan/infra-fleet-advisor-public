@@ -1,7 +1,7 @@
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
-from infra_fleet_advisor.core.contracts import PolicyBounds, Recommendation
+from infra_fleet_advisor.core.contracts import ConcernRule, PolicyBounds, Recommendation
 from infra_fleet_advisor.core.evidence import Evidence
 from infra_fleet_advisor.core.validation import is_prior_recommendation_valid
 
@@ -62,7 +62,7 @@ def compare_with_prior(
     accepted: Sequence[Recommendation],
     prior: PriorReport | None,
     bounds: PolicyBounds,
-    allowed_concern_keys: frozenset[str],
+    concern_rules: Mapping[str, ConcernRule],
     collection_complete: bool,
 ) -> LifecycleResult:
     """Fingerprint identity drives comparison, not narrative text, so this
@@ -102,7 +102,7 @@ def compare_with_prior(
     for fp, prior_rec in prior_by_fp.items():
         if fp in current_fps or prior_rec.concern_key in bounds.suppressed_concerns:
             continue
-        if not is_prior_recommendation_valid(prior_rec, bounds, allowed_concern_keys):
+        if not is_prior_recommendation_valid(prior_rec, bounds, concern_rules):
             continue
         if collection_complete:
             results.append(_prior_as_recommendation(prior_rec, "resolved", bounds))

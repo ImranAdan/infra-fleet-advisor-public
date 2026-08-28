@@ -2,6 +2,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from infra_fleet_advisor.core.contracts import (
+    ConcernRule,
     PolicyBounds,
     RawRecommendationCandidate,
     Recommendation,
@@ -51,14 +52,14 @@ def assemble_report(
     candidates: Sequence[RawRecommendationCandidate],
     evidence_by_id: Mapping[str, Evidence],
     bounds: PolicyBounds,
-    allowed_concern_keys: frozenset[str],
+    concern_rules: Mapping[str, ConcernRule],
     prior: PriorReport | None,
 ) -> tuple[Report, tuple[RejectedCandidate, ...]]:
     """Bounded pipeline coordination: validate → compare with prior → rank."""
-    validated = validate_candidates(candidates, evidence_by_id, bounds, allowed_concern_keys)
+    validated = validate_candidates(candidates, evidence_by_id, bounds, concern_rules)
     collection_complete = all(c.status == "ok" for c in coverage)
     lifecycle = compare_with_prior(
-        validated.accepted, prior, bounds, allowed_concern_keys, collection_complete
+        validated.accepted, prior, bounds, concern_rules, collection_complete
     )
     ranked = rank(lifecycle.recommendations, bounds.category_priority)
 
