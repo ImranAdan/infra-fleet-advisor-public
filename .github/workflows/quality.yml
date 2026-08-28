@@ -1,0 +1,134 @@
+name: Quality
+
+# The gate the advisory workflow does not provide: nothing verified this
+# repository's own tests, types, or dependencies before merge.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Read-only. This workflow inspects; it never writes to the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  conventional-commits:
+    name: Conventional commits
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Actions are pinned to commit SHAs, not tags: a tag can be moved to
+      # point at different code after review.
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Install locked dependencies
+        run: make setup
+
+      - name: Validate pull request title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          printf '%s\n' "${PR_TITLE}" > "${RUNNER_TEMP}/pr-title.txt"
+          uv run --frozen gitlint --msg-filename "${RUNNER_TEMP}/pr-title.txt"
+
+      - name: Validate commit messages
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: uv run --frozen gitlint --commits "${BASE_SHA}..${HEAD_SHA}"
+
+  code-quality:
+    name: Lint, types, and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Install locked dependencies
+        run: make setup
+
+      - name: Run quality suite
+        run: make check
+
+  workflows:
+    name: Workflow lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      # The advisory workflow's change-detection and push logic lives in shell
+      # inside YAML, where a mistake fails only at dispatch time. actionlint
+      # runs shellcheck over those blocks.
+      - name: Lint workflows
+        run: docker run --rm -v "${PWD}:/repo" -w /repo rhysd/actionlint:1.7.7
+
+  security:
+    name: Trivy security scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      # ignore-unfixed is deliberately false. This advisor reports
+      # `trivy_ignore_unfixed` as a medium-severity finding against the fleet;
+      # suppressing the same class of result here would mean shipping a tool
+      # that does not take its own advice. The trade-off is the one the report
+      # itself names: a vulnerability with no vendor fix can block this build.
+      - name: Scan source and dependencies
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: CRITICAL,HIGH
+          ignore-unfixed: false
+          # tests/fixtures/terraform holds intentionally insecure Terraform —
+          # wildcard IAM policies and an unencrypted bucket — because that is
+          # what the collectors are tested against. Scanning it reports the
+          # fixtures as real findings. Only the fixtures are skipped; test code
+          # is still scanned.
+          skip-dirs: tests/fixtures
+          exit-code: "1"
+          format: table
+          timeout: 10m0s
