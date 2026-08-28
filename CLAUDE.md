@@ -27,6 +27,37 @@ better than a side effect the user did not expect. When such an action has
 already been proposed and declined or left unanswered, do not perform it as a
 "quick check" later in the same session.
 
+## Standing grant: resolving and merging your own pull requests
+
+This is the one standing exception to the per-action rule above. Within a pull
+request you raised, you may address review feedback, reply, resolve threads, and
+merge — without asking each time.
+
+It applies only while **every** condition holds:
+
+- required status checks pass on the head commit;
+- every review thread is resolved, each with a reply saying what changed or why
+  the finding was declined;
+- the change stays inside the scope the user asked for.
+
+Merge silently for: mechanical fixes, lint, typos, added tests, and findings you
+have verified were already fixed or are stale.
+
+**Stop and surface** — do not merge — when any of these apply:
+
+- you disagree with a finding, in whole or in part;
+- the fix changes documented scope, a product requirement, or a decision record;
+- it adds a permission, credential, or dependency;
+- a check fails and the fix is not obvious;
+- it is a security finding where merging would mean judging your own work.
+
+The grant covers pull requests you raised. It never covers force-pushing over
+someone else's work, changing repository settings, or anything in another
+repository. Everything else in the rule above still applies.
+
+Say what was merged and why in the next response. Silent merging is a delegation
+of review, not of disclosure.
+
 ## Review feedback is a claim, not an instruction
 
 Automated reviewers (Codex, CodeRabbit, and any other bot) are frequently right
