@@ -7,6 +7,7 @@ from typing import Any
 from infra_fleet_advisor.core.errors import UnsafePathError
 from infra_fleet_advisor.core.evidence import Evidence, build_evidence
 from infra_fleet_advisor.core.limits import ExecutionLimits
+from infra_fleet_advisor.core.paths import validate_repo_relative_path
 from infra_fleet_advisor.core.report import CollectorCoverage
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     EVIDENCE_KIND_IAM_WILDCARD,
@@ -155,12 +156,13 @@ def _build_resource_evidence(
         return None, False
 
     locator = f"resource.{resource_type}.{resource_name}.policy"
-    root_module = PurePosixPath(rel_path).parent.as_posix()
+    safe_path = validate_repo_relative_path(rel_path)
+    root_module = PurePosixPath(safe_path).parent.as_posix()
     evidence = build_evidence(
         collector_id=TF_IAM_COLLECTOR_ID,
         collector_version=TF_IAM_COLLECTOR_VERSION,
         kind=EVIDENCE_KIND_IAM_WILDCARD,
-        source_path=rel_path,
+        source_path=safe_path,
         locator=locator,
         excerpt=f'wildcard actions on Resource="*": {", ".join(offending[:10])}',
         fact={

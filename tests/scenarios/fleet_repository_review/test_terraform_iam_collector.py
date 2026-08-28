@@ -57,6 +57,34 @@ def test_same_resource_address_in_separate_root_modules_has_distinct_identity(
     assert evidence[0].evidence_id != evidence[1].evidence_id
 
 
+def test_root_module_identity_normalizes_platform_path_separators(git_checkout) -> None:
+    repo, _sha = git_checkout(terraform_files=("wildcard_iam_policy.tf",))
+    source = repo / "infrastructure" / "permanent" / "wildcard_iam_policy.tf"
+    blocks, failures = tf_collector._iter_resource_blocks(source.read_text(encoding="utf-8"))
+    resource_type, resource_name, block_body = blocks[0]
+
+    posix, posix_failed = tf_collector._build_resource_evidence(
+        "infrastructure/permanent/wildcard_iam_policy.tf",
+        resource_type,
+        resource_name,
+        block_body,
+    )
+    windows, windows_failed = tf_collector._build_resource_evidence(
+        "infrastructure\\permanent\\wildcard_iam_policy.tf",
+        resource_type,
+        resource_name,
+        block_body,
+    )
+
+    assert failures == 0
+    assert posix_failed is False
+    assert windows_failed is False
+    assert posix is not None
+    assert windows is not None
+    assert posix.source_path == windows.source_path
+    assert posix.evidence_id == windows.evidence_id
+
+
 def test_commented_out_wildcard_resource_is_ignored(git_checkout) -> None:
     repo, _sha = git_checkout(terraform_files=("commented_out_wildcard.tf",))
     result = tf_collector.collect(repo, LIMITS)
