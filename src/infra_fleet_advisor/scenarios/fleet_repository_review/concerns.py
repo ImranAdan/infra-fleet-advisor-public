@@ -33,8 +33,6 @@ CONCERN_RULES: dict[str, ConcernRule] = {
     ),
 }
 
-ALLOWED_CONCERN_KEYS = frozenset(CONCERN_RULES)
-
 
 @dataclass(frozen=True, slots=True)
 class ConcernTemplate:

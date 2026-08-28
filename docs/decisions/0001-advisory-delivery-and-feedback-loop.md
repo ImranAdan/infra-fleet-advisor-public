@@ -115,7 +115,7 @@ disappears and the next run resolves it.
   or model was wrong; that is a defect against the advisor, and suppressing it
   would hide a real bug.
 
-### D7: Two more synthesizers, selected statically
+### D7: Two more synthesizers, selected statically — deferred
 
 The `Synthesizer` protocol already supports alternatives, and validation treats
 every synthesizer as equally untrusted — a weaker model degrades output quality
@@ -151,14 +151,24 @@ real weight with fleet maintainers.
 
 ## Build order
 
-1. Verify the model path against the real API
-2. Surface rejection reasons — currently computed and discarded at `review.py:109`
-3. Stable evidence identity, and never auto-close (D3)
-4. Closed-PR-as-decline (D1)
-5. GitHub App and issue creation with fingerprint dedupe (D2, D5)
-6. `wontfix` label to policy pull request (D6)
+1. Surface rejection reasons — currently computed and discarded at `review.py:109`
+2. Stable evidence identity, and never auto-close (D3)
+3. Closed-PR-as-decline (D1)
+4. GitHub App and issue creation with fingerprint dedupe (D2, D5)
+5. `wontfix` label to policy pull request (D6)
 
-Steps 1–4 need no new credentials. Step 5 is where the App arrives.
+Steps 1–3 need no new credentials. Step 4 is where the App arrives.
+
+### Deferred
+
+D7 is deferred in full. Both synthesizers are speculative — no user has asked for
+either — and the `Synthesizer` protocol makes each a drop-in whenever one does.
+Deferring costs nothing now and avoids naming and template-quality work with no
+consumer.
+
+Verifying the model path against the real API is off the critical path, per D8.
+Do it before issues carry weight with fleet maintainers, not before building the
+delivery mechanics.
 
 ## Known gaps not yet resolved
 
