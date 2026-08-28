@@ -1,10 +1,12 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from infra_fleet_advisor.core.errors import PolicyError
 from infra_fleet_advisor.core.report import CollectorCoverage, Report, RunProvenance
+from infra_fleet_advisor.core.validation import RejectedCandidate
 from infra_fleet_advisor.runtime.report_writer import (
     load_prior_report,
     to_json,
@@ -27,6 +29,7 @@ REPORT = Report(
     coverage=(CollectorCoverage("c", "ok", 1, None),),
     recommendations=(),
     evidence=(),
+    rejected=(),
     rejected_count=0,
     new_count=0,
     unchanged_count=0,
@@ -118,3 +121,28 @@ def test_load_prior_report_rejects_non_string_fingerprint(tmp_path: Path) -> Non
     )
     with pytest.raises(PolicyError):
         load_prior_report(bad)
+
+
+def test_rejection_reasons_reach_both_report_formats() -> None:
+    report = replace(
+        REPORT,
+        rejected=(
+            RejectedCandidate(
+                concern_key="wildcard_iam_permissions",
+                category="security",
+                reason="invented_evidence_id",
+            ),
+        ),
+        rejected_count=1,
+    )
+
+    payload = json.loads(to_json(report))
+    assert payload["rejected"][0]["reason"] == "invented_evidence_id"
+
+    md = to_markdown(report)
+    assert "## Rejected candidates" in md
+    assert "invented_evidence_id" in md
+
+
+def test_no_rejected_section_when_nothing_was_rejected() -> None:
+    assert "## Rejected candidates" not in to_markdown(REPORT)

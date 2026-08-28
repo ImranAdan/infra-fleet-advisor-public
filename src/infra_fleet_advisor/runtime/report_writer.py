@@ -103,6 +103,15 @@ def to_markdown(report: Report) -> str:
         ]
         if r.owner_accepted_trade_off:
             lines += [f"**Owner-accepted trade-off:** {r.owner_accepted_trade_off}", ""]
+
+    if report.rejected:
+        # Rejections are a health signal about the synthesizer, not advice. A run
+        # that starts refusing candidates is drifting, and the count alone does
+        # not say why.
+        lines += ["", "## Rejected candidates", ""]
+        for rc in report.rejected:
+            lines.append(f"- `{rc.concern_key}` (`{rc.category}`) — {rc.reason}")
+        lines.append("")
     return "\n".join(lines)
 
 

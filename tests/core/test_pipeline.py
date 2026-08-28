@@ -39,7 +39,7 @@ def test_all_rejected_still_produces_a_report() -> None:
         confidence=0.9,
         confidence_explanation="e",
     )
-    report, rejected = assemble_report(
+    report = assemble_report(
         provenance=PROVENANCE,
         coverage=[],
         candidates=[bad_candidate],
@@ -49,8 +49,12 @@ def test_all_rejected_still_produces_a_report() -> None:
         prior=None,
     )
     assert report.recommendations == ()
-    assert len(rejected) == 1
+    assert len(report.rejected) == 1
     assert report.rejected_count == 1
+    # The reason has to survive into the report, not just the count: a run that
+    # starts refusing candidates is the first sign a model has drifted.
+    assert report.rejected[0].reason == "no_evidence_cited"
+    assert report.rejected[0].concern_key == "concern"
 
 
 def test_valid_candidate_flows_through_to_a_ranked_report() -> None:
@@ -76,7 +80,7 @@ def test_valid_candidate_flows_through_to_a_ranked_report() -> None:
         confidence=0.9,
         confidence_explanation="e",
     )
-    report, rejected = assemble_report(
+    report = assemble_report(
         provenance=PROVENANCE,
         coverage=[],
         candidates=[candidate],
@@ -85,7 +89,7 @@ def test_valid_candidate_flows_through_to_a_ranked_report() -> None:
         concern_rules=RULES,
         prior=None,
     )
-    assert not rejected
+    assert not report.rejected
     assert len(report.recommendations) == 1
     assert report.recommendations[0].rank == 1
     assert report.new_count == 1
@@ -121,7 +125,7 @@ def test_resolved_recommendation_carries_its_prior_evidence_into_the_report() ->
         ],
         evidence_by_id={prior_ev.evidence_id: prior_ev},
     )
-    report, _rejected = assemble_report(
+    report = assemble_report(
         provenance=PROVENANCE,
         coverage=[],
         candidates=[],
