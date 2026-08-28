@@ -107,6 +107,7 @@ model-backed synthesis, validation, and lifecycle tracking.
 - [Product research](docs/product-research.md)
 - [Product requirements](docs/product-requirements.md)
 - [Architecture](docs/architecture.md)
+- [PDR 0001: Advisory delivery and the fleet feedback loop](docs/decisions/0001-advisory-delivery-and-feedback-loop.md)
 - [Repository guidance](AGENTS.md)
 
 ## License
