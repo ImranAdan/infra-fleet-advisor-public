@@ -2,8 +2,11 @@ from dataclasses import dataclass
 
 CONCERN_STATIC_AWS_CREDENTIALS = "static_aws_credentials_in_ci"
 CONCERN_TRIVY_IGNORE_UNFIXED = "trivy_ignore_unfixed"
+CONCERN_WILDCARD_IAM_PERMISSIONS = "wildcard_iam_permissions"
 
-ALLOWED_CONCERN_KEYS = frozenset({CONCERN_STATIC_AWS_CREDENTIALS, CONCERN_TRIVY_IGNORE_UNFIXED})
+ALLOWED_CONCERN_KEYS = frozenset(
+    {CONCERN_STATIC_AWS_CREDENTIALS, CONCERN_TRIVY_IGNORE_UNFIXED, CONCERN_WILDCARD_IAM_PERMISSIONS}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,5 +54,28 @@ CONCERN_TEMPLATES: dict[str, ConcernTemplate] = {
         trade_offs="May block builds on vulnerabilities with no vendor fix yet available.",
         confidence=0.85,
         confidence_explanation="Directly observed from the trivy-action step's `with:` keys.",
+    ),
+    CONCERN_WILDCARD_IAM_PERMISSIONS: ConcernTemplate(
+        category="security",
+        priority="critical",
+        title="IAM policy grants a wildcard action on all resources",
+        summary=(
+            "A Terraform-managed IAM policy statement allows a wildcard action "
+            "(e.g. service:*) with Resource set to *."
+        ),
+        impact=(
+            "Overly broad IAM grants expand the blast radius if the associated role's "
+            "credentials are compromised, and make least-privilege review difficult."
+        ),
+        suggested_change=(
+            "Scope the action list to the specific API calls required, and constrain "
+            "Resource to the specific ARNs the role needs instead of *."
+        ),
+        trade_offs=(
+            "Narrowing permissions may require iterating as new resource types are "
+            "added, and risks under-provisioning if scoped too tightly."
+        ),
+        confidence=0.85,
+        confidence_explanation="Directly observed from the IAM policy's parsed statement.",
     ),
 }

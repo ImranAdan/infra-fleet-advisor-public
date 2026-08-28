@@ -2,9 +2,11 @@ from infra_fleet_advisor.core.evidence import build_evidence
 from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
     CONCERN_STATIC_AWS_CREDENTIALS,
     CONCERN_TRIVY_IGNORE_UNFIXED,
+    CONCERN_WILDCARD_IAM_PERMISSIONS,
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     EVIDENCE_KIND_CREDENTIAL_METHOD,
+    EVIDENCE_KIND_IAM_WILDCARD,
     EVIDENCE_KIND_TRIVY_GATE,
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.synthesis import (
@@ -76,3 +78,21 @@ def test_stub_emits_one_candidate_per_triggering_item() -> None:
     )
     assert len(response.recommendations) == 2
     assert all(r.concern_key == CONCERN_TRIVY_IGNORE_UNFIXED for r in response.recommendations)
+
+
+def test_stub_triggers_on_iam_wildcard_evidence() -> None:
+    ev = build_evidence(
+        collector_id="c",
+        collector_version="1.0.0",
+        kind=EVIDENCE_KIND_IAM_WILDCARD,
+        source_path="a.tf",
+        locator="loc",
+        excerpt="e",
+        fact={"wildcard_actions": "eks:*, ec2:*", "wildcard_statement_count": 2},
+    )
+    response = StubSynthesizer().synthesize(
+        EvidenceProjection(policy_context=CONTEXT, evidence=(ev,))
+    )
+    assert len(response.recommendations) == 1
+    assert response.recommendations[0].concern_key == CONCERN_WILDCARD_IAM_PERMISSIONS
+    assert response.recommendations[0].evidence_ids == (ev.evidence_id,)

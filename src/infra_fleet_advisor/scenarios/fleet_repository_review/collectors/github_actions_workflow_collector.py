@@ -9,10 +9,10 @@ from infra_fleet_advisor.core.evidence import Evidence, build_evidence
 from infra_fleet_advisor.core.limits import ExecutionLimits
 from infra_fleet_advisor.core.report import CollectorCoverage
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
-    COLLECTOR_ID,
-    COLLECTOR_VERSION,
     EVIDENCE_KIND_CREDENTIAL_METHOD,
     EVIDENCE_KIND_TRIVY_GATE,
+    GHA_COLLECTOR_ID,
+    GHA_COLLECTOR_VERSION,
 )
 
 _CREDENTIALS_ACTION = "aws-actions/configure-aws-credentials"
@@ -67,8 +67,8 @@ def _build_step_evidence(rel_path: str, locator: str, step: dict[str, Any]) -> E
 
     if _matches_action(uses, _CREDENTIALS_ACTION):
         return build_evidence(
-            collector_id=COLLECTOR_ID,
-            collector_version=COLLECTOR_VERSION,
+            collector_id=GHA_COLLECTOR_ID,
+            collector_version=GHA_COLLECTOR_VERSION,
             kind=EVIDENCE_KIND_CREDENTIAL_METHOD,
             source_path=rel_path,
             locator=locator,
@@ -82,8 +82,8 @@ def _build_step_evidence(rel_path: str, locator: str, step: dict[str, Any]) -> E
         )
     if _matches_action(uses, _TRIVY_ACTION):
         return build_evidence(
-            collector_id=COLLECTOR_ID,
-            collector_version=COLLECTOR_VERSION,
+            collector_id=GHA_COLLECTOR_ID,
+            collector_version=GHA_COLLECTOR_VERSION,
             kind=EVIDENCE_KIND_TRIVY_GATE,
             source_path=rel_path,
             locator=locator,
@@ -111,7 +111,7 @@ def collect(
         return CollectorResult(
             evidence=(),
             coverage=CollectorCoverage(
-                collector_id=COLLECTOR_ID,
+                collector_id=GHA_COLLECTOR_ID,
                 status="failed",
                 evidence_count=0,
                 error_summary="no .github/workflows directory found",
@@ -179,7 +179,7 @@ def collect(
     return CollectorResult(
         evidence=tuple(evidence),
         coverage=CollectorCoverage(
-            collector_id=COLLECTOR_ID,
+            collector_id=GHA_COLLECTOR_ID,
             status=status,
             evidence_count=len(evidence),
             error_summary="; ".join(summary_parts) if summary_parts else None,

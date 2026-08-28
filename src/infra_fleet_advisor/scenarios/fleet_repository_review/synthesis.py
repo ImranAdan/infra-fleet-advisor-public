@@ -7,9 +7,11 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
     CONCERN_STATIC_AWS_CREDENTIALS,
     CONCERN_TEMPLATES,
     CONCERN_TRIVY_IGNORE_UNFIXED,
+    CONCERN_WILDCARD_IAM_PERMISSIONS,
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     EVIDENCE_KIND_CREDENTIAL_METHOD,
+    EVIDENCE_KIND_IAM_WILDCARD,
     EVIDENCE_KIND_TRIVY_GATE,
 )
 
@@ -72,6 +74,10 @@ class StubSynthesizer:
             elif item.kind == EVIDENCE_KIND_TRIVY_GATE and item.fact.get("ignore_unfixed"):
                 candidates.append(
                     _candidate_from_template(CONCERN_TRIVY_IGNORE_UNFIXED, item.evidence_id)
+                )
+            elif item.kind == EVIDENCE_KIND_IAM_WILDCARD:
+                candidates.append(
+                    _candidate_from_template(CONCERN_WILDCARD_IAM_PERMISSIONS, item.evidence_id)
                 )
         return SynthesisResponse(
             recommendations=tuple(candidates), model_identifier=self.model_identifier
