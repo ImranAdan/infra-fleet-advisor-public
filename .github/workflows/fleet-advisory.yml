@@ -1,0 +1,145 @@
+name: Fleet advisory report
+
+# Runs one review pass over infra-fleet-public and proposes the resulting
+# report as a pull request here. The fleet repository is only ever read: it is
+# checked out, analyzed, and left untouched.
+on:
+  workflow_dispatch:
+    inputs:
+      target_ref:
+        description: Ref of infra-fleet-public to review
+        default: main
+      synthesizer:
+        description: anthropic (real model, needs ANTHROPIC_API_KEY) or stub (offline)
+        type: choice
+        options: [anthropic, stub]
+        default: anthropic
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: fleet-advisory
+
+env:
+  BRANCH: advisory/latest
+  TARGET_REPO: ImranAdan/infra-fleet-public
+
+jobs:
+  advise:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the advisor
+        uses: actions/checkout@v4
+
+      - name: Check out the fleet under review
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.TARGET_REPO }}
+          ref: ${{ inputs.target_ref }}
+          path: target
+
+      - name: Resolve the reviewed commit
+        id: target
+        run: echo "sha=$(git -C target rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install the advisor
+        run: pip install .
+
+      # Fails the job on any synthesis or provenance error rather than writing
+      # an empty report: a report with no findings is indistinguishable from
+      # "everything was fixed", and would mark every open finding resolved.
+      - name: Run the review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          prior=()
+          if [ -f reports/report.json ]; then
+            prior=(--prior-report reports/report.json)
+          fi
+          infra-fleet-advisor review \
+            --checkout target \
+            --sha "${{ steps.target.outputs.sha }}" \
+            --policy policy.yaml \
+            --output-dir "$RUNNER_TEMP/advisory" \
+            --synthesizer "${{ inputs.synthesizer }}" \
+            "${prior[@]}"
+
+      # Compares findings, not file bytes. Every report embeds a fresh run
+      # timestamp, and a finding legitimately moves from "new" to "unchanged"
+      # on the very next run over an identical fleet — so a plain diff is
+      # always non-empty and would raise a pull request on every invocation.
+      - name: Decide whether the findings changed
+        id: publish
+        run: |
+          signature() {
+            jq -Sr '{
+              findings: [.recommendations[]
+                | "\(.fingerprint):\(if .status == "new" or .status == "unchanged"
+                                     then "open" else .status end)"] | sort,
+              coverage: [.coverage[] | "\(.collector_id):\(.status)"] | sort
+            }' "$1"
+          }
+
+          new_sig="$(signature "$RUNNER_TEMP/advisory/report.json")"
+          old_sig=""
+          if [ -f reports/report.json ]; then
+            old_sig="$(signature reports/report.json)"
+          fi
+
+          mkdir -p reports
+          cp "$RUNNER_TEMP/advisory/report.json" "$RUNNER_TEMP/advisory/report.md" reports/
+
+          if [ "$new_sig" = "$old_sig" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Findings and collector coverage are unchanged; nothing to propose."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compose the pull request body
+        if: steps.publish.outputs.changed == 'true'
+        run: |
+          sha="${{ steps.target.outputs.sha }}"
+          {
+            echo "Review of [\`${sha:0:7}\`](https://github.com/${TARGET_REPO}/commit/${sha})" \
+                 "in \`${TARGET_REPO}\`, produced by the \`fleet-advisory\` workflow."
+            echo
+            echo "Every recommendation below cites evidence collected deterministically from"
+            echo "that commit. Model output that cited evidence it was not given, or that"
+            echo "named a concern outside the policy taxonomy, was rejected before this"
+            echo "report was written."
+            echo
+            echo "---"
+            echo
+            cat reports/report.md
+          } > "$RUNNER_TEMP/pr-body.md"
+
+      - name: Open or update the advisory pull request
+        if: steps.publish.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha="${{ steps.target.outputs.sha }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git add reports
+          git commit -m "report: fleet advisory for ${TARGET_REPO}@${sha:0:7}"
+          git push -f origin "$BRANCH"
+
+          if [ -n "$(gh pr list --head "$BRANCH" --state open --json number -q '.[].number')" ]; then
+            gh pr edit "$BRANCH" --body-file "$RUNNER_TEMP/pr-body.md"
+            echo "Updated the open advisory pull request."
+          else
+            gh pr create \
+              --base "${{ github.event.repository.default_branch }}" \
+              --head "$BRANCH" \
+              --title "Fleet advisory: ${TARGET_REPO}@${sha:0:7}" \
+              --body-file "$RUNNER_TEMP/pr-body.md"
+          fi
