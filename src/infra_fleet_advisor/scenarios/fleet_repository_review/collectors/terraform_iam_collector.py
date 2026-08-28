@@ -154,17 +154,21 @@ def _build_resource_evidence(
     if not offending:
         return None, False
 
+    locator = f"resource.{resource_type}.{resource_name}.policy"
     evidence = build_evidence(
         collector_id=TF_IAM_COLLECTOR_ID,
         collector_version=TF_IAM_COLLECTOR_VERSION,
         kind=EVIDENCE_KIND_IAM_WILDCARD,
         source_path=rel_path,
-        locator=f"resource.{resource_type}.{resource_name}.policy",
+        locator=locator,
         excerpt=f'wildcard actions on Resource="*": {", ".join(offending[:10])}',
         fact={
             "wildcard_actions": ", ".join(offending[:10]),
             "wildcard_statement_count": matching_statement_count,
         },
+        # A Terraform resource address survives a file move, so source_path
+        # would make this identity positional without adding uniqueness.
+        identity_parts=(locator,),
     )
     return evidence, False
 

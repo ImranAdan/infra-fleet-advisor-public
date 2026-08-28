@@ -22,8 +22,10 @@ class Evidence:
     collector_version: str = ""
 
 
-def assign_evidence_id(collector_id: str, source_path: str, locator: str) -> str:
-    digest = hashlib.sha256(f"{source_path}|{locator}".encode()).hexdigest()[:16]
+def assign_evidence_id(collector_id: str, *identity_parts: str) -> str:
+    if not identity_parts:
+        raise ValueError("evidence identity must have at least one part")
+    digest = hashlib.sha256("|".join(identity_parts).encode()).hexdigest()[:16]
     return f"{collector_id}:{digest}"
 
 
@@ -36,10 +38,12 @@ def build_evidence(
     locator: str,
     excerpt: str,
     fact: Mapping[str, FactValue],
+    identity_parts: tuple[str, ...] | None = None,
 ) -> Evidence:
     safe_path = validate_repo_relative_path(source_path)
+    identity = identity_parts if identity_parts is not None else (safe_path, locator)
     return Evidence(
-        evidence_id=assign_evidence_id(collector_id, safe_path, locator),
+        evidence_id=assign_evidence_id(collector_id, *identity),
         kind=kind,
         source_path=safe_path,
         locator=locator,

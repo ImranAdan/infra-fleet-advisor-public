@@ -79,6 +79,10 @@ def _build_step_evidence(rel_path: str, locator: str, step: dict[str, Any]) -> E
                     "aws-access-key-id" in with_block or "aws-secret-access-key" in with_block
                 ),
             },
+            # Workflow paths and step positions are still the best available
+            # address for steps without an explicit id. Keep both identity
+            # parts until GitHub Actions has a stable resource handle.
+            identity_parts=(rel_path, locator),
         )
     if _matches_action(uses, _TRIVY_ACTION):
         return build_evidence(
@@ -89,6 +93,7 @@ def _build_step_evidence(rel_path: str, locator: str, step: dict[str, Any]) -> E
             locator=locator,
             excerpt=f"uses: {uses}",
             fact={"ignore_unfixed": _is_truthy_yaml_value(with_block.get("ignore-unfixed"))},
+            identity_parts=(rel_path, locator),
         )
     return None
 

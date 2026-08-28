@@ -75,6 +75,13 @@ Collectors are explicitly registered in code. They have read-only access to the
 verified snapshot and return closed evidence types. Configuration cannot supply
 commands or import paths.
 
+Collectors also declare the identity components used to derive each evidence
+ID. Terraform IAM evidence uses its stable resource address without the source
+path, so moving a resource between files preserves lifecycle identity. GitHub
+Actions evidence remains keyed by workflow path and step locator because steps
+without explicit IDs have no stable resource handle; file moves or inserted
+steps can therefore still produce a one-time lifecycle change.
+
 ### Model
 
 The model receives a bounded projection of policy and evidence. It cannot read

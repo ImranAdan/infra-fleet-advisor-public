@@ -28,6 +28,19 @@ def test_detects_wildcard_iam_policy(git_checkout) -> None:
     assert result.coverage.status == "ok"
 
 
+def test_evidence_identity_survives_a_terraform_file_rename(git_checkout) -> None:
+    repo, _sha = git_checkout(terraform_files=("wildcard_iam_policy.tf",))
+    before = tf_collector.collect(repo, LIMITS).evidence[0]
+
+    original = repo / "infrastructure" / "permanent" / "wildcard_iam_policy.tf"
+    original.rename(original.with_name("renamed_policy.tf"))
+    after = tf_collector.collect(repo, LIMITS).evidence[0]
+
+    assert before.source_path != after.source_path
+    assert before.locator == after.locator
+    assert before.evidence_id == after.evidence_id
+
+
 def test_commented_out_wildcard_resource_is_ignored(git_checkout) -> None:
     repo, _sha = git_checkout(terraform_files=("commented_out_wildcard.tf",))
     result = tf_collector.collect(repo, LIMITS)
