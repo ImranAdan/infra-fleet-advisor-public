@@ -42,6 +42,21 @@ def test_detects_trivy_ignore_unfixed(git_checkout) -> None:
     assert trivy.fact["ignore_unfixed"] is True
 
 
+def test_evidence_identity_remains_path_sensitive_without_a_stable_step_handle(
+    git_checkout,
+) -> None:
+    first_repo, _sha = git_checkout("trivy_ignore_unfixed_bad.yml")
+    first = gha_collector.collect(first_repo, LIMITS).evidence[0]
+
+    second_repo, _sha = git_checkout("trivy_ignore_unfixed_bad.yml")
+    original = second_repo / ".github" / "workflows" / "trivy_ignore_unfixed_bad.yml"
+    original.rename(original.with_name("renamed.yml"))
+    renamed = gha_collector.collect(second_repo, LIMITS).evidence[0]
+
+    assert first.locator != renamed.locator
+    assert first.evidence_id != renamed.evidence_id
+
+
 def test_missing_workflows_dir(tmp_path) -> None:
     result = gha_collector.collect(tmp_path, LIMITS)
     assert result.coverage.status == "failed"

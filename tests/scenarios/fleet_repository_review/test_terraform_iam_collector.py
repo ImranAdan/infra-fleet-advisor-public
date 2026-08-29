@@ -28,6 +28,63 @@ def test_detects_wildcard_iam_policy(git_checkout) -> None:
     assert result.coverage.status == "ok"
 
 
+def test_evidence_identity_survives_a_terraform_file_rename(git_checkout) -> None:
+    repo, _sha = git_checkout(terraform_files=("wildcard_iam_policy.tf",))
+    before = tf_collector.collect(repo, LIMITS).evidence[0]
+
+    original = repo / "infrastructure" / "permanent" / "wildcard_iam_policy.tf"
+    original.rename(original.with_name("renamed_policy.tf"))
+    after = tf_collector.collect(repo, LIMITS).evidence[0]
+
+    assert before.source_path != after.source_path
+    assert before.locator == after.locator
+    assert before.evidence_id == after.evidence_id
+
+
+def test_same_resource_address_in_separate_root_modules_has_distinct_identity(
+    git_checkout,
+) -> None:
+    repo, _sha = git_checkout(terraform_files=("wildcard_iam_policy.tf",))
+    original = repo / "infrastructure" / "permanent" / "wildcard_iam_policy.tf"
+    second_root = repo / "infrastructure" / "ephemeral"
+    second_root.mkdir()
+    (second_root / "policy.tf").write_text(original.read_text(encoding="utf-8"), encoding="utf-8")
+
+    evidence = tf_collector.collect(repo, LIMITS).evidence
+
+    assert len(evidence) == 2
+    assert evidence[0].locator == evidence[1].locator
+    assert evidence[0].evidence_id != evidence[1].evidence_id
+
+
+def test_root_module_identity_normalizes_platform_path_separators(git_checkout) -> None:
+    repo, _sha = git_checkout(terraform_files=("wildcard_iam_policy.tf",))
+    source = repo / "infrastructure" / "permanent" / "wildcard_iam_policy.tf"
+    blocks, failures = tf_collector._iter_resource_blocks(source.read_text(encoding="utf-8"))
+    resource_type, resource_name, block_body = blocks[0]
+
+    posix, posix_failed = tf_collector._build_resource_evidence(
+        "infrastructure/permanent/wildcard_iam_policy.tf",
+        resource_type,
+        resource_name,
+        block_body,
+    )
+    windows, windows_failed = tf_collector._build_resource_evidence(
+        "infrastructure\\permanent\\wildcard_iam_policy.tf",
+        resource_type,
+        resource_name,
+        block_body,
+    )
+
+    assert failures == 0
+    assert posix_failed is False
+    assert windows_failed is False
+    assert posix is not None
+    assert windows is not None
+    assert posix.source_path == windows.source_path
+    assert posix.evidence_id == windows.evidence_id
+
+
 def test_commented_out_wildcard_resource_is_ignored(git_checkout) -> None:
     repo, _sha = git_checkout(terraform_files=("commented_out_wildcard.tf",))
     result = tf_collector.collect(repo, LIMITS)

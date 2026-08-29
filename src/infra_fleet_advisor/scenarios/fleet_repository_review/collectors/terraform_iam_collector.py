@@ -1,12 +1,13 @@
 import json
 import re
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from infra_fleet_advisor.core.errors import UnsafePathError
 from infra_fleet_advisor.core.evidence import Evidence, build_evidence
 from infra_fleet_advisor.core.limits import ExecutionLimits
+from infra_fleet_advisor.core.paths import validate_repo_relative_path
 from infra_fleet_advisor.core.report import CollectorCoverage
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     EVIDENCE_KIND_IAM_WILDCARD,
@@ -154,17 +155,24 @@ def _build_resource_evidence(
     if not offending:
         return None, False
 
+    locator = f"resource.{resource_type}.{resource_name}.policy"
+    safe_path = validate_repo_relative_path(rel_path)
+    root_module = PurePosixPath(safe_path).parent.as_posix()
     evidence = build_evidence(
         collector_id=TF_IAM_COLLECTOR_ID,
         collector_version=TF_IAM_COLLECTOR_VERSION,
         kind=EVIDENCE_KIND_IAM_WILDCARD,
-        source_path=rel_path,
-        locator=f"resource.{resource_type}.{resource_name}.policy",
+        source_path=safe_path,
+        locator=locator,
         excerpt=f'wildcard actions on Resource="*": {", ".join(offending[:10])}',
         fact={
             "wildcard_actions": ", ".join(offending[:10]),
             "wildcard_statement_count": matching_statement_count,
         },
+        # A resource address is unique only within its root module. Keep that
+        # directory namespace while excluding the .tf filename so file moves
+        # within a module preserve identity without conflating separate roots.
+        identity_parts=(root_module, locator),
     )
     return evidence, False
 
