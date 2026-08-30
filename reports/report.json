@@ -27,6 +27,31 @@
       "source_path": ".github/workflows/load-harness-ci.yml"
     },
     {
+      "collector_id": "github_actions_workflow_collector",
+      "collector_version": "1.1.0",
+      "evidence_id": "github_actions_workflow_collector:afe0ea3f868900f5",
+      "excerpt": "uses: aquasecurity/trivy-action@0.33.1",
+      "fact": {
+        "ignore_unfixed": true
+      },
+      "kind": "gha_trivy_gate",
+      "locator": ".github/workflows/load-harness-ci.yml::jobs.security-scan.steps[3]",
+      "source_path": ".github/workflows/load-harness-ci.yml"
+    },
+    {
+      "collector_id": "terraform_iam_collector",
+      "collector_version": "1.1.0",
+      "evidence_id": "terraform_iam_collector:00dfe82f2366c9e7",
+      "excerpt": "wildcard actions on Resource=\"*\": eks:*, ec2:*, autoscaling:*, ssm:*, ecr:*",
+      "fact": {
+        "wildcard_actions": "eks:*, ec2:*, autoscaling:*, ssm:*, ecr:*",
+        "wildcard_statement_count": 5
+      },
+      "kind": "tf_iam_wildcard",
+      "locator": "resource.aws_iam_policy.github_actions.policy",
+      "source_path": "infrastructure/permanent/github-oidc.tf"
+    },
+    {
       "collector_id": "terraform_iam_collector",
       "collector_version": "1.0.0",
       "evidence_id": "terraform_iam_collector:f9516f33c203f5c8",
@@ -44,12 +69,12 @@
   "provenance": {
     "advisor_version": "0.1.0",
     "collector_versions": {
-      "github_actions_workflow_collector": "1.0.0",
-      "terraform_iam_collector": "1.0.0"
+      "github_actions_workflow_collector": "1.1.0",
+      "terraform_iam_collector": "1.1.0"
     },
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.0",
-    "run_started_at": "2026-08-28T15:15:00.087266+00:00",
+    "run_started_at": "2026-08-30T09:36:16.311934+00:00",
     "source_commit_sha": "65857138c50f3ab24bb8f58834c8ca3afe84a929",
     "source_label": "infra-fleet-public"
   },
@@ -60,9 +85,9 @@
       "confidence": 0.85,
       "confidence_explanation": "Directly observed from the IAM policy's parsed statement.",
       "evidence_ids": [
-        "terraform_iam_collector:f9516f33c203f5c8"
+        "terraform_iam_collector:00dfe82f2366c9e7"
       ],
-      "fingerprint": "fp_b3cb0f1396ed1d3f4d4518b4",
+      "fingerprint": "fp_6a206c70c062521f8d4d2145",
       "impact": "Overly broad IAM grants expand the blast radius if the associated role's credentials are compromised, and make least-privilege review difficult.",
       "owner_accepted_trade_off": null,
       "priority": "critical",
@@ -80,9 +105,9 @@
       "confidence": 0.85,
       "confidence_explanation": "Directly observed from the trivy-action step's `with:` keys.",
       "evidence_ids": [
-        "github_actions_workflow_collector:2513baff5eb4d7c0"
+        "github_actions_workflow_collector:afe0ea3f868900f5"
       ],
-      "fingerprint": "fp_6ecd2ba8ad2dbff1cc74a92a",
+      "fingerprint": "fp_1b176c3cddd56a221de4182e",
       "impact": "Unpatchable-but-known vulnerabilities can reach a published image undetected.",
       "owner_accepted_trade_off": null,
       "priority": "medium",
@@ -93,11 +118,51 @@
       "summary": "The Trivy scan step sets ignore-unfixed, so Critical/High findings without an available fix do not block the pipeline.",
       "title": "Trivy CI gate ignores unfixed vulnerabilities",
       "trade_offs": "May block builds on vulnerabilities with no vendor fix yet available."
+    },
+    {
+      "category": "security",
+      "concern_key": "wildcard_iam_permissions",
+      "confidence": 0.85,
+      "confidence_explanation": "Directly observed from the IAM policy's parsed statement.",
+      "evidence_ids": [
+        "terraform_iam_collector:f9516f33c203f5c8"
+      ],
+      "fingerprint": "fp_b3cb0f1396ed1d3f4d4518b4",
+      "impact": "Overly broad IAM grants expand the blast radius if the associated role's credentials are compromised, and make least-privilege review difficult.",
+      "owner_accepted_trade_off": null,
+      "priority": "critical",
+      "rank": null,
+      "rank_rationale": null,
+      "status": "resolved",
+      "suggested_change": "Scope the action list to the specific API calls required, and constrain Resource to the specific ARNs the role needs instead of *.",
+      "summary": "A Terraform-managed IAM policy statement allows a wildcard action (e.g. service:*) with Resource set to *.",
+      "title": "IAM policy grants a wildcard action on all resources",
+      "trade_offs": "Narrowing permissions may require iterating as new resource types are added, and risks under-provisioning if scoped too tightly."
+    },
+    {
+      "category": "security",
+      "concern_key": "trivy_ignore_unfixed",
+      "confidence": 0.85,
+      "confidence_explanation": "Directly observed from the trivy-action step's `with:` keys.",
+      "evidence_ids": [
+        "github_actions_workflow_collector:2513baff5eb4d7c0"
+      ],
+      "fingerprint": "fp_6ecd2ba8ad2dbff1cc74a92a",
+      "impact": "Unpatchable-but-known vulnerabilities can reach a published image undetected.",
+      "owner_accepted_trade_off": null,
+      "priority": "medium",
+      "rank": null,
+      "rank_rationale": null,
+      "status": "resolved",
+      "suggested_change": "Remove ignore-unfixed, or pair it with a documented, time-boxed exception process.",
+      "summary": "The Trivy scan step sets ignore-unfixed, so Critical/High findings without an available fix do not block the pipeline.",
+      "title": "Trivy CI gate ignores unfixed vulnerabilities",
+      "trade_offs": "May block builds on vulnerabilities with no vendor fix yet available."
     }
   ],
   "rejected": [],
   "rejected_count": 0,
-  "resolved_count": 0,
+  "resolved_count": 2,
   "suppressed_count": 0,
   "unchanged_count": 0
 }
