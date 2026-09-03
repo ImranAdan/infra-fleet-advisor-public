@@ -157,6 +157,11 @@ real weight with fleet maintainers.
 4. GitHub App and issue creation with fingerprint dedupe (D2, D5)
 5. `wontfix` label to policy pull request (D6)
 
+Implementation status: steps 1–4 are delivered. The issue publisher derives a
+bounded plan from the merged report, uses a one-repository GitHub App token with
+only `issues: write`, and deduplicates before every create so partial runs are
+retry-safe. Step 5 remains.
+
 Steps 1–3 need no new credentials. Step 4 is where the App arrives.
 
 ### Deferred

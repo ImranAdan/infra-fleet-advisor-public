@@ -1,14 +1,23 @@
 import json
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from infra_fleet_advisor.core.errors import PolicyError
+from infra_fleet_advisor.core.contracts import STATUSES
+from infra_fleet_advisor.core.errors import PolicyError, UnsafePathError
 from infra_fleet_advisor.core.evidence import MAX_EXCERPT_LENGTH, Evidence
 from infra_fleet_advisor.core.lifecycle import PriorRecommendation, PriorReport
+from infra_fleet_advisor.core.paths import validate_repo_relative_path
 from infra_fleet_advisor.core.report import Report
 
 MAX_PRIOR_REPORT_BYTES = 2 * 1024 * 1024
+
+
+@dataclass(frozen=True, slots=True)
+class ReportMetadata:
+    source_commit_sha: str
+    source_label: str
+    policy_version: str
 
 
 def _require_str(value: Any, field_name: str) -> str:
@@ -24,6 +33,12 @@ def _parse_prior_recommendation(r: dict[str, Any]) -> PriorRecommendation:
     confidence = r["confidence"]
     if not isinstance(confidence, (int, float)) or isinstance(confidence, bool):
         raise TypeError("confidence must be a number")
+    status = _require_str(r.get("status", "new"), "status")
+    if status not in STATUSES:
+        raise TypeError("status is not recognized")
+    owner_accepted_trade_off = r.get("owner_accepted_trade_off")
+    if owner_accepted_trade_off is not None and not isinstance(owner_accepted_trade_off, str):
+        raise TypeError("owner_accepted_trade_off must be a string or null")
     return PriorRecommendation(
         fingerprint=_require_str(r["fingerprint"], "fingerprint"),
         concern_key=_require_str(r["concern_key"], "concern_key"),
@@ -37,19 +52,25 @@ def _parse_prior_recommendation(r: dict[str, Any]) -> PriorRecommendation:
         trade_offs=_require_str(r["trade_offs"], "trade_offs"),
         confidence=confidence,
         confidence_explanation=_require_str(r["confidence_explanation"], "confidence_explanation"),
-        status=_require_str(r.get("status", "new"), "status"),
+        status=status,
+        owner_accepted_trade_off=owner_accepted_trade_off,
     )
 
 
 def _parse_prior_evidence(e: dict[str, Any]) -> Evidence:
     fact = e.get("fact")
+    if not isinstance(fact, dict) or any(
+        not isinstance(key, str) or not isinstance(value, (bool, str, int))
+        for key, value in fact.items()
+    ):
+        raise TypeError("evidence fact must map strings to bool, string, or integer values")
     return Evidence(
         evidence_id=_require_str(e["evidence_id"], "evidence_id"),
         kind=_require_str(e["kind"], "kind"),
-        source_path=_require_str(e["source_path"], "source_path"),
+        source_path=validate_repo_relative_path(_require_str(e["source_path"], "source_path")),
         locator=_require_str(e["locator"], "locator"),
         excerpt=_require_str(e["excerpt"], "excerpt")[:MAX_EXCERPT_LENGTH],
-        fact=fact if isinstance(fact, dict) else {},
+        fact=fact,
         collector_id=_require_str(e.get("collector_id", ""), "collector_id"),
         collector_version=_require_str(e.get("collector_version", ""), "collector_version"),
     )
@@ -125,16 +146,26 @@ def write_report(report: Report, output_dir: Path) -> tuple[Path, Path]:
     return json_path, md_path
 
 
-def read_report_source_sha(path: Path) -> str:
-    """The commit the report's evidence was collected from. Anything acting on a
-    report must check the tree it is about to touch is that same commit."""
+def read_report_metadata(path: Path) -> ReportMetadata:
+    """Read the provenance fields needed by deterministic report consumers."""
     try:
         if path.stat().st_size > MAX_PRIOR_REPORT_BYTES:
             raise PolicyError(f"report exceeds {MAX_PRIOR_REPORT_BYTES} bytes")
         raw = json.loads(path.read_text(encoding="utf-8"))
-        return _require_str(raw["provenance"]["source_commit_sha"], "source_commit_sha")
+        provenance = raw["provenance"]
+        return ReportMetadata(
+            source_commit_sha=_require_str(provenance["source_commit_sha"], "source_commit_sha"),
+            source_label=_require_str(provenance["source_label"], "source_label"),
+            policy_version=_require_str(provenance["policy_version"], "policy_version"),
+        )
     except (OSError, ValueError, TypeError, KeyError) as exc:
         raise PolicyError(f"cannot read report provenance: {type(exc).__name__}") from exc
+
+
+def read_report_source_sha(path: Path) -> str:
+    """The commit the report's evidence was collected from. Anything acting on a
+    report must check the tree it is about to touch is that same commit."""
+    return read_report_metadata(path).source_commit_sha
 
 
 def load_prior_report(path: Path | None) -> PriorReport | None:
@@ -149,9 +180,12 @@ def load_prior_report(path: Path | None) -> PriorReport | None:
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
         recs = [_parse_prior_recommendation(r) for r in raw["recommendations"]]
-        evidence_by_id = {
-            ev.evidence_id: ev for ev in (_parse_prior_evidence(e) for e in raw.get("evidence", []))
-        }
+        evidence = [_parse_prior_evidence(e) for e in raw.get("evidence", [])]
+        evidence_by_id = {item.evidence_id: item for item in evidence}
+        if len(evidence_by_id) != len(evidence):
+            raise TypeError("duplicate evidence_id")
+    except UnsafePathError as exc:
+        raise PolicyError("malformed prior report: unsafe evidence path") from exc
     except (
         OSError,
         UnicodeError,
@@ -159,6 +193,7 @@ def load_prior_report(path: Path | None) -> PriorReport | None:
         KeyError,
         TypeError,
         AttributeError,
+        ValueError,
     ) as exc:
         raise PolicyError(f"malformed prior report: {exc}") from exc
     return PriorReport(recommendations=recs, evidence_by_id=evidence_by_id)

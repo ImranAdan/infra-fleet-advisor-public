@@ -31,8 +31,7 @@ The first version will:
 - produce both a human-readable Markdown report and structured JSON;
 - track recommendations as new, unchanged, resolved, or suppressed across
   runs; and
-- remain read-only with respect to both the fleet repository and its runtime
-  infrastructure.
+- remain read-only with respect to fleet code and runtime infrastructure.
 
 The MVP will not modify infrastructure, merge anything, inspect a live cluster,
 support arbitrary repositories, or implement autonomous remediation. Reports are
@@ -42,6 +41,12 @@ Reviewing the fleet is read-only. Separately, a manually dispatched workflow may
 **propose** a mechanical fix as a pull request against the fleet — never merge
 one — for the narrow set of concerns fixable without judgement. See
 [PDR 0002](docs/decisions/0002-mechanical-remediation-of-the-fleet.md).
+
+After an advisory report is merged, a separate issues-only workflow can publish
+each active recommendation to the fleet as a deduplicated issue. It never
+changes issue state; when evidence disappears it adds a note and leaves closure
+to a maintainer. See
+[PDR 0001](docs/decisions/0001-advisory-delivery-and-feedback-loop.md).
 
 ## Review flow
 
@@ -114,6 +119,27 @@ If synthesis fails, the run exits non-zero and writes no report. It never
 degrades to an empty result, because an empty result would mark every
 outstanding finding resolved.
 
+### Publishing accepted recommendations as fleet issues
+
+`.github/workflows/fleet-issues.yml` runs when a merged commit changes
+`reports/report.json`, and can also be manually retried. Before any external
+write it reloads the report under the current policy and validates source
+identity, policy version, fingerprints, evidence support, paths, secret safety,
+suppression, accepted trade-offs, and hard output limits.
+
+Configure a GitHub App installed only on `infra-fleet-public`, with repository
+`Issues: Read and write` and no contents or pull-request permission. Store its
+client ID as `FLEET_ISSUES_APP_CLIENT_ID` and private key as
+`FLEET_ISSUES_APP_PRIVATE_KEY` in this repository. The generated installation
+token is scoped again in the workflow to that one repository and
+`issues: write`.
+
+Each issue carries an `advisor:fp:<digest>` label and an inert fingerprint
+marker. Retries check both identities before every create, so a failure after
+five of eight issues continues with the remaining three. Existing closed issues
+remain closed, active issues remain open, and each fingerprint receives at most
+one resolution note; issue prose never enters the advisor.
+
 ### Proposing a fix to the fleet
 
 ```bash
@@ -164,9 +190,9 @@ so far used `--synthesizer stub`, so the findings are real — the collectors ar
 deterministic — while the prose around them is templated.
 
 `docs/decisions/0001-advisory-delivery-and-feedback-loop.md` records what closing
-the loop requires. Stable evidence identity and closed-pull-request decline
-records are implemented. Raising deduplicated issues against the fleet and
-feeding a validated `wontfix` decision back into policy remain to be built.
+the loop requires. Stable evidence identity, closed-pull-request decline
+records, and deduplicated fleet issue publication are implemented. Feeding a
+validated `wontfix` decision back into policy remains to be built.
 
 ## Documentation
 

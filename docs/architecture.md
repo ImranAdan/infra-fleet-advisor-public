@@ -15,6 +15,9 @@ Verified fleet snapshot → collectors → evidence set
 Prior report ───────────────────────────┘                  │
                                                            ↓
                                              JSON + Markdown report
+                                                           │ merged
+                                                           ↓
+                                      revalidated issue plan → fleet issues
 ```
 
 ## Domain boundaries
@@ -48,8 +51,9 @@ not a speculative extension point.
 ### `runtime`
 
 Binds a verified checkout, policy, prior report, model client, output streams,
-and explicit scenario provider for one invocation. It owns CLI composition and
-execution but not recommendation semantics.
+explicit scenario provider, and external publication plans for one invocation.
+It owns CLI composition, safe output handling, and GitHub adapter inputs but not
+recommendation semantics.
 
 ## Supporting adapters
 
@@ -103,6 +107,15 @@ signature is recorded as an inert marker in an advisory pull request. If the
 latest closed, unmerged advisory pull request has the same exact marker,
 delivery treats that state as declined and does not re-propose it; arbitrary
 pull-request prose never enters analysis or policy.
+
+Fleet issue publication is a second publication boundary after report merge.
+Deterministic code reloads the report under the current policy, recomputes every
+fingerprint, resolves every citation, validates evidence support and secret-safe
+fields, and emits a bounded issue plan. A workflow adapter consumes only that
+plan. It uses an installation token limited to `issues: write`, deduplicates on a
+per-fingerprint label and body marker, and never changes issue state. Resolution
+means “no longer detected” and produces an idempotent note for human review, not
+automatic closure.
 
 ## Run lifecycle
 

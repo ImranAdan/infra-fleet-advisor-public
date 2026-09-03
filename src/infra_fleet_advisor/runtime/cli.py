@@ -9,6 +9,8 @@ from infra_fleet_advisor.core.errors import AdvisorError, PolicyError, Provenanc
 from infra_fleet_advisor.provenance.source_verification import verify_snapshot
 from infra_fleet_advisor.runtime.clock import SystemClock
 from infra_fleet_advisor.runtime.composition import SYNTHESIZERS, RunInputs, compose_and_run
+from infra_fleet_advisor.runtime.github_issues import GhCliIssueClient, publish_issue_plan
+from infra_fleet_advisor.runtime.issue_publication import build_issue_plan, write_issue_plan
 from infra_fleet_advisor.runtime.report_signature import (
     compute_report_signature,
     decide_publication,
@@ -64,6 +66,21 @@ def _build_parser() -> argparse.ArgumentParser:
     publication.add_argument("--report", required=True, type=Path)
     publication.add_argument("--prior-report", type=Path, default=None)
     publication.add_argument("--latest-declined-pr-body", type=Path, default=None)
+
+    issues = sub.add_parser(
+        "issue-plan", help="Revalidate a merged report and write bounded fleet issue actions"
+    )
+    issues.add_argument("--report", required=True, type=Path)
+    issues.add_argument("--policy", required=True, type=Path)
+    issues.add_argument("--output", required=True, type=Path)
+
+    publish_issues = sub.add_parser(
+        "publish-issues",
+        help="Publish a revalidated merged report through the issues-only adapter",
+    )
+    publish_issues.add_argument("--report", required=True, type=Path)
+    publish_issues.add_argument("--policy", required=True, type=Path)
+    publish_issues.add_argument("--app-bot-login", required=True)
     return parser
 
 
@@ -92,8 +109,9 @@ def _remediate(args: argparse.Namespace) -> int:
     applied: list[str] = []
     for rec in prior.recommendations:
         # A suppressed concern is one the owner deliberately excluded; a
-        # resolved one is already fixed. Neither justifies touching the fleet.
-        if rec.status not in ("new", "unchanged"):
+        # resolved one is already fixed, and an accepted trade-off is a choice
+        # to live with the finding. None justifies touching the fleet.
+        if rec.status not in ("new", "unchanged") or rec.owner_accepted_trade_off:
             continue
         patches = build_patches(
             checkout_root=args.checkout,
@@ -119,6 +137,40 @@ def _remediate(args: argparse.Namespace) -> int:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
+
+    if args.command == "publish-issues":
+        try:
+            plan = build_issue_plan(args.report, args.policy)
+            result = publish_issue_plan(
+                plan,
+                GhCliIssueClient(plan.target_repository),
+                args.app_bot_login,
+            )
+            print(
+                f"published {result.created} issue(s), found {result.existing} existing, "
+                f"restored {result.labels_restored} label set(s), and added "
+                f"{result.resolution_comments} resolution note(s)"
+            )
+            return EXIT_OK
+        except PolicyError as exc:
+            print(f"policy error: {exc}", file=sys.stderr)
+            return EXIT_POLICY_ERROR
+        except AdvisorError as exc:
+            print(f"pipeline error: {exc}", file=sys.stderr)
+            return EXIT_PIPELINE_ERROR
+
+    if args.command == "issue-plan":
+        try:
+            plan = build_issue_plan(args.report, args.policy)
+            write_issue_plan(plan, args.output)
+            print(f"wrote issue plan with {len(plan.actions)} action(s)")
+            return EXIT_OK
+        except PolicyError as exc:
+            print(f"policy error: {exc}", file=sys.stderr)
+            return EXIT_POLICY_ERROR
+        except OSError as exc:
+            print(f"pipeline error: cannot write issue plan: {type(exc).__name__}", file=sys.stderr)
+            return EXIT_PIPELINE_ERROR
 
     if args.command == "publication-decision":
         try:

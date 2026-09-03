@@ -187,15 +187,35 @@ Concerns requiring judgement — scoping a wildcard IAM policy, for instance —
 not be added to the patcher registry. A confident wrong answer there is a
 security regression. See PDR 0002.
 
+### FR13: Fleet issue publication
+
+Merging an advisory report may publish each active, validated recommendation as
+an issue in `infra-fleet-public`. The publisher revalidates the merged report
+against the current closed policy before acquiring a cross-repository token.
+Recommendations that are suppressed, carry an owner-accepted trade-off, cite
+invalid evidence, or have a mismatched fingerprint are ineligible.
+
+Issue creation is idempotent per recommendation fingerprint. A partial failure
+must be safely retryable without duplicating the issues already created, and a
+collision must fail loudly rather than attach advice to an unrelated issue.
+When evidence becomes resolved, the publisher may add one deduplicated note but
+must never close, reopen, or otherwise change issue state. Issue bodies and
+comments are untrusted output surfaces and never become analysis or policy
+input. The cross-repository GitHub App token is restricted to one repository and
+`issues: write`; it has no permission to read or modify fleet code. See PDR
+0001.
+
 ## Non-functional requirements
 
 ### Safety and security
 
-- Use read-only GitHub permissions against the fleet repository in CI. The
+- Use read-only GitHub permissions against fleet code in CI. The
   `fleet-advisory` workflow additionally holds `contents: write` and
   `pull-requests: write` **on this repository only**, solely to propose the
-  report it just produced. It holds no credential for the fleet beyond public
-  read, and no workflow may acquire one.
+  report it just produced. The separate issue publisher may acquire a GitHub
+  App installation token restricted to `issues: write` on the fleet; it has no
+  contents or pull-request permission. The remediation workflow's separate
+  write credential remains manual-only and cannot be reached by either path.
 - Never require cloud or cluster credentials for the MVP.
 - Treat repository content, scanner output, and model output as untrusted.
 - Do not log environment values, credentials, unbounded file contents, or raw
@@ -236,6 +256,9 @@ cluster, or wall-clock timing.
    recommendations.
 7. Collector failures are visible in the report's coverage section.
 8. All automated tests run deterministically without external systems.
+9. A merged report can produce retry-safe, fingerprint-deduplicated issue
+   actions without granting the publisher access to fleet code or changing
+   issue state.
 
 ## Success measures
 

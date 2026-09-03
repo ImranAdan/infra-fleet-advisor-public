@@ -4,8 +4,10 @@ from pathlib import Path
 import pytest
 
 from infra_fleet_advisor.core.errors import PolicyError
+from infra_fleet_advisor.runtime import cli as cli_module
 from infra_fleet_advisor.runtime.cli import (
     EXIT_OK,
+    EXIT_PIPELINE_ERROR,
     EXIT_POLICY_ERROR,
     EXIT_PROVENANCE_ERROR,
     EXIT_UNSAFE_OUTPUT_ERROR,
@@ -13,6 +15,7 @@ from infra_fleet_advisor.runtime.cli import (
 )
 from infra_fleet_advisor.runtime.clock import SystemClock
 from infra_fleet_advisor.runtime.composition import RunInputs, compose_and_run
+from infra_fleet_advisor.runtime.github_issues import PublicationResult
 
 POLICY = Path(__file__).parent.parent / "fixtures" / "policies" / "valid_policy.yaml"
 
@@ -205,3 +208,123 @@ def test_publication_decision_command_rejects_missing_decline_body_without_path_
     error = capsys.readouterr().err
     assert "cannot read declined pull request body: FileNotFoundError" in error
     assert str(missing) not in error
+
+
+def test_remediation_skips_an_owner_accepted_trade_off(
+    git_checkout, tmp_path: Path, capsys
+) -> None:
+    repo, sha = git_checkout("trivy_ignore_unfixed_bad.yml")
+    output_dir = tmp_path / "out"
+    assert main(_argv(repo, sha, output_dir)) == EXIT_OK
+    payload = json.loads((output_dir / "report.json").read_text(encoding="utf-8"))
+    payload["recommendations"][0]["owner_accepted_trade_off"] = "Accepted for now."
+    (output_dir / "report.json").write_text(json.dumps(payload), encoding="utf-8")
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "remediate",
+                "--checkout",
+                str(repo),
+                "--report",
+                str(output_dir / "report.json"),
+            ]
+        )
+        == EXIT_OK
+    )
+
+    assert "no mechanically fixable findings" in capsys.readouterr().out
+    assert "ignore-unfixed" in (
+        repo / ".github" / "workflows" / "trivy_ignore_unfixed_bad.yml"
+    ).read_text(encoding="utf-8")
+
+
+def test_issue_plan_command_writes_validated_actions_without_overwriting(
+    git_checkout, tmp_path: Path, capsys
+) -> None:
+    repo, sha = git_checkout("trivy_ignore_unfixed_bad.yml")
+    output_dir = tmp_path / "out"
+    assert main(_argv(repo, sha, output_dir)) == EXIT_OK
+    capsys.readouterr()
+    issue_plan = tmp_path / "issues" / "plan.json"
+    argv = [
+        "issue-plan",
+        "--report",
+        str(output_dir / "report.json"),
+        "--policy",
+        str(POLICY),
+        "--output",
+        str(issue_plan),
+    ]
+
+    assert main(argv) == EXIT_OK
+    plan = json.loads(issue_plan.read_text(encoding="utf-8"))
+    assert len(plan["actions"]) == 1
+    assert plan["actions"][0]["action"] == "active"
+
+    assert main(argv) == EXIT_PIPELINE_ERROR
+    assert "cannot write issue plan: FileExistsError" in capsys.readouterr().err
+
+
+def test_publish_issues_command_binds_validated_plan_to_adapter(
+    git_checkout, tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, sha = git_checkout("trivy_ignore_unfixed_bad.yml")
+    output_dir = tmp_path / "out"
+    assert main(_argv(repo, sha, output_dir)) == EXIT_OK
+    capsys.readouterr()
+    captured: dict[str, object] = {}
+
+    def fake_client(repository: str) -> object:
+        captured["repository"] = repository
+        return object()
+
+    def fake_publish(plan, client: object, app_bot_login: str) -> PublicationResult:
+        captured["plan"] = plan
+        captured["client"] = client
+        captured["app_bot_login"] = app_bot_login
+        return PublicationResult(created=1)
+
+    monkeypatch.setattr(cli_module, "GhCliIssueClient", fake_client)
+    monkeypatch.setattr(cli_module, "publish_issue_plan", fake_publish)
+
+    assert (
+        main(
+            [
+                "publish-issues",
+                "--report",
+                str(output_dir / "report.json"),
+                "--policy",
+                str(POLICY),
+                "--app-bot-login",
+                "advisor[bot]",
+            ]
+        )
+        == EXIT_OK
+    )
+
+    assert captured["repository"] == "ImranAdan/infra-fleet-public"
+    assert captured["app_bot_login"] == "advisor[bot]"
+    assert "published 1 issue(s)" in capsys.readouterr().out
+
+
+def test_publish_issues_reports_revalidation_as_a_policy_error(tmp_path: Path, capsys) -> None:
+    report = tmp_path / "report.json"
+    report.write_text("{}", encoding="utf-8")
+
+    assert (
+        main(
+            [
+                "publish-issues",
+                "--report",
+                str(report),
+                "--policy",
+                str(POLICY),
+                "--app-bot-login",
+                "advisor[bot]",
+            ]
+        )
+        == EXIT_POLICY_ERROR
+    )
+    assert "policy error: cannot read report provenance" in capsys.readouterr().err

@@ -18,6 +18,10 @@ class BoundedExecutionExceeded(AdvisorError):
     pass
 
 
+class IssuePublicationError(AdvisorError):
+    """A fleet issue could not be published without violating a safety rule."""
+
+
 class SynthesisError(AdvisorError):
     """Synthesis could not complete. Never degraded to an empty result: an
     empty synthesis would mark every prior finding resolved."""
