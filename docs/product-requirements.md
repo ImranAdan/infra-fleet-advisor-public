@@ -166,6 +166,12 @@ begins refusing candidates has drifted, and that must reach a reviewer even when
 the accepted findings are identical — so a rejection-only change does propose a
 pull request.
 
+Closing an advisory pull request without merging records a decline at that
+report's deterministic material signature. An identical run is not proposed
+again until findings, cited evidence, collector coverage, rejection reasons, or
+an owner-accepted trade-off changes. Pull-request prose is untrusted; only the
+exact versioned signature marker written by the advisor is interpreted.
+
 ### FR12: Mechanical remediation
 
 The advisor may propose a code change to the fleet as a pull request, for the

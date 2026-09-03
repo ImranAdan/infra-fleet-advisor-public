@@ -6,6 +6,7 @@ import pytest
 from infra_fleet_advisor.core.errors import PolicyError
 from infra_fleet_advisor.runtime.cli import (
     EXIT_OK,
+    EXIT_POLICY_ERROR,
     EXIT_PROVENANCE_ERROR,
     EXIT_UNSAFE_OUTPUT_ERROR,
     main,
@@ -92,3 +93,115 @@ def test_unknown_synthesizer_name_is_rejected_rather_than_defaulting(
     )
     with pytest.raises(PolicyError):
         compose_and_run(inputs, SystemClock())
+
+
+def test_report_signature_command_prints_a_versioned_digest(
+    git_checkout, tmp_path: Path, capsys
+) -> None:
+    repo, sha = git_checkout("trivy_ignore_unfixed_bad.yml")
+    output_dir = tmp_path / "out"
+    assert main(_argv(repo, sha, output_dir)) == EXIT_OK
+
+    assert main(["report-signature", "--report", str(output_dir / "report.json")]) == EXIT_OK
+
+    output = capsys.readouterr().out.splitlines()
+    assert output[-1].startswith("v1:")
+    assert len(output[-1]) == 67
+
+
+def test_report_signature_command_rejects_a_malformed_report(tmp_path: Path, capsys) -> None:
+    report = tmp_path / "report.json"
+    report.write_text("{}", encoding="utf-8")
+
+    assert main(["report-signature", "--report", str(report)]) == EXIT_POLICY_ERROR
+    assert "policy error: cannot compute report signature" in capsys.readouterr().err
+
+
+def test_publication_decision_command_returns_machine_readable_result(
+    git_checkout, tmp_path: Path, capsys
+) -> None:
+    repo, sha = git_checkout("trivy_ignore_unfixed_bad.yml")
+    output_dir = tmp_path / "out"
+    assert main(_argv(repo, sha, output_dir)) == EXIT_OK
+    capsys.readouterr()
+
+    report = output_dir / "report.json"
+    assert (
+        main(
+            [
+                "publication-decision",
+                "--report",
+                str(report),
+                "--prior-report",
+                str(report),
+            ]
+        )
+        == EXIT_OK
+    )
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["decision"] == "unchanged"
+    assert result["marker"].startswith("<!-- infra-fleet-advisor-report-signature: v1:")
+
+
+def test_publication_decision_command_reads_a_decline_marker(
+    git_checkout, tmp_path: Path, capsys
+) -> None:
+    repo, sha = git_checkout("trivy_ignore_unfixed_bad.yml")
+    current_dir = tmp_path / "current"
+    assert main(_argv(repo, sha, current_dir)) == EXIT_OK
+    capsys.readouterr()
+
+    prior_dir = tmp_path / "prior"
+    assert main(_argv(repo, sha, prior_dir)) == EXIT_OK
+    prior_payload = json.loads((prior_dir / "report.json").read_text(encoding="utf-8"))
+    prior_payload["coverage"][0]["evidence_count"] += 1
+    (prior_dir / "report.json").write_text(json.dumps(prior_payload), encoding="utf-8")
+    capsys.readouterr()
+
+    assert main(["report-signature", "--report", str(current_dir / "report.json")]) == EXIT_OK
+    signature = capsys.readouterr().out.strip()
+    body = tmp_path / "body.txt"
+    body.write_text(
+        f"prose\n<!-- infra-fleet-advisor-report-signature: {signature} -->\n",
+        encoding="utf-8",
+    )
+
+    assert (
+        main(
+            [
+                "publication-decision",
+                "--report",
+                str(current_dir / "report.json"),
+                "--prior-report",
+                str(prior_dir / "report.json"),
+                "--latest-declined-pr-body",
+                str(body),
+            ]
+        )
+        == EXIT_OK
+    )
+    assert json.loads(capsys.readouterr().out)["decision"] == "declined"
+
+
+def test_publication_decision_command_rejects_missing_decline_body_without_path_leak(
+    tmp_path: Path, capsys
+) -> None:
+    missing = tmp_path / "secret-location" / "body.txt"
+
+    assert (
+        main(
+            [
+                "publication-decision",
+                "--report",
+                str(tmp_path / "unused.json"),
+                "--latest-declined-pr-body",
+                str(missing),
+            ]
+        )
+        == EXIT_POLICY_ERROR
+    )
+
+    error = capsys.readouterr().err
+    assert "cannot read declined pull request body: FileNotFoundError" in error
+    assert str(missing) not in error

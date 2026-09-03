@@ -1,12 +1,19 @@
 import argparse
+import json
 import sys
 from collections.abc import Sequence
+from dataclasses import asdict
 from pathlib import Path
 
 from infra_fleet_advisor.core.errors import AdvisorError, PolicyError, ProvenanceError
 from infra_fleet_advisor.provenance.source_verification import verify_snapshot
 from infra_fleet_advisor.runtime.clock import SystemClock
 from infra_fleet_advisor.runtime.composition import SYNTHESIZERS, RunInputs, compose_and_run
+from infra_fleet_advisor.runtime.report_signature import (
+    compute_report_signature,
+    decide_publication,
+    read_declined_pr_body,
+)
 from infra_fleet_advisor.runtime.report_writer import (
     load_prior_report,
     read_report_source_sha,
@@ -44,6 +51,19 @@ def _build_parser() -> argparse.ArgumentParser:
     remediate.add_argument(
         "--dry-run", action="store_true", help="Report what would change without writing"
     )
+
+    signature = sub.add_parser(
+        "report-signature", help="Compute the material publication signature of a report"
+    )
+    signature.add_argument("--report", required=True, type=Path)
+
+    publication = sub.add_parser(
+        "publication-decision",
+        help="Decide whether a report changed or matches an accepted or declined report",
+    )
+    publication.add_argument("--report", required=True, type=Path)
+    publication.add_argument("--prior-report", type=Path, default=None)
+    publication.add_argument("--latest-declined-pr-body", type=Path, default=None)
     return parser
 
 
@@ -99,6 +119,32 @@ def _remediate(args: argparse.Namespace) -> int:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
+
+    if args.command == "publication-decision":
+        try:
+            declined_body = (
+                read_declined_pr_body(args.latest_declined_pr_body)
+                if args.latest_declined_pr_body is not None
+                else ""
+            )
+            decision = decide_publication(
+                args.report,
+                prior_report=args.prior_report,
+                latest_declined_pr_body=declined_body,
+            )
+            print(json.dumps(asdict(decision), sort_keys=True))
+            return EXIT_OK
+        except PolicyError as exc:
+            print(f"policy error: {exc}", file=sys.stderr)
+            return EXIT_POLICY_ERROR
+
+    if args.command == "report-signature":
+        try:
+            print(compute_report_signature(args.report))
+            return EXIT_OK
+        except PolicyError as exc:
+            print(f"policy error: {exc}", file=sys.stderr)
+            return EXIT_POLICY_ERROR
 
     if args.command == "remediate":
         try:

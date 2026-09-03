@@ -95,6 +95,15 @@ Deterministic code checks schema, evidence existence, category, limits, and
 secret-safe fields. Only validated recommendations reach JSON or Markdown
 output.
 
+Report delivery derives a versioned signature from deterministic material only:
+recommendation fingerprints and lifecycle, cited evidence records including
+repository locations, collector coverage records, rejection reasons, and
+accepted trade-offs. Model prose, ranking, and run timestamps are excluded. The
+signature is recorded as an inert marker in an advisory pull request. If the
+latest closed, unmerged advisory pull request has the same exact marker,
+delivery treats that state as declined and does not re-propose it; arbitrary
+pull-request prose never enters analysis or policy.
+
 ## Run lifecycle
 
 1. Load and validate advisor policy.

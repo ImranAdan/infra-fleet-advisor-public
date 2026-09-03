@@ -104,6 +104,12 @@ Reports also record *why* candidates were refused, not just how many. A
 synthesizer that starts rejecting candidates has drifted, and that is the case
 the rejection comparison exists to surface.
 
+Closing an advisory pull request without merging declines that exact material
+report state. The workflow records a versioned signature in the pull-request
+body and does not re-propose the same findings, evidence, coverage, rejection
+reasons, and accepted trade-offs until one of them changes. It never interprets
+pull-request prose as policy or evidence.
+
 If synthesis fails, the run exits non-zero and writes no report. It never
 degrades to an empty result, because an empty result would mark every
 outstanding finding resolved.
@@ -158,8 +164,9 @@ so far used `--synthesizer stub`, so the findings are real — the collectors ar
 deterministic — while the prose around them is templated.
 
 `docs/decisions/0001-advisory-delivery-and-feedback-loop.md` records what closing
-the loop requires: issues raised against the fleet, a decline record, and a
-feedback path back into policy. None of that is built yet.
+the loop requires. Stable evidence identity and closed-pull-request decline
+records are implemented. Raising deduplicated issues against the fleet and
+feeding a validated `wontfix` decision back into policy remain to be built.
 
 ## Documentation
 
