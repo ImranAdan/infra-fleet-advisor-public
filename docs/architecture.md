@@ -18,6 +18,10 @@ Prior report ──────────────────────�
                                                            │ merged
                                                            ↓
                                       revalidated issue plan → fleet issues
+                                                                    │
+                                                   closed + typed reason labels
+                                                                    ↓
+                                      validated feedback plan → policy PR
 ```
 
 ## Domain boundaries
@@ -116,6 +120,19 @@ plan. It uses an installation token limited to `issues: write`, deduplicates on 
 per-fingerprint label and body marker, and never changes issue state. Resolution
 means “no longer detected” and produces an idempotent note for human review, not
 automatic closure.
+
+Fleet decision feedback is a third deterministic boundary. The GitHub adapter
+projects fleet issues into number, state, author, and label sets; title, body,
+and comments are discarded at the boundary. Trusted code accepts only closed,
+App-authored advisor issues with one fingerprint and one reason from a static
+vocabulary. It resolves the fingerprint against the revalidated current report
+and refuses to widen one issue into a concern-level policy decision when that
+concern has multiple active findings. The resulting plan changes only
+`policy.yaml`, assigns a deterministic new policy version, and is proposed as a
+human-reviewed pull request in the advisor repository. A fleet token with
+`issues: read` cannot change the fleet. An open workflow-authored proposal is
+withdrawn if its source labels or closed state are revoked; a typed cancellation
+marker prevents that closure from becoming a decline record.
 
 ## Run lifecycle
 

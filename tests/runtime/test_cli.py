@@ -15,6 +15,12 @@ from infra_fleet_advisor.runtime.cli import (
 )
 from infra_fleet_advisor.runtime.clock import SystemClock
 from infra_fleet_advisor.runtime.composition import RunInputs, compose_and_run
+from infra_fleet_advisor.runtime.fleet_feedback import (
+    ADVISOR_ISSUE_LABEL,
+    WONTFIX_LABEL,
+    FleetIssueRecord,
+    FleetIssueRecords,
+)
 from infra_fleet_advisor.runtime.github_issues import PublicationResult
 
 POLICY = Path(__file__).parent.parent / "fixtures" / "policies" / "valid_policy.yaml"
@@ -328,3 +334,93 @@ def test_publish_issues_reports_revalidation_as_a_policy_error(tmp_path: Path, c
         == EXIT_POLICY_ERROR
     )
     assert "policy error: cannot read report provenance" in capsys.readouterr().err
+
+
+def test_feedback_plan_command_reads_only_typed_issue_metadata(
+    git_checkout, tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, sha = git_checkout("trivy_ignore_unfixed_bad.yml")
+    output_dir = tmp_path / "out"
+    assert main(_argv(repo, sha, output_dir)) == EXIT_OK
+    capsys.readouterr()
+    report_path = output_dir / "report.json"
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    fingerprint = report["recommendations"][0]["fingerprint"]
+    captured: dict[str, object] = {}
+
+    class FakeFeedbackClient:
+        def all_advisor_issue_records(self) -> FleetIssueRecords:
+            return FleetIssueRecords(
+                (
+                    FleetIssueRecord(
+                        number=42,
+                        state="closed",
+                        author="advisor[bot]",
+                        labels=frozenset(
+                            {
+                                ADVISOR_ISSUE_LABEL,
+                                WONTFIX_LABEL,
+                                "advisor:tradeoff:cost",
+                                f"advisor:fp:{fingerprint.removeprefix('fp_')}",
+                            }
+                        ),
+                    ),
+                ),
+                complete=True,
+            )
+
+    def fake_client(repository: str) -> FakeFeedbackClient:
+        captured["repository"] = repository
+        return FakeFeedbackClient()
+
+    monkeypatch.setattr(cli_module, "GhCliIssueClient", fake_client)
+    output_policy = tmp_path / "feedback" / "policy.yaml"
+    output_plan = tmp_path / "feedback" / "plan.json"
+
+    assert (
+        main(
+            [
+                "feedback-plan",
+                "--report",
+                str(report_path),
+                "--policy",
+                str(POLICY),
+                "--app-bot-login",
+                "advisor[bot]",
+                "--output-policy",
+                str(output_policy),
+                "--output-plan",
+                str(output_plan),
+            ]
+        )
+        == EXIT_OK
+    )
+
+    assert captured["repository"] == "ImranAdan/infra-fleet-public"
+    assert "issue prose was not imported" in output_policy.read_text(encoding="utf-8")
+    assert json.loads(output_plan.read_text(encoding="utf-8"))["additions"][0]["issue_number"] == 42
+
+    open_prs = tmp_path / "open-prs.json"
+    latest_prs = tmp_path / "latest-prs.json"
+    open_prs.write_text("[]", encoding="utf-8")
+    latest_prs.write_text("[]", encoding="utf-8")
+    capsys.readouterr()
+    assert (
+        main(
+            [
+                "feedback-publication-decision",
+                "--plan",
+                str(output_plan),
+                "--open-prs",
+                str(open_prs),
+                "--latest-prs",
+                str(latest_prs),
+                "--repository",
+                "ImranAdan/infra-fleet-advisor-public",
+                "--branch",
+                "advisor/feedback-wontfix",
+            ]
+        )
+        == EXIT_OK
+    )
+    assert json.loads(capsys.readouterr().out)["action"] == "create"

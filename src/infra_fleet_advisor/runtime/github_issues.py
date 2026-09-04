@@ -8,6 +8,13 @@ from typing import Any, Protocol
 from urllib.parse import quote
 
 from infra_fleet_advisor.core.errors import IssuePublicationError
+from infra_fleet_advisor.runtime.fleet_feedback import (
+    ADVISOR_ISSUE_LABEL,
+    TRADE_OFF_LABELS,
+    WONTFIX_LABEL,
+    FleetIssueRecord,
+    FleetIssueRecords,
+)
 from infra_fleet_advisor.runtime.issue_publication import (
     FLEET_REPOSITORY,
     IssueAction,
@@ -17,6 +24,8 @@ from infra_fleet_advisor.runtime.issue_publication import (
 MAX_SEARCH_RESULTS = 100
 COMMENTS_PER_PAGE = 100
 MAX_COMMENT_PAGES = 10
+ISSUES_PER_PAGE = 100
+MAX_ISSUE_PAGES = 10
 _BOT_LOGIN = re.compile(r"^[A-Za-z0-9-]+\[bot\]$")
 
 
@@ -27,6 +36,7 @@ class RemoteIssue:
     author: str
     body: str
     is_pull_request: bool = False
+    labels: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,7 +117,7 @@ def _find_existing_issue(
     return (advisor_matches[0], True) if advisor_matches else (None, False)
 
 
-def _ensure_advisor_labels(client: GitHubIssueClient, fingerprint_label: str) -> None:
+def _ensure_issue_labels(client: GitHubIssueClient, fingerprint_label: str) -> None:
     client.ensure_label(
         "infra-fleet-advisor",
         "5319e7",
@@ -120,6 +130,20 @@ def _ensure_advisor_labels(client: GitHubIssueClient, fingerprint_label: str) ->
     )
 
 
+def _ensure_feedback_labels(client: GitHubIssueClient) -> None:
+    client.ensure_label(
+        WONTFIX_LABEL,
+        "6e7781",
+        "Owner declines this recommendation as an accepted trade-off",
+    )
+    for label in TRADE_OFF_LABELS:
+        client.ensure_label(
+            label,
+            "d4c5f9",
+            "Closed reason used by Infra Fleet Advisor policy feedback",
+        )
+
+
 def _publish_one(
     action: IssueAction,
     client: GitHubIssueClient,
@@ -127,15 +151,16 @@ def _publish_one(
 ) -> PublicationResult:
     issue, found_by_body = _find_existing_issue(action, client, app_bot_login)
     labels_restored = 0
-    if issue is not None and found_by_body:
-        _ensure_advisor_labels(client, action.fingerprint_label)
-        client.add_labels(issue.number, ("infra-fleet-advisor", action.fingerprint_label))
+    expected_labels = frozenset((ADVISOR_ISSUE_LABEL, action.fingerprint_label))
+    if issue is not None and (found_by_body or not expected_labels.issubset(issue.labels)):
+        _ensure_issue_labels(client, action.fingerprint_label)
+        client.add_labels(issue.number, tuple(sorted(expected_labels)))
         labels_restored = 1
 
     if action.action == "active":
         if issue is not None:
             return PublicationResult(existing=1, labels_restored=labels_restored)
-        _ensure_advisor_labels(client, action.fingerprint_label)
+        _ensure_issue_labels(client, action.fingerprint_label)
         client.create_issue(
             action.title,
             action.body,
@@ -179,6 +204,8 @@ def publish_issue_plan(
         raise IssuePublicationError("issue plan targets an unsupported repository")
     if not _BOT_LOGIN.fullmatch(app_bot_login):
         raise IssuePublicationError("invalid GitHub App bot login")
+    if any(action.action == "active" for action in plan.actions):
+        _ensure_feedback_labels(client)
 
     total = PublicationResult()
     failures = 0
@@ -204,10 +231,10 @@ class GhCliIssueClient:
 
     def __init__(self, repository: str) -> None:
         if not os.environ.get("GH_TOKEN"):
-            raise IssuePublicationError("GH_TOKEN is required for issue publication")
+            raise IssuePublicationError("GH_TOKEN is required for GitHub issue access")
         executable = shutil.which("gh")
         if executable is None:
-            raise IssuePublicationError("GitHub CLI is required for issue publication")
+            raise IssuePublicationError("GitHub CLI is required for GitHub issue access")
         self._repository = repository
         self._executable = executable
 
@@ -252,12 +279,16 @@ class GhCliIssueClient:
     @staticmethod
     def _issue(raw: Any) -> RemoteIssue:
         try:
+            raw_labels = raw.get("labels", [])
+            if not isinstance(raw_labels, list):
+                raise TypeError
             issue = RemoteIssue(
                 number=int(raw["number"]),
                 state=str(raw["state"]),
                 author=str(raw["user"]["login"]),
                 body=str(raw.get("body") or ""),
                 is_pull_request="pull_request" in raw,
+                labels=frozenset(str(label["name"]) for label in raw_labels),
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise IssuePublicationError("GitHub returned a malformed issue") from exc
@@ -363,3 +394,40 @@ class GhCliIssueClient:
             method="POST",
             payload={"body": body},
         )
+
+    def all_advisor_issue_records(self) -> FleetIssueRecords:
+        records: list[FleetIssueRecord] = []
+        for page in range(1, MAX_ISSUE_PAGES + 1):
+            raw = self._api_json(
+                f"repos/{self._repository}/issues",
+                fields={
+                    "state": "all",
+                    "labels": ADVISOR_ISSUE_LABEL,
+                    "per_page": str(ISSUES_PER_PAGE),
+                    "page": str(page),
+                },
+            )
+            if not isinstance(raw, list):
+                raise IssuePublicationError("GitHub returned a malformed feedback issue list")
+            try:
+                for item in raw:
+                    if "pull_request" in item:
+                        continue
+                    labels = item.get("labels", [])
+                    if not isinstance(labels, list):
+                        raise TypeError
+                    records.append(
+                        FleetIssueRecord(
+                            number=int(item["number"]),
+                            state=str(item["state"]),
+                            author=str(item["user"]["login"]),
+                            labels=frozenset(str(label["name"]) for label in labels),
+                        )
+                    )
+                    if records[-1].number < 1 or records[-1].state not in ("open", "closed"):
+                        raise ValueError
+            except (KeyError, TypeError, ValueError) as exc:
+                raise IssuePublicationError("GitHub returned a malformed feedback issue") from exc
+            if len(raw) < ISSUES_PER_PAGE:
+                return FleetIssueRecords(tuple(records), complete=True)
+        return FleetIssueRecords(tuple(records), complete=False)

@@ -1,11 +1,14 @@
 import json
 import subprocess
+from dataclasses import replace
 from typing import Literal
 
 import pytest
 
 from infra_fleet_advisor.core.errors import IssuePublicationError
+from infra_fleet_advisor.runtime.fleet_feedback import TRADE_OFF_LABELS, WONTFIX_LABEL
 from infra_fleet_advisor.runtime.github_issues import (
+    ADVISOR_ISSUE_LABEL,
     CommentResult,
     GhCliIssueClient,
     PublicationResult,
@@ -35,6 +38,7 @@ def _action(
     return IssueAction(
         action=action,
         fingerprint=fingerprint,
+        concern_key="trivy_ignore_unfixed",
         fingerprint_label=f"advisor:fp:{digest}",
         fingerprint_marker=fingerprint_marker,
         title="[Advisor][medium] Test finding",
@@ -60,14 +64,18 @@ class FakeIssueClient:
 
     def issues_with_label(self, label: str) -> tuple[RemoteIssue, ...]:
         return tuple(
-            issue
+            replace(issue, labels=frozenset(self.issue_labels.get(number, set())))
             for number, issue in self.issues.items()
             if label in self.issue_labels.get(number, set())
         )
 
     def search_by_fingerprint(self, fingerprint: str) -> SearchResult:
         return SearchResult(
-            tuple(issue for issue in self.issues.values() if fingerprint in issue.body),
+            tuple(
+                replace(issue, labels=frozenset(self.issue_labels.get(number, set())))
+                for number, issue in self.issues.items()
+                if fingerprint in issue.body
+            ),
             fingerprint not in self.incomplete_searches,
         )
 
@@ -115,7 +123,9 @@ class FakeIssueClient:
             body if body is not None else action.body,
             is_pull_request,
         )
-        self.issue_labels[number] = {action.fingerprint_label} if labelled else set()
+        self.issue_labels[number] = (
+            {ADVISOR_ISSUE_LABEL, action.fingerprint_label} if labelled else set()
+        )
         self.issue_comments[number] = []
         return number
 
@@ -130,6 +140,8 @@ def test_active_publication_is_idempotent_per_fingerprint() -> None:
     assert first == PublicationResult(created=1)
     assert second == PublicationResult(existing=1)
     assert len(client.issues) == 1
+    assert WONTFIX_LABEL in client.labels
+    assert set(TRADE_OFF_LABELS).issubset(client.labels)
 
 
 def test_body_marker_recovers_labels_without_creating_a_duplicate() -> None:
@@ -143,6 +155,18 @@ def test_body_marker_recovers_labels_without_creating_a_duplicate() -> None:
     assert action.fingerprint_label in client.issue_labels[issue_number]
     assert "infra-fleet-advisor" in client.issue_labels[issue_number]
     assert len(client.issues) == 1
+
+
+def test_fingerprint_lookup_restores_a_missing_advisor_label() -> None:
+    client = FakeIssueClient()
+    action = _action("0" * 24)
+    issue_number = client.add_existing(action)
+    client.issue_labels[issue_number].remove(ADVISOR_ISSUE_LABEL)
+
+    result = publish_issue_plan(_plan(action), client, BOT)
+
+    assert result == PublicationResult(existing=1, labels_restored=1)
+    assert ADVISOR_ISSUE_LABEL in client.issue_labels[issue_number]
 
 
 def test_resolution_comment_is_once_per_fingerprint_across_source_commits() -> None:
@@ -373,3 +397,65 @@ def test_gh_adapter_sends_issue_body_as_json_stdin(
         "body": "body with $(inert)",
         "labels": ["label"],
     }
+
+
+def test_gh_adapter_paginates_feedback_records_and_ignores_pull_requests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _adapter()
+    requested_pages: list[str] = []
+
+    def raw_issue(number: int, *, pull_request: bool = False) -> dict[str, object]:
+        issue: dict[str, object] = {
+            "number": number,
+            "state": "closed",
+            "user": {"login": BOT},
+            "labels": [
+                {"name": ADVISOR_ISSUE_LABEL},
+                {"name": "advisor:wontfix"},
+            ],
+        }
+        if pull_request:
+            issue["pull_request"] = {"url": "https://example.invalid"}
+        return issue
+
+    def fake_api(endpoint, *, method="GET", fields=None, payload=None):
+        assert endpoint.endswith("/issues")
+        assert method == "GET"
+        assert payload is None
+        assert fields["state"] == "all"
+        assert fields["labels"] == ADVISOR_ISSUE_LABEL
+        requested_pages.append(fields["page"])
+        if fields["page"] == "1":
+            return [raw_issue(index) for index in range(1, 101)]
+        return [raw_issue(101), raw_issue(102, pull_request=True)]
+
+    monkeypatch.setattr(client, "_api_json", fake_api)
+
+    result = client.all_advisor_issue_records()
+
+    assert result.complete
+    assert len(result.issues) == 101
+    assert result.issues[-1].labels == frozenset({ADVISOR_ISSUE_LABEL, "advisor:wontfix"})
+    assert requested_pages == ["1", "2"]
+
+
+def test_gh_adapter_rejects_invalid_feedback_issue_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _adapter()
+    monkeypatch.setattr(
+        client,
+        "_api_json",
+        lambda *args, **kwargs: [
+            {
+                "number": 0,
+                "state": "deleted",
+                "user": {"login": BOT},
+                "labels": [],
+            }
+        ],
+    )
+
+    with pytest.raises(IssuePublicationError, match="malformed feedback issue"):
+        client.all_advisor_issue_records()

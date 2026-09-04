@@ -22,6 +22,8 @@ deduplicated issues in the fleet using a GitHub App token scoped only to
 `issues: write`. It may add an idempotent resolution note, but never close or
 reopen an issue. Issue prose and comments are untrusted and may never feed
 analysis or policy; only validated labels and state may enter the feedback path.
+The feedback workflow may read those issue fields and propose `policy.yaml` in
+this repository, but it may not change the fleet or merge the policy proposal.
 
 The `fleet-advisory` workflow does open a pull request, but only in *this*
 repository and only to propose the report it just produced. The fleet remains
@@ -141,7 +143,8 @@ orchestration, live-cluster access, or a reusable workflow engine.
 
 - Operate with read-only access to target repository code. The only write
   exceptions are the issues-only publisher in PDR 0001 and the manually
-  dispatched pull-request proposer in PDR 0002.
+  dispatched pull-request proposer in PDR 0002. The PDR 0001 feedback path reads
+  fleet issue metadata and may propose policy only in this repository.
 - Do not require AWS, Kubernetes, Terraform Cloud, or production credentials.
 - Verify a clean target checkout against a declared full Git SHA, or materialize
   that commit into an isolated snapshot, before analysis.

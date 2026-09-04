@@ -30,6 +30,7 @@ _FINGERPRINT = re.compile(r"^fp_[0-9a-f]{24}$")
 class IssueAction:
     action: Literal["active", "resolved"]
     fingerprint: str
+    concern_key: str
     fingerprint_label: str
     fingerprint_marker: str
     title: str
@@ -253,6 +254,7 @@ def build_issue_plan(report_path: Path, policy_path: Path) -> IssuePlan:
             IssueAction(
                 action=action,
                 fingerprint=recommendation.fingerprint,
+                concern_key=recommendation.concern_key,
                 fingerprint_label=label,
                 fingerprint_marker=fingerprint_marker,
                 title=_issue_title(recommendation.priority, recommendation.title),
