@@ -114,7 +114,7 @@ def test_report_signature_command_prints_a_versioned_digest(
     assert main(["report-signature", "--report", str(output_dir / "report.json")]) == EXIT_OK
 
     output = capsys.readouterr().out.splitlines()
-    assert output[-1].startswith("v1:")
+    assert output[-1].startswith("v2:")
     assert len(output[-1]) == 67
 
 
@@ -150,7 +150,7 @@ def test_publication_decision_command_returns_machine_readable_result(
 
     result = json.loads(capsys.readouterr().out)
     assert result["decision"] == "unchanged"
-    assert result["marker"].startswith("<!-- infra-fleet-advisor-report-signature: v1:")
+    assert result["marker"].startswith("<!-- infra-fleet-advisor-report-signature: v2:")
 
 
 def test_publication_decision_command_reads_a_decline_marker(
@@ -170,9 +170,26 @@ def test_publication_decision_command_reads_a_decline_marker(
 
     assert main(["report-signature", "--report", str(current_dir / "report.json")]) == EXIT_OK
     signature = capsys.readouterr().out.strip()
-    body = tmp_path / "body.txt"
-    body.write_text(
-        f"prose\n<!-- infra-fleet-advisor-report-signature: {signature} -->\n",
+    history = tmp_path / "pulls.json"
+    history.write_text(
+        json.dumps(
+            [
+                {
+                    "number": 4,
+                    "state": "closed",
+                    "user": {"login": "github-actions[bot]"},
+                    "body": (
+                        f"prose\n<!-- infra-fleet-advisor-report-signature: {signature} -->\n"
+                    ),
+                    "merged_at": None,
+                    "head": {
+                        "ref": "advisory/latest",
+                        "repo": {"full_name": "ImranAdan/infra-fleet-advisor-public"},
+                    },
+                    "base": {"repo": {"full_name": "ImranAdan/infra-fleet-advisor-public"}},
+                }
+            ]
+        ),
         encoding="utf-8",
     )
 
@@ -184,8 +201,12 @@ def test_publication_decision_command_reads_a_decline_marker(
                 str(current_dir / "report.json"),
                 "--prior-report",
                 str(prior_dir / "report.json"),
-                "--latest-declined-pr-body",
-                str(body),
+                "--closed-pr-history",
+                str(history),
+                "--repository",
+                "ImranAdan/infra-fleet-advisor-public",
+                "--branch",
+                "advisory/latest",
             ]
         )
         == EXIT_OK

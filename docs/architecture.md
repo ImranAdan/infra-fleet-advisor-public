@@ -104,12 +104,13 @@ secret-safe fields. Only validated recommendations reach JSON or Markdown
 output.
 
 Report delivery derives a versioned signature from deterministic material only:
-recommendation fingerprints and lifecycle, cited evidence records including
-repository locations, collector coverage records, rejection reasons, and
-accepted trade-offs. Model prose, ranking, and run timestamps are excluded. The
-signature is recorded as an inert marker in an advisory pull request. If the
-latest closed, unmerged advisory pull request has the same exact marker,
-delivery treats that state as declined and does not re-propose it; arbitrary
+the policy version, recommendation fingerprints and lifecycle, cited evidence
+records including repository locations, collector coverage records, rejection
+reasons, and accepted trade-offs. Model prose, ranking, and run timestamps are
+excluded. The signature is recorded as an inert marker in an advisory pull
+request. Deterministic code reads a bounded, complete branch history and selects
+the latest workflow-authored decision. An unmerged decision with the same exact
+marker is a decline; a newer workflow merge supersedes it. Arbitrary
 pull-request prose never enters analysis or policy.
 
 Fleet issue publication is a second publication boundary after report merge.
@@ -130,13 +131,15 @@ and refuses to widen one issue into a concern-level policy decision when that
 concern has multiple active findings. The resulting plan changes only
 `policy.yaml`, assigns a deterministic new policy version, and is proposed as a
 human-reviewed pull request in the advisor repository. A fleet token with
-`issues: read` cannot change the fleet. An open workflow-authored proposal is
-withdrawn if its source labels or closed state are revoked; a typed cancellation
-marker prevents that closure from becoming a decline record. Declines are
-matched by signature across a bounded complete history rather than only the
-newest proposal. A workflow-owned branch left by partial PR creation is
-recoverable only when its single parent is merged history and its sole changed
-path is `policy.yaml`; replacement remains protected by an exact lease.
+`issues: read` cannot change the fleet. A stale report caused by a policy version
+change pauses feedback without withdrawing an open proposal. An open
+workflow-authored proposal is withdrawn only after current evidence shows its
+source labels or closed state were revoked; a typed cancellation marker prevents
+that closure from becoming a decline record. Declines are matched by signature
+across a bounded complete history rather than only the newest proposal. A
+workflow-owned branch left by partial PR creation is recoverable only when its
+single parent is merged history and its sole changed path is `policy.yaml`;
+replacement remains protected by an exact lease.
 
 ## Run lifecycle
 

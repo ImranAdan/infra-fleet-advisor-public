@@ -430,6 +430,16 @@ def test_policy_version_mismatch_waits_for_a_fresh_report(tmp_path: Path) -> Non
 
     assert plan.status == "awaiting_report_refresh"
     assert plan.additions == ()
+    open_pr = _pull_request(plan)
+    decision = decide_feedback_publication(
+        plan,
+        (open_pr,),
+        (open_pr,),
+        branch_tip="a" * 40,
+    )
+    assert decision.action == "none"
+    assert decision.reason == "awaiting_report_refresh"
+    assert decision.open_pr_number == open_pr.number
 
 
 def test_feedback_plan_round_trip_rejects_tampering(tmp_path: Path) -> None:

@@ -288,6 +288,12 @@ def decide_feedback_publication(
         open_pr.state != "open" or open_pr.author.casefold() != workflow_bot_login.casefold()
     ):
         raise PolicyError("open feedback pull request is not workflow-owned")
+    if plan.status == "awaiting_report_refresh":
+        return FeedbackPublicationDecision(
+            "none",
+            "awaiting_report_refresh",
+            open_pr.number if open_pr is not None else None,
+        )
     if not plan.additions:
         if open_pr is None:
             return FeedbackPublicationDecision("none", "no_feedback")

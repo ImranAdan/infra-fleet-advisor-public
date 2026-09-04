@@ -23,6 +23,7 @@ FIXTURES = Path(__file__).parent.parent / "fixtures"
 POLICY = FIXTURES / "policies" / "valid_policy.yaml"
 SOURCE_SHA = "a" * 40
 EVIDENCE_ID = "github_actions_workflow_collector:aaaaaaaaaaaaaaaa"
+SECOND_EVIDENCE_ID = "github_actions_workflow_collector:bbbbbbbbbbbbbbbb"
 
 
 def _recommendation(
@@ -266,6 +267,26 @@ def test_issue_plan_rejects_duplicate_fingerprints(tmp_path: Path) -> None:
 
     with pytest.raises(PolicyError, match="duplicate fingerprint"):
         build_issue_plan(report, POLICY)
+
+
+def test_issue_plan_enforces_the_policy_active_recommendation_limit(tmp_path: Path) -> None:
+    report = _write_report(tmp_path)
+    payload = json.loads(report.read_text(encoding="utf-8"))
+    second_evidence = dict(payload["evidence"][0])
+    second_evidence["evidence_id"] = SECOND_EVIDENCE_ID
+    second_evidence["locator"] = "jobs.security.steps[3]"
+    payload["evidence"].append(second_evidence)
+    second_recommendation = dict(payload["recommendations"][0])
+    second_recommendation["evidence_ids"] = [SECOND_EVIDENCE_ID]
+    second_recommendation["fingerprint"] = compute_fingerprint(
+        "security", CONCERN_TRIVY_IGNORE_UNFIXED, (SECOND_EVIDENCE_ID,)
+    )
+    payload["recommendations"].append(second_recommendation)
+    report.write_text(json.dumps(payload), encoding="utf-8")
+    policy = _policy_with(tmp_path, "max_recommendations: 10", "max_recommendations: 1")
+
+    with pytest.raises(PolicyError, match="policy limit of 1 active recommendations"):
+        build_issue_plan(report, policy)
 
 
 def test_issue_plan_enforces_action_and_body_bounds(

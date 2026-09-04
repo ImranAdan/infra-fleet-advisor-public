@@ -193,7 +193,8 @@ Merging an advisory report may publish each active, validated recommendation as
 an issue in `infra-fleet-public`. The publisher revalidates the merged report
 against the current closed policy before acquiring a cross-repository token.
 Recommendations that are suppressed, carry an owner-accepted trade-off, cite
-invalid evidence, or have a mismatched fingerprint are ineligible.
+invalid evidence, or have a mismatched fingerprint are ineligible. The number
+of active issue actions must not exceed the policy recommendation limit.
 
 Issue creation is idempotent per recommendation fingerprint. A partial failure
 must be safely retryable without duplicating the issues already created, and a
@@ -223,12 +224,13 @@ as a pull request in the advisor repository. It is never merged automatically.
 An exact versioned marker deduplicates both an open proposal and a closed,
 declined proposal across unrelated intervening proposals. Pull-request history
 is read to a declared bound and fails closed if completeness cannot be proven.
-After a policy change, feedback waits for a report produced under that policy
-version rather than interpreting a stale report. If the underlying issue
-decision is revoked before merge, the workflow withdraws only its own stale
-proposal and distinguishes that cancellation from a human decline. A partial
-push without a pull request may be recovered only after the reserved branch is
-proven to contain one policy-only commit based on merged history.
+After a policy change, feedback preserves any open proposal and waits for a
+report produced under that policy version rather than interpreting a stale
+report as revoked. If the underlying issue decision is revoked before merge,
+the workflow withdraws only its own stale proposal and distinguishes that
+cancellation from a human decline. A partial push without a pull request may be
+recovered only after the reserved branch is proven to contain one policy-only
+commit based on merged history.
 
 ## Non-functional requirements
 

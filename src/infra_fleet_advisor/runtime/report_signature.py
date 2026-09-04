@@ -9,9 +9,11 @@ from infra_fleet_advisor.core.contracts import STATUSES
 from infra_fleet_advisor.core.errors import PolicyError
 from infra_fleet_advisor.runtime.report_writer import MAX_PRIOR_REPORT_BYTES
 
-SIGNATURE_VERSION = "v1"
+SIGNATURE_VERSION = "v2"
 MAX_DECLINED_PR_BODY_BYTES = 128 * 1024
-_SIGNATURE_PATTERN = re.compile(r"^v1:[0-9a-f]{64}$")
+MAX_ADVISORY_PR_HISTORY = 199
+MAX_ADVISORY_PR_HISTORY_FILE_BYTES = 16 * 1024 * 1024
+_SIGNATURE_PATTERN = re.compile(rf"^{SIGNATURE_VERSION}:[0-9a-f]{{64}}$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,6 +21,13 @@ class PublicationDecision:
     decision: Literal["changed", "unchanged", "declined"]
     signature: str
     marker: str
+
+
+@dataclass(frozen=True, slots=True)
+class _AdvisoryPullRequest:
+    number: int
+    body: str
+    merged: bool
 
 
 def _require_dict(value: Any, field_name: str) -> dict[str, Any]:
@@ -57,6 +66,7 @@ def _read_report(path: Path) -> dict[str, Any]:
 
 
 def _signature_payload(report: dict[str, Any]) -> dict[str, Any]:
+    provenance = _require_dict(report.get("provenance"), "provenance")
     findings: list[dict[str, str]] = []
     for item in _require_list(report.get("recommendations"), "recommendations"):
         recommendation = _require_dict(item, "recommendation")
@@ -126,6 +136,9 @@ def _signature_payload(report: dict[str, Any]) -> dict[str, Any]:
     rejections.sort()
 
     return {
+        "policy_version": _require_str(
+            provenance.get("policy_version"), "provenance.policy_version"
+        ),
         "findings": findings,
         "evidence": evidence,
         "coverage": coverage,
@@ -175,6 +188,70 @@ def read_declined_pr_body(path: Path) -> str:
         raise
     except (OSError, UnicodeError) as exc:
         raise PolicyError(f"cannot read declined pull request body: {type(exc).__name__}") from exc
+
+
+def read_latest_declined_pr_body(
+    path: Path,
+    *,
+    repository: str,
+    branch: str,
+    workflow_bot_login: str = "github-actions[bot]",
+) -> str:
+    """Select the latest workflow-owned decision from bounded PR history."""
+    try:
+        if path.stat().st_size > MAX_ADVISORY_PR_HISTORY_FILE_BYTES:
+            raise PolicyError(
+                f"advisory pull request history exceeds {MAX_ADVISORY_PR_HISTORY_FILE_BYTES} bytes"
+            )
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(raw, list) or len(raw) > MAX_ADVISORY_PR_HISTORY:
+            raise TypeError
+
+        workflow_pull_requests: list[_AdvisoryPullRequest] = []
+        seen_numbers: set[int] = set()
+        for item in raw:
+            if not isinstance(item, dict):
+                raise TypeError
+            number = item["number"]
+            state = item["state"]
+            author = item["user"]["login"]
+            raw_body = item.get("body")
+            body = "" if raw_body is None else raw_body
+            merged_at = item.get("merged_at")
+            head_repository = item["head"]["repo"]["full_name"]
+            head_branch = item["head"]["ref"]
+            base_repository = item["base"]["repo"]["full_name"]
+            if (
+                not isinstance(number, int)
+                or isinstance(number, bool)
+                or number < 1
+                or number in seen_numbers
+                or state != "closed"
+                or not isinstance(author, str)
+                or not isinstance(body, str)
+                or len(body.encode("utf-8")) > MAX_DECLINED_PR_BODY_BYTES
+                or (merged_at is not None and not isinstance(merged_at, str))
+                or not isinstance(head_repository, str)
+                or head_repository.casefold() != repository.casefold()
+                or head_branch != branch
+                or not isinstance(base_repository, str)
+                or base_repository.casefold() != repository.casefold()
+            ):
+                raise ValueError
+            seen_numbers.add(number)
+            if author.casefold() == workflow_bot_login.casefold():
+                workflow_pull_requests.append(
+                    _AdvisoryPullRequest(number, body, merged_at is not None)
+                )
+    except PolicyError:
+        raise
+    except (KeyError, OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        raise PolicyError("advisory pull request history failed validation") from exc
+
+    if not workflow_pull_requests:
+        return ""
+    latest = max(workflow_pull_requests, key=lambda pull: pull.number)
+    return "" if latest.merged else latest.body
 
 
 def decide_publication(

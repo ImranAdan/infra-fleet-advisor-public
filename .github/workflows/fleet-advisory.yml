@@ -86,15 +86,17 @@ jobs:
             "${prior[@]}"
 
       # A closed, unmerged advisory PR created by this workflow is an explicit
-      # decline at the report signature recorded in its body. The REST `head`
-      # filter includes this repository's owner, so a fork reusing the branch
-      # name cannot forge a decision. Advisory PRs are serialized on one branch,
-      # making newest creation the latest decision; a newer merge therefore
-      # supersedes an older decline. PR prose remains untrusted.
-      - name: Read the latest closed advisory decision
+      # decline at the report signature recorded in its body. Two 100-item pages
+      # paired with a 199-record gate prove the history is complete or fail
+      # closed. Trusted code selects the newest workflow-authored PR, so a newer
+      # human PR cannot hide a decline and a newer workflow merge supersedes it.
+      # The REST `head` filter includes this repository's owner, so a fork reusing
+      # the branch name cannot forge a decision. PR prose remains untrusted.
+      - name: Read bounded closed advisory history
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -o pipefail
           gh api \
             --method GET \
             "repos/${GITHUB_REPOSITORY}/pulls" \
@@ -102,11 +104,23 @@ jobs:
             -f head="${GITHUB_REPOSITORY_OWNER}:${BRANCH}" \
             -f sort=created \
             -f direction=desc \
-            -f per_page=1 \
-            --jq '.[0]
-              | select(.merged_at == null and .user.login == "github-actions[bot]")
-              | .body // ""' \
-            > "$RUNNER_TEMP/latest-declined-pr-body.txt"
+            -f per_page=100 \
+            -f page=1 \
+            > "$RUNNER_TEMP/advisory-prs-page-1.json"
+          gh api \
+            --method GET \
+            "repos/${GITHUB_REPOSITORY}/pulls" \
+            -f state=closed \
+            -f head="${GITHUB_REPOSITORY_OWNER}:${BRANCH}" \
+            -f sort=created \
+            -f direction=desc \
+            -f per_page=100 \
+            -f page=2 \
+            > "$RUNNER_TEMP/advisory-prs-page-2.json"
+          jq -s 'add' \
+            "$RUNNER_TEMP/advisory-prs-page-1.json" \
+            "$RUNNER_TEMP/advisory-prs-page-2.json" \
+            > "$RUNNER_TEMP/advisory-pr-history.json"
 
       # Compares findings, not file bytes. Every report embeds a fresh run
       # timestamp, and a finding legitimately moves from "new" to "unchanged"
@@ -115,14 +129,16 @@ jobs:
       - name: Decide whether the findings changed
         id: publish
         run: |
-          if [ ! -f "$RUNNER_TEMP/latest-declined-pr-body.txt" ]; then
-            echo "The closed advisory decision was not read." >&2
+          if [ ! -f "$RUNNER_TEMP/advisory-pr-history.json" ]; then
+            echo "The closed advisory history was not read." >&2
             exit 1
           fi
           decision_args=(
             publication-decision
             --report "$RUNNER_TEMP/advisory/report.json"
-            --latest-declined-pr-body "$RUNNER_TEMP/latest-declined-pr-body.txt"
+            --closed-pr-history "$RUNNER_TEMP/advisory-pr-history.json"
+            --repository "$GITHUB_REPOSITORY"
+            --branch "$BRANCH"
           )
           if [ -f reports/report.json ]; then
             decision_args+=(--prior-report reports/report.json)

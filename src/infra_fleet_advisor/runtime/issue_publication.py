@@ -193,6 +193,7 @@ def build_issue_plan(report_path: Path, policy_path: Path) -> IssuePlan:
         raise PolicyError("no published report to turn into issues")
 
     actions: list[IssueAction] = []
+    active_action_count = 0
     seen_fingerprints: set[str] = set()
     for recommendation in report.recommendations:
         if recommendation.fingerprint in seen_fingerprints:
@@ -233,6 +234,13 @@ def build_issue_plan(report_path: Path, policy_path: Path) -> IssuePlan:
         action: Literal["active", "resolved"] = (
             "resolved" if recommendation.status == "resolved" else "active"
         )
+        if action == "active":
+            active_action_count += 1
+            if active_action_count > bounds.max_recommendations:
+                raise PolicyError(
+                    "published report exceeds the policy limit of "
+                    f"{bounds.max_recommendations} active recommendations"
+                )
         body = (
             ""
             if action == "resolved"

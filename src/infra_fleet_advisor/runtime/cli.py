@@ -27,6 +27,7 @@ from infra_fleet_advisor.runtime.report_signature import (
     compute_report_signature,
     decide_publication,
     read_declined_pr_body,
+    read_latest_declined_pr_body,
 )
 from infra_fleet_advisor.runtime.report_writer import (
     load_prior_report,
@@ -77,7 +78,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     publication.add_argument("--report", required=True, type=Path)
     publication.add_argument("--prior-report", type=Path, default=None)
-    publication.add_argument("--latest-declined-pr-body", type=Path, default=None)
+    decline_source = publication.add_mutually_exclusive_group()
+    decline_source.add_argument("--latest-declined-pr-body", type=Path, default=None)
+    decline_source.add_argument("--closed-pr-history", type=Path, default=None)
+    publication.add_argument("--repository")
+    publication.add_argument("--branch")
 
     issues = sub.add_parser(
         "issue-plan", help="Revalidate a merged report and write bounded fleet issue actions"
@@ -266,11 +271,24 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "publication-decision":
         try:
-            declined_body = (
-                read_declined_pr_body(args.latest_declined_pr_body)
-                if args.latest_declined_pr_body is not None
-                else ""
-            )
+            if args.closed_pr_history is not None:
+                if args.repository is None or args.branch is None:
+                    raise PolicyError(
+                        "--repository and --branch are required with --closed-pr-history"
+                    )
+                declined_body = read_latest_declined_pr_body(
+                    args.closed_pr_history,
+                    repository=args.repository,
+                    branch=args.branch,
+                )
+            else:
+                if args.repository is not None or args.branch is not None:
+                    raise PolicyError("--repository and --branch require --closed-pr-history")
+                declined_body = (
+                    read_declined_pr_body(args.latest_declined_pr_body)
+                    if args.latest_declined_pr_body is not None
+                    else ""
+                )
             publication_decision = decide_publication(
                 args.report,
                 prior_report=args.prior_report,

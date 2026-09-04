@@ -6,18 +6,23 @@ import pytest
 
 from infra_fleet_advisor.core.errors import PolicyError
 from infra_fleet_advisor.runtime.report_signature import (
+    MAX_ADVISORY_PR_HISTORY,
     MAX_DECLINED_PR_BODY_BYTES,
     body_records_decline,
     compute_report_signature,
     decide_publication,
     decline_marker,
     read_declined_pr_body,
+    read_latest_declined_pr_body,
 )
 
 
 def _report() -> dict[str, object]:
     return {
-        "provenance": {"run_started_at": "2026-09-01T00:00:00Z"},
+        "provenance": {
+            "policy_version": "1.0",
+            "run_started_at": "2026-09-01T00:00:00Z",
+        },
         "recommendations": [
             {
                 "fingerprint": "fp_b",
@@ -79,7 +84,9 @@ def _write(tmp_path: Path, payload: dict[str, object], name: str = "report.json"
 def test_signature_ignores_narrative_provenance_rank_and_open_lifecycle(tmp_path: Path) -> None:
     original = _report()
     changed = deepcopy(original)
-    changed["provenance"] = {"run_started_at": "2026-09-02T00:00:00Z"}
+    provenance = changed["provenance"]
+    assert isinstance(provenance, dict)
+    provenance["run_started_at"] = "2026-09-02T00:00:00Z"
     recommendations = changed["recommendations"]
     assert isinstance(recommendations, list)
     first = recommendations[0]
@@ -89,6 +96,18 @@ def test_signature_ignores_narrative_provenance_rank_and_open_lifecycle(tmp_path
     first["status"] = "unchanged"
 
     assert compute_report_signature(_write(tmp_path, original, "original.json")) == (
+        compute_report_signature(_write(tmp_path, changed, "changed.json"))
+    )
+
+
+def test_signature_changes_with_policy_version(tmp_path: Path) -> None:
+    original = _report()
+    changed = deepcopy(original)
+    provenance = changed["provenance"]
+    assert isinstance(provenance, dict)
+    provenance["policy_version"] = "2.0"
+
+    assert compute_report_signature(_write(tmp_path, original, "original.json")) != (
         compute_report_signature(_write(tmp_path, changed, "changed.json"))
     )
 
@@ -167,6 +186,97 @@ def test_declined_pr_body_reader_is_bounded(tmp_path: Path) -> None:
 
     with pytest.raises(PolicyError, match="declined pull request body exceeds"):
         read_declined_pr_body(body)
+
+
+def _closed_pull_request(
+    number: int,
+    *,
+    author: str = "github-actions[bot]",
+    merged: bool = False,
+    body: str = "declined marker",
+) -> dict[str, object]:
+    return {
+        "number": number,
+        "state": "closed",
+        "user": {"login": author},
+        "body": body,
+        "merged_at": "2026-09-01T00:00:00Z" if merged else None,
+        "head": {
+            "ref": "advisory/latest",
+            "repo": {"full_name": "ImranAdan/infra-fleet-advisor-public"},
+        },
+        "base": {"repo": {"full_name": "ImranAdan/infra-fleet-advisor-public"}},
+    }
+
+
+def test_latest_decline_ignores_newer_human_pull_request(tmp_path: Path) -> None:
+    history = tmp_path / "pulls.json"
+    history.write_text(
+        json.dumps(
+            [
+                _closed_pull_request(12, author="maintainer", body="human closure"),
+                _closed_pull_request(11, body="workflow decline"),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    assert (
+        read_latest_declined_pr_body(
+            history,
+            repository="ImranAdan/infra-fleet-advisor-public",
+            branch="advisory/latest",
+        )
+        == "workflow decline"
+    )
+
+
+def test_latest_workflow_merge_supersedes_an_older_decline(tmp_path: Path) -> None:
+    history = tmp_path / "pulls.json"
+    history.write_text(
+        json.dumps(
+            [
+                _closed_pull_request(12, merged=True, body="accepted"),
+                _closed_pull_request(11, body="workflow decline"),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    assert (
+        read_latest_declined_pr_body(
+            history,
+            repository="ImranAdan/infra-fleet-advisor-public",
+            branch="advisory/latest",
+        )
+        == ""
+    )
+
+
+def test_advisory_pull_request_history_is_bounded_and_source_checked(tmp_path: Path) -> None:
+    history = tmp_path / "pulls.json"
+    history.write_text(
+        json.dumps([_closed_pull_request(number) for number in range(1, 202)]),
+        encoding="utf-8",
+    )
+    with pytest.raises(PolicyError, match="history failed validation"):
+        read_latest_declined_pr_body(
+            history,
+            repository="ImranAdan/infra-fleet-advisor-public",
+            branch="advisory/latest",
+        )
+
+    wrong_source = _closed_pull_request(MAX_ADVISORY_PR_HISTORY)
+    head = wrong_source["head"]
+    assert isinstance(head, dict)
+    head["repo"] = {"full_name": "attacker/fork"}
+    history.write_text(json.dumps([wrong_source]), encoding="utf-8")
+    with pytest.raises(PolicyError, match="history failed validation"):
+        read_latest_declined_pr_body(
+            history,
+            repository="ImranAdan/infra-fleet-advisor-public",
+            branch="advisory/latest",
+        )
 
 
 def test_publication_decision_is_unchanged_against_accepted_report(tmp_path: Path) -> None:

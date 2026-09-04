@@ -112,8 +112,10 @@ the rejection comparison exists to surface.
 Closing an advisory pull request without merging declines that exact material
 report state. The workflow records a versioned signature in the pull-request
 body and does not re-propose the same findings, evidence, coverage, rejection
-reasons, and accepted trade-offs until one of them changes. It never interprets
-pull-request prose as policy or evidence.
+reasons, accepted trade-offs, and policy version until one of them changes. It
+selects the latest workflow-authored decision from a bounded, complete branch
+history, so a newer human-authored pull request cannot hide an earlier workflow
+decision. It never interprets pull-request prose as policy or evidence.
 
 If synthesis fails, the run exits non-zero and writes no report. It never
 degrades to an empty result, because an empty result would mark every
