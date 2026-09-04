@@ -132,7 +132,11 @@ concern has multiple active findings. The resulting plan changes only
 human-reviewed pull request in the advisor repository. A fleet token with
 `issues: read` cannot change the fleet. An open workflow-authored proposal is
 withdrawn if its source labels or closed state are revoked; a typed cancellation
-marker prevents that closure from becoming a decline record.
+marker prevents that closure from becoming a decline record. Declines are
+matched by signature across a bounded complete history rather than only the
+newest proposal. A workflow-owned branch left by partial PR creation is
+recoverable only when its single parent is merged history and its sole changed
+path is `policy.yaml`; replacement remains protected by an exact lease.
 
 ## Run lifecycle
 

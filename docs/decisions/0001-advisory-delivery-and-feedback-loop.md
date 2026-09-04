@@ -166,7 +166,9 @@ decision back to one current fingerprint, refuses ambiguous concern-level
 widening, and proposes a deterministically versioned `policy.yaml` for human
 review. A human closing that pull request declines its exact feedback signature;
 if the fleet decision is revoked first, the workflow withdraws its own proposal
-with a distinct cancellation marker.
+with a distinct cancellation marker. Decline signatures remain effective across
+intervening proposals within a bounded, complete branch history, and partial
+branch pushes can recover only after a policy-only ancestry proof.
 
 Steps 1–3 need no new credentials. Step 4 is where the App arrives.
 

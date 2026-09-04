@@ -221,10 +221,14 @@ the feedback run fails without proposing policy.
 The generated policy receives a deterministic new version and is delivered only
 as a pull request in the advisor repository. It is never merged automatically.
 An exact versioned marker deduplicates both an open proposal and a closed,
-declined proposal. After a policy change, feedback waits for a report produced
-under that policy version rather than interpreting a stale report. If the
-underlying issue decision is revoked before merge, the workflow withdraws only
-its own stale proposal and distinguishes that cancellation from a human decline.
+declined proposal across unrelated intervening proposals. Pull-request history
+is read to a declared bound and fails closed if completeness cannot be proven.
+After a policy change, feedback waits for a report produced under that policy
+version rather than interpreting a stale report. If the underlying issue
+decision is revoked before merge, the workflow withdraws only its own stale
+proposal and distinguishes that cancellation from a human decline. A partial
+push without a pull request may be recovered only after the reserved branch is
+proven to contain one policy-only commit based on merged history.
 
 ## Non-functional requirements
 

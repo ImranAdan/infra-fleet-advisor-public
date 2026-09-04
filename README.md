@@ -162,12 +162,16 @@ policy accepts trade-offs at concern level, feedback fails safely if multiple
 active findings share that concern. Eligible decisions produce a pull request
 in this repository that changes only `policy.yaml` and assigns the changed
 policy a deterministic new version. A maintainer must merge it. Closing the
-pull request declines that exact feedback plan, so it is not repeatedly
-proposed.
+pull request declines that exact feedback plan across intervening proposals.
+The workflow reads up to 199 branch-history records and fails closed rather than
+forgetting a decision if that bound is exceeded.
 
 If the issue is reopened or either decision label is removed before merge, the
 workflow withdraws its own stale policy pull request. That automated closure is
 marked as a cancellation and does not count as a maintainer declining the plan.
+If a push succeeds but pull-request creation fails, the next run can reclaim the
+reserved `advisor/feedback-wontfix` branch only after proving it is a
+single-parent commit from merged history that changes only `policy.yaml`.
 
 After a feedback policy is merged, this job waits for an advisory report made
 under the new policy version. That report keeps the finding visible with the

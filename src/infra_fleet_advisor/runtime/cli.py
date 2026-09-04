@@ -10,6 +10,7 @@ from infra_fleet_advisor.provenance.source_verification import verify_snapshot
 from infra_fleet_advisor.runtime.clock import SystemClock
 from infra_fleet_advisor.runtime.composition import SYNTHESIZERS, RunInputs, compose_and_run
 from infra_fleet_advisor.runtime.fleet_feedback import (
+    MAX_FEEDBACK_PR_HISTORY,
     build_feedback_plan,
     decide_feedback_publication,
     read_feedback_plan,
@@ -109,11 +110,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     feedback_decision.add_argument("--plan", required=True, type=Path)
     feedback_decision.add_argument("--open-prs", required=True, type=Path)
-    feedback_decision.add_argument("--latest-prs", required=True, type=Path)
+    feedback_decision.add_argument("--history-prs", required=True, type=Path)
     feedback_decision.add_argument("--repository", required=True)
     feedback_decision.add_argument("--branch", required=True)
     feedback_decision.add_argument("--branch-tip")
-    feedback_decision.add_argument("--branch-matches-plan", action="store_true")
+    feedback_decision.add_argument("--branch-is-recoverable", action="store_true")
     return parser
 
 
@@ -180,18 +181,18 @@ def main(argv: Sequence[str] | None = None) -> int:
                 branch=args.branch,
                 maximum=1,
             )
-            latest_prs = read_feedback_pull_requests(
-                args.latest_prs,
+            history_prs = read_feedback_pull_requests(
+                args.history_prs,
                 repository=args.repository,
                 branch=args.branch,
-                maximum=1,
+                maximum=MAX_FEEDBACK_PR_HISTORY,
             )
             feedback_decision = decide_feedback_publication(
                 feedback_plan,
                 open_prs,
-                latest_prs,
+                history_prs,
                 branch_tip=args.branch_tip,
-                branch_matches_plan=args.branch_matches_plan,
+                branch_is_recoverable=args.branch_is_recoverable,
             )
             print(json.dumps(asdict(feedback_decision), sort_keys=True))
             return EXIT_OK

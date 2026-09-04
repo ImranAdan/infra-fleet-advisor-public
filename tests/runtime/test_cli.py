@@ -401,9 +401,9 @@ def test_feedback_plan_command_reads_only_typed_issue_metadata(
     assert json.loads(output_plan.read_text(encoding="utf-8"))["additions"][0]["issue_number"] == 42
 
     open_prs = tmp_path / "open-prs.json"
-    latest_prs = tmp_path / "latest-prs.json"
+    history_prs = tmp_path / "history-prs.json"
     open_prs.write_text("[]", encoding="utf-8")
-    latest_prs.write_text("[]", encoding="utf-8")
+    history_prs.write_text("[]", encoding="utf-8")
     capsys.readouterr()
     assert (
         main(
@@ -413,8 +413,8 @@ def test_feedback_plan_command_reads_only_typed_issue_metadata(
                 str(output_plan),
                 "--open-prs",
                 str(open_prs),
-                "--latest-prs",
-                str(latest_prs),
+                "--history-prs",
+                str(history_prs),
                 "--repository",
                 "ImranAdan/infra-fleet-advisor-public",
                 "--branch",

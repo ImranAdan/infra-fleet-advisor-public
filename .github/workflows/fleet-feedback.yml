@@ -86,11 +86,14 @@ jobs:
       # One workflow-owned branch represents the current proposal. GitHub JSON
       # is captured as untrusted input; typed code validates repository, branch,
       # bot author, markers, and the allowed create/update/cancel transitions.
+      # Two 100-item pages paired with a 199-record gate prove completeness or
+      # fail closed, preserving declines across intervening proposals.
       - name: Decide whether to propose
         id: decision
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -o pipefail
           gh api \
             --method GET \
             "repos/${GITHUB_REPOSITORY}/pulls" \
@@ -105,40 +108,53 @@ jobs:
             -f head="${GITHUB_REPOSITORY_OWNER}:${BRANCH}" \
             -f sort=created \
             -f direction=desc \
-            -f per_page=1 \
-            > "$RUNNER_TEMP/latest-feedback-prs.json"
+            -f per_page=100 \
+            -f page=1 \
+            > "$RUNNER_TEMP/feedback-prs-page-1.json"
+          gh api \
+            --method GET \
+            "repos/${GITHUB_REPOSITORY}/pulls" \
+            -f state=all \
+            -f head="${GITHUB_REPOSITORY_OWNER}:${BRANCH}" \
+            -f sort=created \
+            -f direction=desc \
+            -f per_page=100 \
+            -f page=2 \
+            > "$RUNNER_TEMP/feedback-prs-page-2.json"
+          jq -s 'add' \
+            "$RUNNER_TEMP/feedback-prs-page-1.json" \
+            "$RUNNER_TEMP/feedback-prs-page-2.json" \
+            > "$RUNNER_TEMP/feedback-pr-history.json"
 
           branch_tip="$(git ls-remote --heads origin "refs/heads/${BRANCH}" | awk '{print $1}')"
-          branch_matches_plan=false
+          branch_is_recoverable=false
           if [ -n "$branch_tip" ] && [ "$(jq -r 'length' "$RUNNER_TEMP/open-feedback-prs.json")" = "0" ] &&
             [ "${{ steps.plan.outputs.count }}" != "0" ]; then
             git fetch --no-tags origin "$branch_tip"
             parents="$(git rev-list --parents -n 1 "$branch_tip")"
             parent_count="$(wc -w <<< "$parents" | tr -d ' ')"
-            parent="$(awk '{print $2}' <<< "$parents")"
-            changed_paths="$(git diff --name-only "$parent" "$branch_tip")"
-            git show "${branch_tip}:policy.yaml" > "$RUNNER_TEMP/remote-feedback-policy.yaml"
-            if [ "$parent_count" = "2" ] &&
-              git merge-base --is-ancestor "$parent" HEAD &&
-              [ "$changed_paths" = "policy.yaml" ] &&
-              cmp -s "$RUNNER_TEMP/remote-feedback-policy.yaml" \
-                "$RUNNER_TEMP/feedback-policy.yaml"; then
-              branch_matches_plan=true
+            if [ "$parent_count" = "2" ]; then
+              parent="$(awk '{print $2}' <<< "$parents")"
+              changed_paths="$(git diff --name-only "$parent" "$branch_tip")"
+              if git merge-base --is-ancestor "$parent" HEAD &&
+                [ "$changed_paths" = "policy.yaml" ]; then
+                branch_is_recoverable=true
+              fi
             fi
           fi
           decision_args=(
             feedback-publication-decision
             --plan "$RUNNER_TEMP/feedback-plan.json"
             --open-prs "$RUNNER_TEMP/open-feedback-prs.json"
-            --latest-prs "$RUNNER_TEMP/latest-feedback-prs.json"
+            --history-prs "$RUNNER_TEMP/feedback-pr-history.json"
             --repository "$GITHUB_REPOSITORY"
             --branch "$BRANCH"
           )
           if [ -n "$branch_tip" ]; then
             decision_args+=(--branch-tip "$branch_tip")
           fi
-          if [ "$branch_matches_plan" = "true" ]; then
-            decision_args+=(--branch-matches-plan)
+          if [ "$branch_is_recoverable" = "true" ]; then
+            decision_args+=(--branch-is-recoverable)
           fi
           decision="$(uv run infra-fleet-advisor "${decision_args[@]}")"
           action="$(jq -er '.action' <<< "$decision")"

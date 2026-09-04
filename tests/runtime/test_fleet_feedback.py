@@ -10,11 +10,13 @@ from infra_fleet_advisor.core.report import CollectorCoverage, Report, RunProven
 from infra_fleet_advisor.runtime.fleet_feedback import (
     ADVISOR_ISSUE_LABEL,
     CANCELLATION_MARKER,
+    TRADE_OFF_LABELS,
     WONTFIX_LABEL,
     FeedbackPlan,
     FeedbackPullRequest,
     FleetIssueRecord,
     FleetIssueRecords,
+    TradeOffAddition,
     build_feedback_plan,
     decide_feedback_publication,
     read_feedback_plan,
@@ -27,6 +29,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
 )
 
 POLICY = Path(__file__).parent.parent / "fixtures" / "policies" / "valid_policy.yaml"
+ROOT_POLICY = Path(__file__).parents[2] / "policy.yaml"
 BOT = "infra-fleet-advisor[bot]"
 EVIDENCE_ID = "github_actions_workflow_collector:aaaaaaaaaaaaaaaa"
 SECOND_EVIDENCE_ID = "github_actions_workflow_collector:bbbbbbbbbbbbbbbb"
@@ -125,6 +128,22 @@ def _pull_request(
     )
 
 
+def _raw_pull_request(number: int = 7) -> dict[str, object]:
+    return {
+        "number": number,
+        "state": "closed",
+        "user": {"login": "github-actions[bot]"},
+        "body": "body",
+        "merged_at": None,
+        "head": {
+            "ref": "advisor/feedback-wontfix",
+            "sha": "a" * 40,
+            "repo": {"full_name": "ImranAdan/infra-fleet-advisor-public"},
+        },
+        "base": {"repo": {"full_name": "ImranAdan/infra-fleet-advisor-public"}},
+    }
+
+
 def _add_second_finding_for_same_concern(report: Path) -> str:
     payload = json.loads(report.read_text(encoding="utf-8"))
     second_evidence = dict(payload["evidence"][0])
@@ -177,6 +196,7 @@ def test_closed_wontfix_labels_produce_a_deterministic_policy_addition(
             BOT,
             frozenset({ADVISOR_ISSUE_LABEL, f"advisor:fp:{fp.removeprefix('fp_')}"}),
         ),
+        lambda fp: _issue(fp, extra_labels=frozenset()),
     ],
 )
 def test_non_final_or_non_wontfix_issues_are_ignored(tmp_path: Path, issue) -> None:
@@ -192,15 +212,34 @@ def test_non_final_or_non_wontfix_issues_are_ignored(tmp_path: Path, issue) -> N
     assert plan.additions == ()
 
 
-def test_wontfix_requires_exactly_one_closed_reason_label(tmp_path: Path) -> None:
+def test_ambiguous_wontfix_reason_is_ignored_as_no_decision(tmp_path: Path) -> None:
     report, fingerprint = _report(tmp_path)
     issue = _issue(
         fingerprint,
         extra_labels=frozenset({"advisor:tradeoff:cost", "advisor:tradeoff:complexity"}),
     )
 
-    with pytest.raises(PolicyError, match="one fingerprint and one trade-off reason"):
-        build_feedback_plan(report, POLICY, FleetIssueRecords((issue,), True), BOT)
+    plan = build_feedback_plan(report, POLICY, FleetIssueRecords((issue,), True), BOT)
+
+    assert plan.additions == ()
+
+
+def test_stale_mislabelled_issue_does_not_block_a_valid_decision(tmp_path: Path) -> None:
+    report, fingerprint = _report(tmp_path)
+    stale = _issue(
+        "fp_" + "f" * 24,
+        extra_labels=frozenset({"advisor:tradeoff:cost", "advisor:tradeoff:complexity"}),
+    )
+
+    plan = build_feedback_plan(
+        report,
+        POLICY,
+        FleetIssueRecords((stale, _issue(fingerprint)), True),
+        BOT,
+    )
+
+    assert len(plan.additions) == 1
+    assert plan.additions[0].fingerprint == fingerprint
 
 
 def test_incomplete_issue_listing_is_rejected(tmp_path: Path) -> None:
@@ -242,6 +281,15 @@ def test_feedback_signature_is_order_independent_and_reason_sensitive(tmp_path: 
 
     assert first.signature == reordered.signature
     assert first.signature != changed_reason.signature
+
+    changed_policy = tmp_path / "changed-policy.yaml"
+    changed_policy.write_text(
+        POLICY.read_text(encoding="utf-8").replace('version: "1.0"', 'version: "1.1"'),
+        encoding="utf-8",
+    )
+    ready_empty = build_feedback_plan(report, POLICY, FleetIssueRecords((), True), BOT)
+    awaiting = build_feedback_plan(report, changed_policy, FleetIssueRecords((), True), BOT)
+    assert ready_empty.signature != awaiting.signature
 
 
 def test_feedback_outputs_preserve_policy_comments_and_validate_result(tmp_path: Path) -> None:
@@ -302,6 +350,57 @@ def test_feedback_appends_to_existing_trade_offs_and_versions_deterministically(
     assert f"concern_key: {CONCERN_TRIVY_IGNORE_UNFIXED}" in updated
 
 
+def test_repeated_feedback_keeps_trade_offs_above_the_next_policy_comment(
+    tmp_path: Path,
+) -> None:
+    report, fingerprint = _report(tmp_path)
+    first_plan = build_feedback_plan(
+        report,
+        ROOT_POLICY,
+        FleetIssueRecords((_issue(fingerprint),), True),
+        BOT,
+    )
+    first_policy = tmp_path / "first-policy.yaml"
+    write_feedback_outputs(first_plan, ROOT_POLICY, first_policy, tmp_path / "first-plan.json")
+    first_text = first_policy.read_text(encoding="utf-8")
+    assert first_text.index("concern_key: trivy_ignore_unfixed") < first_text.index(
+        "# Concerns to omit entirely."
+    )
+    assert "\n\n# Concerns to omit entirely." in first_text
+
+    reason_label = "advisor:tradeoff:risk-accepted"
+    rationale = (
+        f"{TRADE_OFF_LABELS[reason_label]} Decision recorded from closed fleet issue "
+        "#9; issue prose was not imported."
+    )
+    second_addition = TradeOffAddition(
+        issue_number=9,
+        fingerprint="fp_" + "b" * 24,
+        concern_key="wildcard_iam_permissions",
+        reason_label=reason_label,
+        rationale=rationale,
+    )
+    second_plan = FeedbackPlan(
+        status="ready",
+        signature="v1:" + "b" * 64,
+        marker=f"<!-- infra-fleet-advisor-feedback: v1:{'b' * 64} -->",
+        additions=(second_addition,),
+    )
+    second_policy = tmp_path / "second-policy.yaml"
+    write_feedback_outputs(
+        second_plan,
+        first_policy,
+        second_policy,
+        tmp_path / "second-plan.json",
+    )
+
+    updated = second_policy.read_text(encoding="utf-8")
+    comment = updated.index("# Concerns to omit entirely.")
+    assert updated.index("concern_key: trivy_ignore_unfixed") < comment
+    assert updated.index("concern_key: wildcard_iam_permissions") < comment
+    assert "\n\n# Concerns to omit entirely." in updated
+
+
 def test_empty_feedback_writes_a_plan_but_not_a_policy(tmp_path: Path) -> None:
     report, _ = _report(tmp_path)
     plan = build_feedback_plan(report, POLICY, FleetIssueRecords((), True), BOT)
@@ -354,22 +453,20 @@ def test_feedback_plan_round_trip_rejects_tampering(tmp_path: Path) -> None:
     with pytest.raises(PolicyError, match="failed deterministic validation"):
         read_feedback_plan(tampered)
 
+    empty = build_feedback_plan(report, POLICY, FleetIssueRecords((), True), BOT)
+    empty_path = tmp_path / "empty.json"
+    write_feedback_outputs(empty, POLICY, tmp_path / "unused-policy.yaml", empty_path)
+    unsigned_status = json.loads(empty_path.read_text(encoding="utf-8"))
+    unsigned_status["status"] = "awaiting_report_refresh"
+    changed_status = tmp_path / "changed-status.json"
+    changed_status.write_text(json.dumps(unsigned_status), encoding="utf-8")
+    with pytest.raises(PolicyError, match="failed deterministic validation"):
+        read_feedback_plan(changed_status)
+
 
 def test_feedback_pull_request_reader_validates_exact_source(tmp_path: Path) -> None:
     pull_requests = tmp_path / "pulls.json"
-    raw = {
-        "number": 7,
-        "state": "closed",
-        "user": {"login": "github-actions[bot]"},
-        "body": "body",
-        "merged_at": None,
-        "head": {
-            "ref": "advisor/feedback-wontfix",
-            "sha": "a" * 40,
-            "repo": {"full_name": "ImranAdan/infra-fleet-advisor-public"},
-        },
-        "base": {"repo": {"full_name": "ImranAdan/infra-fleet-advisor-public"}},
-    }
+    raw = _raw_pull_request()
     pull_requests.write_text(json.dumps([raw]), encoding="utf-8")
 
     records = read_feedback_pull_requests(
@@ -388,6 +485,24 @@ def test_feedback_pull_request_reader_validates_exact_source(tmp_path: Path) -> 
             repository="ImranAdan/infra-fleet-advisor-public",
             branch="advisor/feedback-wontfix",
             maximum=1,
+        )
+
+
+def test_feedback_pull_request_reader_fails_when_history_bound_is_full(
+    tmp_path: Path,
+) -> None:
+    pull_requests = tmp_path / "pulls.json"
+    pull_requests.write_text(
+        json.dumps([_raw_pull_request(number) for number in range(1, 201)]),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PolicyError, match="failed validation"):
+        read_feedback_pull_requests(
+            pull_requests,
+            repository="ImranAdan/infra-fleet-advisor-public",
+            branch="advisor/feedback-wontfix",
+            maximum=199,
         )
 
 
@@ -437,6 +552,62 @@ def test_feedback_publication_decision_matrix(tmp_path: Path) -> None:
         == "create"
     )
 
+    revoked = build_feedback_plan(
+        report,
+        POLICY,
+        FleetIssueRecords((_issue(fingerprint, extra_labels=frozenset()),), True),
+        BOT,
+    )
+    assert (
+        decide_feedback_publication(
+            revoked,
+            (open_pr,),
+            (open_pr,),
+            branch_tip="a" * 40,
+        ).action
+        == "cancel"
+    )
+
+
+def test_decline_survives_intervening_feedback_proposals(tmp_path: Path) -> None:
+    report, fingerprint = _report(tmp_path)
+    declined_plan = build_feedback_plan(
+        report,
+        POLICY,
+        FleetIssueRecords((_issue(fingerprint),), True),
+        BOT,
+    )
+    other_plan = build_feedback_plan(
+        report,
+        POLICY,
+        FleetIssueRecords(
+            (_issue(fingerprint, extra_labels=frozenset({"advisor:tradeoff:complexity"})),),
+            True,
+        ),
+        BOT,
+    )
+    old_decline = _pull_request(declined_plan, number=7, state="closed")
+    intervening = _pull_request(other_plan, number=8, state="closed")
+
+    decision = decide_feedback_publication(
+        declined_plan,
+        (),
+        (intervening, old_decline),
+        branch_tip="a" * 40,
+    )
+
+    assert decision.reason == "declined"
+    assert decision.open_pr_number == 7
+
+    later_merge = _pull_request(declined_plan, number=9, state="closed", merged=True)
+    superseded = decide_feedback_publication(
+        declined_plan,
+        (),
+        (later_merge, intervening, old_decline),
+        branch_tip="a" * 40,
+    )
+    assert superseded.action == "create"
+
 
 def test_feedback_publication_rejects_unowned_branch_state(tmp_path: Path) -> None:
     report, fingerprint = _report(tmp_path)
@@ -466,7 +637,7 @@ def test_feedback_publication_rejects_unowned_branch_state(tmp_path: Path) -> No
         (),
         (),
         branch_tip="a" * 40,
-        branch_matches_plan=True,
+        branch_is_recoverable=True,
     )
     assert recovered.action == "create"
 
