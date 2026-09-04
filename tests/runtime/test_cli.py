@@ -24,6 +24,7 @@ from infra_fleet_advisor.runtime.fleet_feedback import (
 from infra_fleet_advisor.runtime.github_issues import PublicationResult
 
 POLICY = Path(__file__).parent.parent / "fixtures" / "policies" / "valid_policy.yaml"
+INTENTS = Path(__file__).parent.parent / "fixtures" / "intents"
 
 
 def _argv(repo: Path, sha: str, output_dir: Path, prior: Path | None = None) -> list[str]:
@@ -35,6 +36,8 @@ def _argv(repo: Path, sha: str, output_dir: Path, prior: Path | None = None) -> 
         sha,
         "--policy",
         str(POLICY),
+        "--intent-dir",
+        str(INTENTS),
         "--output-dir",
         str(output_dir),
         # Keeps the suite hermetic: the CLI now defaults to the real model.
@@ -114,7 +117,7 @@ def test_report_signature_command_prints_a_versioned_digest(
     assert main(["report-signature", "--report", str(output_dir / "report.json")]) == EXIT_OK
 
     output = capsys.readouterr().out.splitlines()
-    assert output[-1].startswith("v2:")
+    assert output[-1].startswith("v3:")
     assert len(output[-1]) == 67
 
 
@@ -150,7 +153,7 @@ def test_publication_decision_command_returns_machine_readable_result(
 
     result = json.loads(capsys.readouterr().out)
     assert result["decision"] == "unchanged"
-    assert result["marker"].startswith("<!-- infra-fleet-advisor-report-signature: v2:")
+    assert result["marker"].startswith("<!-- infra-fleet-advisor-report-signature: v3:")
 
 
 def test_publication_decision_command_reads_a_decline_marker(
@@ -281,6 +284,8 @@ def test_issue_plan_command_writes_validated_actions_without_overwriting(
         str(output_dir / "report.json"),
         "--policy",
         str(POLICY),
+        "--intent-dir",
+        str(INTENTS),
         "--output",
         str(issue_plan),
     ]
@@ -324,6 +329,8 @@ def test_publish_issues_command_binds_validated_plan_to_adapter(
                 str(output_dir / "report.json"),
                 "--policy",
                 str(POLICY),
+                "--intent-dir",
+                str(INTENTS),
                 "--app-bot-login",
                 "advisor[bot]",
             ]
@@ -348,6 +355,8 @@ def test_publish_issues_reports_revalidation_as_a_policy_error(tmp_path: Path, c
                 str(report),
                 "--policy",
                 str(POLICY),
+                "--intent-dir",
+                str(INTENTS),
                 "--app-bot-login",
                 "advisor[bot]",
             ]
@@ -406,6 +415,8 @@ def test_feedback_plan_command_reads_only_typed_issue_metadata(
                 str(report_path),
                 "--policy",
                 str(POLICY),
+                "--intent-dir",
+                str(INTENTS),
                 "--app-bot-login",
                 "advisor[bot]",
                 "--output-policy",

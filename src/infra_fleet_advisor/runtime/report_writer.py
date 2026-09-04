@@ -1,4 +1,5 @@
 import json
+import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,7 @@ class ReportMetadata:
     source_commit_sha: str
     source_label: str
     policy_version: str
+    intent_digest: str
 
 
 def _require_str(value: Any, field_name: str) -> str:
@@ -80,6 +82,22 @@ def to_json(report: Report) -> str:
     return json.dumps(asdict(report), sort_keys=True, indent=2)
 
 
+def _safe_markdown_text(value: str) -> str:
+    escaped = value.replace("\\", "\\\\")
+    for character in "`*_{}[]<>#":
+        escaped = escaped.replace(character, f"\\{character}")
+    escaped = escaped.replace("@", "&#64;")
+    escaped = re.sub(r"(?i)\b(https?)://", lambda match: f"{match.group(1)}&#58;//", escaped)
+    escaped = re.sub(r"(?i)\bwww\.", "www&#46;", escaped)
+    safe_lines = []
+    for line in escaped.splitlines():
+        if line.startswith(("-", "+", ">")):
+            line = f"\\{line}"
+        line = re.sub(r"^(\d+)\.", r"\1\\.", line)
+        safe_lines.append(line)
+    return "\n".join(safe_lines)
+
+
 def to_markdown(report: Report) -> str:
     p = report.provenance
     lines = [
@@ -88,6 +106,7 @@ def to_markdown(report: Report) -> str:
         f"- Source: `{p.source_label}` @ `{p.source_commit_sha}`",
         f"- Advisor version: `{p.advisor_version}` · Policy version: `{p.policy_version}`",
         f"- Model: `{p.model_identifier}` · Run started: `{p.run_started_at}`",
+        f"- Intent catalog: `{p.intent_digest or 'not supplied'}`",
         (
             f"- Lifecycle: {report.new_count} new, {report.unchanged_count} unchanged, "
             f"{report.resolved_count} resolved, {report.suppressed_count} suppressed "
@@ -102,6 +121,24 @@ def to_markdown(report: Report) -> str:
             f"- `{c.collector_id}`: {c.status} ({c.evidence_count} evidence)"
             + (f" — {c.error_summary}" if c.error_summary else "")
         )
+
+    lines += ["", "## Intent evaluation", ""]
+    if not report.intent_evaluations:
+        lines.append("- No intent catalog was supplied.")
+    for evaluation in report.intent_evaluations:
+        identity = f"{evaluation.document_id}/{evaluation.proposition_id}"
+        statement = _safe_markdown_text(evaluation.statement).replace("\n", "\n  ")
+        lines.append(f"- `{evaluation.status}` `{identity}` — {statement}")
+        lines.append(
+            f"  - Category: `{evaluation.category}` · Priority: "
+            f"`{evaluation.priority or 'not_declared'}` · Check: "
+            f"`{evaluation.check_key or 'not_declared'}` · Reason: `{evaluation.reason}`"
+        )
+        if evaluation.evidence_ids:
+            lines.append(
+                "  - Evidence: "
+                + ", ".join(f"`{evidence_id}`" for evidence_id in evaluation.evidence_ids)
+            )
 
     lines += ["", "## Recommendations", ""]
     for r in report.recommendations:
@@ -157,6 +194,7 @@ def read_report_metadata(path: Path) -> ReportMetadata:
             source_commit_sha=_require_str(provenance["source_commit_sha"], "source_commit_sha"),
             source_label=_require_str(provenance["source_label"], "source_label"),
             policy_version=_require_str(provenance["policy_version"], "policy_version"),
+            intent_digest=_require_str(provenance.get("intent_digest", ""), "intent_digest"),
         )
     except (OSError, ValueError, TypeError, KeyError) as exc:
         raise PolicyError(f"cannot read report provenance: {type(exc).__name__}") from exc

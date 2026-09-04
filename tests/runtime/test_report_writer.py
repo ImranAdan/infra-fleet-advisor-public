@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from infra_fleet_advisor.core.errors import PolicyError
+from infra_fleet_advisor.core.intent import IntentEvaluation
 from infra_fleet_advisor.core.report import CollectorCoverage, Report, RunProvenance
 from infra_fleet_advisor.core.validation import RejectedCandidate
 from infra_fleet_advisor.runtime.report_writer import (
@@ -188,3 +189,35 @@ def test_rejection_reasons_reach_both_report_formats() -> None:
 
 def test_no_rejected_section_when_nothing_was_rejected() -> None:
     assert "## Rejected candidates" not in to_markdown(REPORT)
+
+
+def test_intent_evaluations_reach_both_formats_as_inert_text() -> None:
+    evaluation = IntentEvaluation(
+        document_id="security",
+        proposition_id="S-001",
+        category="security",
+        priority="high",
+        statement=(
+            "Notify @ops. ## This remains text.\n"
+            "- Do not make a list or visit https://example.invalid."
+        ),
+        check_key="github_actions_uses_oidc",
+        status="divergent",
+        evidence_ids=("collector:aaaaaaaaaaaaaaaa",),
+        reason="evidence_conflicts_with_intent",
+    )
+    report = replace(
+        REPORT,
+        provenance=replace(REPORT.provenance, intent_digest="intent-md-v1:" + "a" * 64),
+        intent_evaluations=(evaluation,),
+    )
+
+    payload = json.loads(to_json(report))
+    assert payload["intent_evaluations"][0]["status"] == "divergent"
+
+    markdown = to_markdown(report)
+    assert "intent-md-v1:" in markdown
+    assert "Notify &#64;ops. \\#\\# This remains text." in markdown
+    assert "## This remains text" not in markdown
+    assert r"\- Do not make a list" in markdown
+    assert "https&#58;//example.invalid" in markdown

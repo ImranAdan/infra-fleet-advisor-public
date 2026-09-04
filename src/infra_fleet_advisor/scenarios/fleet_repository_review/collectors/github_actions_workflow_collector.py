@@ -66,6 +66,10 @@ def _build_step_evidence(rel_path: str, locator: str, step: dict[str, Any]) -> E
     with_block: dict[str, Any] = raw_with if isinstance(raw_with, dict) else {}
 
     if _matches_action(uses, _CREDENTIALS_ACTION):
+        uses_role_to_assume = "role-to-assume" in with_block
+        uses_static_keys = (
+            "aws-access-key-id" in with_block or "aws-secret-access-key" in with_block
+        )
         return build_evidence(
             collector_id=GHA_COLLECTOR_ID,
             collector_version=GHA_COLLECTOR_VERSION,
@@ -74,10 +78,9 @@ def _build_step_evidence(rel_path: str, locator: str, step: dict[str, Any]) -> E
             locator=locator,
             excerpt=f"uses: {uses}",
             fact={
-                "uses_role_to_assume": "role-to-assume" in with_block,
-                "uses_static_keys": (
-                    "aws-access-key-id" in with_block or "aws-secret-access-key" in with_block
-                ),
+                "uses_role_to_assume": uses_role_to_assume,
+                "uses_static_keys": uses_static_keys,
+                "uses_oidc_only": uses_role_to_assume and not uses_static_keys,
             },
             # Workflow paths and step positions are still the best available
             # address for steps without an explicit id. Keep both identity

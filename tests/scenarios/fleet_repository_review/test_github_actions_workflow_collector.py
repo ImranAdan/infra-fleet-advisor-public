@@ -22,6 +22,7 @@ def test_detects_static_credentials(git_checkout) -> None:
     cred_evidence = [e for e in result.evidence if e.kind == EVIDENCE_KIND_CREDENTIAL_METHOD]
     assert len(cred_evidence) == 1
     assert cred_evidence[0].fact["uses_static_keys"] is True
+    assert cred_evidence[0].fact["uses_oidc_only"] is False
     assert result.coverage.status == "ok"
 
 
@@ -32,6 +33,7 @@ def test_detects_oidc_and_safe_trivy_gate(git_checkout) -> None:
     trivy = next(e for e in result.evidence if e.kind == EVIDENCE_KIND_TRIVY_GATE)
     assert cred.fact["uses_role_to_assume"] is True
     assert cred.fact["uses_static_keys"] is False
+    assert cred.fact["uses_oidc_only"] is True
     assert trivy.fact["ignore_unfixed"] is False
 
 

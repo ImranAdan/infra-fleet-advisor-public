@@ -1,13 +1,15 @@
 import html
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
 from urllib.parse import quote
 
+from infra_fleet_advisor.config.intents import load_intent_catalog
 from infra_fleet_advisor.config.loader import load_policy
-from infra_fleet_advisor.core.contracts import compute_fingerprint
+from infra_fleet_advisor.core.contracts import ConcernRule, compute_fingerprint
 from infra_fleet_advisor.core.errors import PolicyError
 from infra_fleet_advisor.core.evidence import Evidence
 from infra_fleet_advisor.core.validation import contains_secret, is_prior_recommendation_valid
@@ -17,6 +19,9 @@ from infra_fleet_advisor.runtime.report_writer import (
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import CONCERN_RULES
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import TAXONOMY
+from infra_fleet_advisor.scenarios.fleet_repository_review.intent_evaluation import (
+    compile_intent_rules,
+)
 
 FLEET_REPOSITORY = "ImranAdan/infra-fleet-public"
 FLEET_SOURCE_LABEL = "infra-fleet-public"
@@ -37,6 +42,8 @@ class IssueAction:
     body: str
     resolution_marker: str
     resolution_comment: str
+    intent_document_id: str | None = None
+    intent_proposition_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,9 +130,24 @@ def _active_issue_body(
     confidence: float,
     confidence_explanation: str,
     evidence: tuple[Evidence, ...],
+    intent_document_id: str | None,
+    intent_proposition_id: str | None,
+    intent_statement: str | None,
 ) -> str:
     source_url = f"https://github.com/{FLEET_REPOSITORY}/commit/{source_sha}"
     evidence_text = "\n".join(_evidence_markdown(item, source_sha) for item in evidence)
+    intent_lines = (
+        (
+            f"- Intent: {_safe_text(intent_document_id)}/{_safe_text(intent_proposition_id)}",
+            f"- Declared position: {_safe_text(intent_statement)}",
+        )
+        if (
+            intent_document_id is not None
+            and intent_proposition_id is not None
+            and intent_statement is not None
+        )
+        else ()
+    )
     body = "\n".join(
         (
             marker,
@@ -137,6 +159,7 @@ def _active_issue_body(
             f"- Category: {_safe_text(category)}",
             f"- Fingerprint: {_safe_text(fingerprint)}",
             f"- Confidence: {confidence:.2f} — {_safe_text(confidence_explanation)}",
+            *intent_lines,
             "",
             "## Recommendation",
             "",
@@ -176,7 +199,9 @@ def _resolution_text(fingerprint: str, source_sha: str) -> tuple[str, str]:
     return marker, comment
 
 
-def build_issue_plan(report_path: Path, policy_path: Path) -> IssuePlan:
+def build_issue_plan(
+    report_path: Path, policy_path: Path, intent_dir: Path | None = None
+) -> IssuePlan:
     """Revalidate a merged report and derive bounded, inert GitHub issue actions."""
     metadata = read_report_metadata(report_path)
     if metadata.source_label != FLEET_SOURCE_LABEL:
@@ -188,6 +213,15 @@ def build_issue_plan(report_path: Path, policy_path: Path) -> IssuePlan:
     if metadata.policy_version != policy.version:
         raise PolicyError("report policy version does not match the current policy")
     bounds = policy.to_bounds()
+    concern_rules: Mapping[str, ConcernRule] = CONCERN_RULES
+    active_intents_by_concern = {}
+    if intent_dir is not None:
+        catalog = load_intent_catalog(intent_dir, TAXONOMY)
+        if metadata.intent_digest != catalog.digest:
+            raise PolicyError("report intent digest does not match the current intent catalog")
+        rule_set = compile_intent_rules(catalog, enabled_categories=policy.enabled_categories)
+        concern_rules = rule_set.concern_rules
+        active_intents_by_concern = {item.concern_key: item for item in rule_set.active_intents}
     report = load_prior_report(report_path)
     if report is None:
         raise PolicyError("no published report to turn into issues")
@@ -201,7 +235,7 @@ def build_issue_plan(report_path: Path, policy_path: Path) -> IssuePlan:
         seen_fingerprints.add(recommendation.fingerprint)
 
         if not is_prior_recommendation_valid(
-            recommendation, bounds, CONCERN_RULES, report.evidence_by_id
+            recommendation, bounds, concern_rules, report.evidence_by_id
         ):
             raise PolicyError("published report contains an invalid recommendation")
         expected_fingerprint = compute_fingerprint(
@@ -234,6 +268,7 @@ def build_issue_plan(report_path: Path, policy_path: Path) -> IssuePlan:
         action: Literal["active", "resolved"] = (
             "resolved" if recommendation.status == "resolved" else "active"
         )
+        active_intent = active_intents_by_concern.get(recommendation.concern_key)
         if action == "active":
             active_action_count += 1
             if active_action_count > bounds.max_recommendations:
@@ -256,6 +291,13 @@ def build_issue_plan(report_path: Path, policy_path: Path) -> IssuePlan:
                 confidence=recommendation.confidence,
                 confidence_explanation=recommendation.confidence_explanation,
                 evidence=cited_evidence,
+                intent_document_id=(
+                    active_intent.document_id if active_intent is not None else None
+                ),
+                intent_proposition_id=(
+                    active_intent.proposition_id if active_intent is not None else None
+                ),
+                intent_statement=(active_intent.statement if active_intent is not None else None),
             )
         )
         actions.append(
@@ -269,6 +311,12 @@ def build_issue_plan(report_path: Path, policy_path: Path) -> IssuePlan:
                 body=body,
                 resolution_marker=resolution_marker,
                 resolution_comment=resolution_comment,
+                intent_document_id=(
+                    active_intent.document_id if active_intent is not None else None
+                ),
+                intent_proposition_id=(
+                    active_intent.proposition_id if active_intent is not None else None
+                ),
             )
         )
 

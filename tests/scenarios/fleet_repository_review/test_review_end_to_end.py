@@ -2,15 +2,22 @@ import subprocess
 from dataclasses import replace
 from pathlib import Path
 
+from infra_fleet_advisor.config.intents import load_intent_catalog
 from infra_fleet_advisor.config.loader import load_policy
 from infra_fleet_advisor.core.lifecycle import PriorRecommendation, PriorReport
 from infra_fleet_advisor.core.limits import ExecutionLimits
 from infra_fleet_advisor.provenance.source_verification import verify_snapshot
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import TAXONOMY
 from infra_fleet_advisor.scenarios.fleet_repository_review.review import run_review
-from infra_fleet_advisor.scenarios.fleet_repository_review.synthesis import StubSynthesizer
+from infra_fleet_advisor.scenarios.fleet_repository_review.synthesis import (
+    EvidenceProjection,
+    StubSynthesizer,
+    SynthesisResponse,
+)
 
 POLICY_PATH = Path(__file__).parent.parent.parent / "fixtures" / "policies" / "valid_policy.yaml"
+INTENT_PATH = Path(__file__).parent.parent.parent / "fixtures" / "intents"
+PRODUCTION_INTENT_PATH = Path(__file__).parents[3] / "intent"
 LIMITS = ExecutionLimits(
     max_wall_seconds=60,
     max_model_calls=1,
@@ -18,6 +25,14 @@ LIMITS = ExecutionLimits(
     max_file_bytes=256 * 1024,
     max_recommendations=10,
 )
+
+
+class _EmptySynthesizer:
+    model_identifier = "empty-test-analyst"
+
+    def synthesize(self, projection: EvidenceProjection) -> SynthesisResponse:
+        assert projection.policy_context.intent_propositions
+        return SynthesisResponse((), self.model_identifier)
 
 
 def _run(repo: Path, sha: str, prior=None):
@@ -43,6 +58,64 @@ def test_successful_review_produces_evidence_backed_recommendation(git_checkout)
     assert rec.status == "new"
     assert rec.evidence_ids
     assert report.coverage[0].status == "ok"
+
+
+def test_declared_divergence_survives_an_empty_analyst_response(git_checkout) -> None:
+    repo, sha = git_checkout("trivy_ignore_unfixed_bad.yml")
+    policy = load_policy(POLICY_PATH, TAXONOMY)
+    catalog = load_intent_catalog(INTENT_PATH, TAXONOMY)
+    source = verify_snapshot(repo, sha, "infra-fleet-public")
+
+    report = run_review(
+        checkout_root=repo,
+        policy=policy,
+        source=source,
+        synthesizer=_EmptySynthesizer(),
+        limits=LIMITS,
+        prior=None,
+        run_started_at="2026-08-26T00:00:00+00:00",
+        intent_catalog=catalog,
+    )
+
+    evaluations = {item.proposition_id: item for item in report.intent_evaluations}
+    assert report.provenance.intent_digest == catalog.digest
+    assert evaluations["T-001"].status == "divergent"
+    assert evaluations["S-001"].status == "declared_unverified"
+    assert evaluations["S-007"].status == "declared_unverified"
+    assert [item.concern_key for item in report.recommendations] == ["trivy_ignore_unfixed"]
+
+
+def test_authoritative_markdown_drives_the_production_review(git_checkout) -> None:
+    repo, sha = git_checkout(
+        "static_credentials_bad.yml",
+        terraform_files=("wildcard_iam_policy.tf",),
+    )
+    policy = load_policy(POLICY_PATH, TAXONOMY)
+    catalog = load_intent_catalog(PRODUCTION_INTENT_PATH, TAXONOMY)
+    source = verify_snapshot(repo, sha, "infra-fleet-public")
+
+    report = run_review(
+        checkout_root=repo,
+        policy=policy,
+        source=source,
+        synthesizer=_EmptySynthesizer(),
+        limits=LIMITS,
+        prior=None,
+        run_started_at="2026-08-26T00:00:00+00:00",
+        intent_catalog=catalog,
+    )
+
+    evaluations = {item.proposition_id: item for item in report.intent_evaluations}
+    assert len(evaluations) == 11
+    assert evaluations["S-001"].status == "divergent"
+    assert evaluations["S-007"].status == "divergent"
+    assert {item.status for key, item in evaluations.items() if key not in {"S-001", "S-007"}} == {
+        "declared_unverified"
+    }
+    assert {item.concern_key for item in report.recommendations} == {
+        "ci_credentials_without_oidc",
+        "wildcard_iam_permissions",
+    }
 
 
 def test_collector_failure_visible_in_coverage(git_checkout) -> None:

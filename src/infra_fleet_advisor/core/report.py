@@ -8,9 +8,14 @@ from infra_fleet_advisor.core.contracts import (
     Recommendation,
 )
 from infra_fleet_advisor.core.evidence import Evidence
+from infra_fleet_advisor.core.intent import IntentEvaluation
 from infra_fleet_advisor.core.lifecycle import PriorReport, compare_with_prior
 from infra_fleet_advisor.core.ranking import rank
-from infra_fleet_advisor.core.validation import RejectedCandidate, validate_candidates
+from infra_fleet_advisor.core.validation import (
+    RejectedCandidate,
+    validate_candidates,
+    validate_intent_candidates,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +35,7 @@ class RunProvenance:
     collector_versions: Mapping[str, str]
     model_identifier: str
     run_started_at: str
+    intent_digest: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +53,7 @@ class Report:
     unchanged_count: int
     resolved_count: int
     suppressed_count: int
+    intent_evaluations: tuple[IntentEvaluation, ...] = ()
 
 
 def assemble_report(
@@ -58,9 +65,21 @@ def assemble_report(
     bounds: PolicyBounds,
     concern_rules: Mapping[str, ConcernRule],
     prior: PriorReport | None,
+    intent_evaluations: Sequence[IntentEvaluation] = (),
+    required_candidates: Sequence[RawRecommendationCandidate] = (),
 ) -> Report:
     """Bounded pipeline coordination: validate → compare with prior → rank."""
-    validated = validate_candidates(candidates, evidence_by_id, bounds, concern_rules)
+    validated = (
+        validate_intent_candidates(
+            candidates,
+            required_candidates,
+            evidence_by_id,
+            bounds,
+            concern_rules,
+        )
+        if required_candidates
+        else validate_candidates(candidates, evidence_by_id, bounds, concern_rules)
+    )
     collection_complete = all(c.status == "ok" for c in coverage)
     lifecycle = compare_with_prior(
         validated.accepted, prior, bounds, concern_rules, collection_complete
@@ -89,4 +108,5 @@ def assemble_report(
         unchanged_count=lifecycle.unchanged_count,
         resolved_count=lifecycle.resolved_count,
         suppressed_count=lifecycle.suppressed_count,
+        intent_evaluations=tuple(intent_evaluations),
     )
