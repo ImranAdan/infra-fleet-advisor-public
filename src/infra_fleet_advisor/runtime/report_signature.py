@@ -9,7 +9,7 @@ from infra_fleet_advisor.core.contracts import STATUSES
 from infra_fleet_advisor.core.errors import PolicyError
 from infra_fleet_advisor.runtime.report_writer import MAX_PRIOR_REPORT_BYTES
 
-SIGNATURE_VERSION = "v2"
+SIGNATURE_VERSION = "v3"
 MAX_DECLINED_PR_BODY_BYTES = 128 * 1024
 MAX_ADVISORY_PR_HISTORY = 199
 MAX_ADVISORY_PR_HISTORY_FILE_BYTES = 16 * 1024 * 1024
@@ -135,10 +135,42 @@ def _signature_payload(report: dict[str, Any]) -> dict[str, Any]:
         rejections.append(_require_str(rejection.get("reason"), "rejected.reason"))
     rejections.sort()
 
+    intent_evaluations: list[dict[str, Any]] = []
+    for item in _require_list(report.get("intent_evaluations", []), "intent_evaluations"):
+        evaluation = _require_dict(item, "intent evaluation")
+        check_key = evaluation.get("check_key")
+        if check_key is not None and not isinstance(check_key, str):
+            raise TypeError("intent evaluation check_key must be a string or null")
+        status = _require_str(evaluation.get("status"), "intent evaluation status")
+        if status not in ("satisfied", "divergent", "declared_unverified"):
+            raise TypeError("intent evaluation status is not recognized")
+        raw_evidence_ids = _require_list(
+            evaluation.get("evidence_ids"), "intent evaluation evidence_ids"
+        )
+        if any(not isinstance(evidence_id, str) for evidence_id in raw_evidence_ids):
+            raise TypeError("intent evaluation evidence_ids must contain strings")
+        intent_evaluations.append(
+            {
+                "document_id": _require_str(
+                    evaluation.get("document_id"), "intent evaluation document_id"
+                ),
+                "proposition_id": _require_str(
+                    evaluation.get("proposition_id"), "intent evaluation proposition_id"
+                ),
+                "check_key": check_key,
+                "status": status,
+                "evidence_ids": sorted(raw_evidence_ids),
+                "reason": _require_str(evaluation.get("reason"), "intent evaluation reason"),
+            }
+        )
+    intent_evaluations.sort(key=lambda item: (item["document_id"], item["proposition_id"]))
+
     return {
         "policy_version": _require_str(
             provenance.get("policy_version"), "provenance.policy_version"
         ),
+        "intent_digest": _require_str(provenance.get("intent_digest", ""), "intent_digest"),
+        "intent_evaluations": intent_evaluations,
         "findings": findings,
         "evidence": evidence,
         "coverage": coverage,

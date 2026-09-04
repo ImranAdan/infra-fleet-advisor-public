@@ -1,10 +1,14 @@
 import time
+from collections.abc import Mapping
 from pathlib import Path
 
 from infra_fleet_advisor import ADVISOR_VERSION
+from infra_fleet_advisor.config.intents import IntentCatalog
 from infra_fleet_advisor.config.policy import AdvisorPolicy
+from infra_fleet_advisor.core.contracts import ConcernRule, RawRecommendationCandidate
 from infra_fleet_advisor.core.errors import BoundedExecutionExceeded
 from infra_fleet_advisor.core.evidence import Evidence
+from infra_fleet_advisor.core.intent import IntentEvaluation
 from infra_fleet_advisor.core.lifecycle import PriorReport
 from infra_fleet_advisor.core.limits import ExecutionLimits
 from infra_fleet_advisor.core.report import (
@@ -27,8 +31,12 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     TF_IAM_COLLECTOR_ID,
     TF_IAM_COLLECTOR_VERSION,
 )
+from infra_fleet_advisor.scenarios.fleet_repository_review.intent_evaluation import (
+    compile_intents,
+)
 from infra_fleet_advisor.scenarios.fleet_repository_review.synthesis import (
     EvidenceProjection,
+    IntentContext,
     PolicyContext,
     Synthesizer,
 )
@@ -58,6 +66,7 @@ def run_review(
     limits: ExecutionLimits,
     prior: PriorReport | None,
     run_started_at: str,
+    intent_catalog: IntentCatalog | None = None,
 ) -> Report:
     """The one vertical scenario: select collectors, project evidence for
     synthesis, and run the bounded core pipeline. No recommendation
@@ -81,10 +90,40 @@ def run_review(
     evidence_by_id = {e.evidence_id: e for e in all_evidence}
     coverage: list[CollectorCoverage] = [gha_result.coverage, tf_result.coverage]
 
+    if intent_catalog is None:
+        concern_rules: Mapping[str, ConcernRule] = CONCERN_RULES
+        intent_evaluations: tuple[IntentEvaluation, ...] = ()
+        intent_context: tuple[IntentContext, ...] = ()
+        required_candidates: tuple[RawRecommendationCandidate, ...] = ()
+        intent_digest = ""
+    else:
+        compilation = compile_intents(
+            intent_catalog,
+            enabled_categories=policy.enabled_categories,
+            evidence=all_evidence,
+            coverage=tuple(coverage),
+        )
+        concern_rules = compilation.concern_rules
+        intent_evaluations = compilation.evaluations
+        intent_context = tuple(
+            IntentContext(
+                document_id=item.document_id,
+                proposition_id=item.proposition_id,
+                check_key=item.check_key,
+                concern_key=item.concern_key,
+                statement=item.statement,
+            )
+            for item in compilation.active_intents
+        )
+        intent_digest = compilation.digest
+        required_candidates = compilation.divergence_candidates
+
     projection = EvidenceProjection(
         policy_context=PolicyContext(
             enabled_categories=policy.enabled_categories,
             max_recommendations=policy.max_recommendations,
+            concern_rules=concern_rules,
+            intent_propositions=intent_context,
         ),
         evidence=all_evidence,
         remaining_seconds=limits.max_wall_seconds - (time.monotonic() - started),
@@ -104,6 +143,7 @@ def run_review(
         },
         model_identifier=synthesis_response.model_identifier,
         run_started_at=run_started_at,
+        intent_digest=intent_digest,
     )
 
     return assemble_report(
@@ -112,6 +152,8 @@ def run_review(
         candidates=synthesis_response.recommendations,
         evidence_by_id=evidence_by_id,
         bounds=policy.to_bounds(),
-        concern_rules=CONCERN_RULES,
+        concern_rules=concern_rules,
         prior=prior,
+        intent_evaluations=intent_evaluations,
+        required_candidates=required_candidates,
     )

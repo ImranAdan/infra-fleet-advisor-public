@@ -74,7 +74,8 @@ be re-evaluated from a verified source snapshot before appearing in a report.
 
 1. The Git repository is the only required source for the MVP.
 2. Existing deterministic tools should be collectors, not replaced by an LLM.
-3. Owner policy must capture intentional trade-offs and accepted risks.
+3. Owner intent must declare the positions to evaluate; policy separately
+   captures priorities, exclusions, intentional trade-offs, and accepted risks.
 4. Every published claim must point to evidence captured during the same run.
 5. The report must be short and prioritized rather than exhaustive.
 6. Read-only operation is a product feature and a security boundary.
@@ -83,3 +84,6 @@ be re-evaluated from a verified source snapshot before appearing in a report.
 8. Fleet decisions should return as a closed, typed signal rather than prose:
    issue state plus a small reason-label vocabulary can propose policy without
    making comments or issue descriptions trusted input.
+9. A proposition outside deterministic collector coverage must remain visible
+   as declared but unverified; the advisor must not infer a check from prose or
+   treat missing evidence as compliance.

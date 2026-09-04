@@ -2,35 +2,42 @@
 
 ## Architectural intent
 
-The MVP is a bounded, read-only analysis pipeline for one known GitOps
-repository. It is not a general agent platform and does not need an autonomous
-plan-act loop because it cannot mutate the target system.
+The MVP is a bounded intent-to-work pipeline for one known GitOps repository.
+It continuously evaluates declared positions, but it is not a general agent
+platform: configuration cannot invent executable checks and every mutation
+remains behind human review.
 
 ```text
-AdvisorPolicy ───────────────────────────┐
-                                        │
-Verified fleet snapshot → collectors → evidence set
-                                        │
-                                        ├→ synthesis → validation
-Prior report ───────────────────────────┘                  │
-                                                           ↓
-                                             JSON + Markdown report
-                                                           │ merged
-                                                           ↓
-                                      revalidated issue plan → fleet issues
-                                                                    │
-                                                   closed + typed reason labels
-                                                                    ↓
-                                      validated feedback plan → policy PR
+Intent catalog → static check registry ───────────────┐
+                                                      │
+Verified fleet snapshot → collectors → evidence set ─┼→ evaluations
+                                                      │       │
+Advisor policy ───────────────────────────────────────┘       ├→ satisfied
+                                                              ├→ unverified
+                                                              └→ divergent
+                                                                     │
+                                      required candidate ← analyst wording
+                                                                     │
+Prior report ─────────────────────────────────────────────→ validation/lifecycle
+                                                                     │
+                                                        JSON + Markdown report
+                                                                     │ merged
+                                                                     ↓
+                                            revalidated issue plan → fleet issue
+                                                                        │
+                                                       human decision / fleet PR
+                                                                        │
+                                                                  fleet CI + merge
 ```
 
 ## Domain boundaries
 
 ### `config`
 
-Owns the closed advisor-policy contract, safe loading, defaults, and validation.
-Policy expresses priorities and constraints; it does not select arbitrary code
-or contain workflow logic.
+Owns the closed advisor-policy and intent-catalog contracts, safe loading,
+defaults, canonical intent digest, and validation. Policy expresses priorities,
+trade-offs, and constraints. Intent declares propositions and static check
+identifiers. Neither selects arbitrary code or contains workflow logic.
 
 ### `provenance`
 
@@ -48,7 +55,8 @@ layout.
 ### `scenarios`
 
 Contains the single `fleet_repository_review` vertical slice. The scenario
-selects known collectors, prepares approved evidence for synthesis, and defines
+selects known collectors, binds intent checks through a static registry,
+evaluates propositions, prepares approved evidence for synthesis, and defines
 the advisory taxonomy. A second scenario must represent a real product need,
 not a speculative extension point.
 
@@ -91,36 +99,54 @@ modules. GitHub Actions evidence remains keyed by workflow path and step locator
 because steps without explicit IDs have no stable resource handle; file moves
 or inserted steps can therefore still produce a one-time lifecycle change.
 
+### Intent compilation
+
+Markdown intent bodies are untrusted declarative data. A check identifier resolves
+only through an explicit in-code registry containing its collector, evidence
+kind, deterministic support predicate, repository scope, concern, and template.
+Unknown identifiers never trigger code generation or dynamic discovery; their
+propositions are recorded as `declared_unverified`.
+
+Compilation yields immutable evaluations and one required candidate per
+divergent proposition. Partial collector coverage cannot prove satisfaction.
+Required work contains the complete conflicting evidence set and must fit the
+policy's hard recommendation bound or the run fails explicitly.
+
 ### Model
 
-The model receives a bounded projection of policy and evidence. It cannot read
-files, run tools, publish reports, or request broader access. Its structured
-response is untrusted until validated.
+The model receives a bounded projection of active intent, policy, and evidence.
+It cannot read files, run tools, publish reports, or request broader access. Its
+structured response is untrusted until validated. Valid analyst wording replaces
+a deterministic template only when category, concern, priority, and complete
+evidence set produce the exact compiled fingerprint; otherwise the template is
+used and the analyst output is rejected.
 
 ### Publication
 
-Deterministic code checks schema, evidence existence, category, limits, and
-secret-safe fields. Only validated recommendations reach JSON or Markdown
-output.
+Deterministic code checks schema, evidence existence, category, intent identity,
+limits, and secret-safe fields. Every compiled divergence reaches JSON and
+Markdown through either valid analyst wording or its trusted fallback template.
 
 Report delivery derives a versioned signature from deterministic material only:
-the policy version, recommendation fingerprints and lifecycle, cited evidence
-records including repository locations, collector coverage records, rejection
-reasons, and accepted trade-offs. Model prose, ranking, and run timestamps are
-excluded. The signature is recorded as an inert marker in an advisory pull
-request. Deterministic code reads a bounded, complete branch history and selects
+the policy version, intent digest and evaluations, recommendation fingerprints
+and lifecycle, cited evidence records including repository locations, collector
+coverage records, rejection reasons, and accepted trade-offs. Model prose,
+ranking, and run timestamps are excluded. The signature is recorded as an inert
+marker in an advisory pull request. Deterministic code reads a bounded, complete
+branch history and selects
 the latest workflow-authored decision. An unmerged decision with the same exact
 marker is a decline; a newer workflow merge supersedes it. Arbitrary
 pull-request prose never enters analysis or policy.
 
 Fleet issue publication is a second publication boundary after report merge.
-Deterministic code reloads the report under the current policy, recomputes every
-fingerprint, resolves every citation, validates evidence support and secret-safe
-fields, and emits a bounded issue plan. A workflow adapter consumes only that
-plan. It uses an installation token limited to `issues: write`, deduplicates on a
-per-fingerprint label and body marker, and never changes issue state. Resolution
-means “no longer detected” and produces an idempotent note for human review, not
-automatic closure.
+Deterministic code reloads the report under the current policy and intent
+catalog, verifies the catalog digest, recomputes every fingerprint, resolves
+every citation, validates evidence support and secret-safe fields, and emits a
+bounded issue plan carrying the originating intent identity. A workflow adapter
+consumes only that plan. It uses an installation token limited to
+`issues: write`, deduplicates on a per-fingerprint label and body marker, and never
+changes issue state. Resolution means “no longer detected” and produces an
+idempotent note for human review, not automatic closure.
 
 Fleet decision feedback is a third deterministic boundary. The GitHub adapter
 projects fleet issues into number, state, author, and label sets; title, body,
@@ -131,8 +157,8 @@ and refuses to widen one issue into a concern-level policy decision when that
 concern has multiple active findings. The resulting plan changes only
 `policy.yaml`, assigns a deterministic new policy version, and is proposed as a
 human-reviewed pull request in the advisor repository. A fleet token with
-`issues: read` cannot change the fleet. A stale report caused by a policy version
-change pauses feedback without withdrawing an open proposal. An open
+`issues: read` cannot change the fleet. A stale report caused by a policy or
+intent change pauses feedback without withdrawing an open proposal. An open
 workflow-authored proposal is withdrawn only after current evidence shows its
 source labels or closed state were revoked; a typed cancellation marker prevents
 that closure from becoming a decline record. Declines are matched by signature
@@ -143,17 +169,21 @@ replacement remains protected by an exact lease.
 
 ## Run lifecycle
 
-1. Load and validate advisor policy.
+1. Load and validate the intent catalog and advisor policy.
 2. Verify or materialize a clean target snapshot at its declared full Git SHA.
 3. Execute the explicitly configured collector set within hard bounds.
 4. Record collector coverage and failures.
-5. Assign stable evidence IDs and project approved evidence into the synthesis
-   request.
-6. Parse the model response into a closed recommendation schema.
-7. Resolve every cited evidence ID against the captured evidence set.
-8. Compute stable fingerprints and compare with the prior report.
-9. Apply deterministic output limits and ordering rules.
-10. Write equivalent JSON and Markdown reports.
+5. Assign stable evidence IDs and compile every proposition through the static
+   check registry.
+6. Record satisfied, divergent, and declared-unverified evaluations.
+7. Create a required candidate for each divergence and project bounded intent,
+   policy, and evidence into synthesis.
+8. Parse the model response and retain only exact compiled work identities,
+   filling omissions from trusted templates.
+9. Resolve every cited evidence ID against the captured evidence set.
+10. Compute stable fingerprints and compare with the prior report.
+11. Apply deterministic output limits and ordering rules.
+12. Write equivalent JSON and Markdown reports.
 
 ## Initial implementation shape
 

@@ -21,8 +21,22 @@ def _report() -> dict[str, object]:
     return {
         "provenance": {
             "policy_version": "1.0",
+            "intent_digest": "intent-md-v1:" + "a" * 64,
             "run_started_at": "2026-09-01T00:00:00Z",
         },
+        "intent_evaluations": [
+            {
+                "document_id": "security",
+                "proposition_id": "S-001",
+                "category": "security",
+                "priority": "high",
+                "statement": "CI uses OIDC-only credentials.",
+                "check_key": "github_actions_uses_oidc",
+                "status": "divergent",
+                "evidence_ids": ["ev_b"],
+                "reason": "evidence_conflicts_with_intent",
+            }
+        ],
         "recommendations": [
             {
                 "fingerprint": "fp_b",
@@ -112,6 +126,31 @@ def test_signature_changes_with_policy_version(tmp_path: Path) -> None:
     )
 
 
+def test_signature_changes_with_intent_digest_or_evaluation(tmp_path: Path) -> None:
+    original = _report()
+    changed_digest = deepcopy(original)
+    provenance = changed_digest["provenance"]
+    assert isinstance(provenance, dict)
+    provenance["intent_digest"] = "intent-md-v1:" + "b" * 64
+
+    changed_evaluation = deepcopy(original)
+    evaluations = changed_evaluation["intent_evaluations"]
+    assert isinstance(evaluations, list)
+    evaluation = evaluations[0]
+    assert isinstance(evaluation, dict)
+    evaluation["status"] = "satisfied"
+    evaluation["evidence_ids"] = []
+    evaluation["reason"] = "complete_evidence_supports_intent"
+
+    original_path = _write(tmp_path, original, "original.json")
+    assert compute_report_signature(original_path) != compute_report_signature(
+        _write(tmp_path, changed_digest, "changed-digest.json")
+    )
+    assert compute_report_signature(original_path) != compute_report_signature(
+        _write(tmp_path, changed_evaluation, "changed-evaluation.json")
+    )
+
+
 @pytest.mark.parametrize(
     ("section", "field", "value"),
     [
@@ -144,7 +183,7 @@ def test_signature_changes_with_material_report_content(
 def test_signature_is_independent_of_report_order(tmp_path: Path) -> None:
     original = _report()
     reordered = deepcopy(original)
-    for section in ("recommendations", "evidence", "coverage"):
+    for section in ("intent_evaluations", "recommendations", "evidence", "coverage"):
         records = reordered[section]
         assert isinstance(records, list)
         records.reverse()

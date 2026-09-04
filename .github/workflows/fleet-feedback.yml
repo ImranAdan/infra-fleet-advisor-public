@@ -69,6 +69,7 @@ jobs:
           uv run infra-fleet-advisor feedback-plan \
             --report reports/report.json \
             --policy policy.yaml \
+            --intent-dir intent \
             --app-bot-login "$APP_BOT_LOGIN" \
             --output-policy "$RUNNER_TEMP/feedback-policy.yaml" \
             --output-plan "$RUNNER_TEMP/feedback-plan.json"
