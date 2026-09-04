@@ -166,6 +166,12 @@ begins refusing candidates has drifted, and that must reach a reviewer even when
 the accepted findings are identical — so a rejection-only change does propose a
 pull request.
 
+Closing an advisory pull request without merging records a decline at that
+report's deterministic material signature. An identical run is not proposed
+again until findings, cited evidence, collector coverage, rejection reasons, or
+an owner-accepted trade-off changes. Pull-request prose is untrusted; only the
+exact versioned signature marker written by the advisor is interpreted.
+
 ### FR12: Mechanical remediation
 
 The advisor may propose a code change to the fleet as a pull request, for the
@@ -181,15 +187,65 @@ Concerns requiring judgement — scoping a wildcard IAM policy, for instance —
 not be added to the patcher registry. A confident wrong answer there is a
 security regression. See PDR 0002.
 
+### FR13: Fleet issue publication
+
+Merging an advisory report may publish each active, validated recommendation as
+an issue in `infra-fleet-public`. The publisher revalidates the merged report
+against the current closed policy before acquiring a cross-repository token.
+Recommendations that are suppressed, carry an owner-accepted trade-off, cite
+invalid evidence, or have a mismatched fingerprint are ineligible. The number
+of active issue actions must not exceed the policy recommendation limit.
+
+Issue creation is idempotent per recommendation fingerprint. A partial failure
+must be safely retryable without duplicating the issues already created, and a
+collision must fail loudly rather than attach advice to an unrelated issue.
+When evidence becomes resolved, the publisher may add one deduplicated note but
+must never close, reopen, or otherwise change issue state. Issue bodies and
+comments are untrusted output surfaces and never become analysis or policy
+input. The cross-repository GitHub App token is restricted to one repository and
+`issues: write`; it has no permission to read or modify fleet code. See PDR
+0001.
+
+### FR14: Fleet decision feedback
+
+A closed advisor-created fleet issue carrying `advisor:wontfix` and exactly one
+approved trade-off reason label may propose an accepted trade-off in
+`policy.yaml`. Feedback reads only issue number, state, author, and labels; issue
+titles, bodies, and comments never become policy, evidence, or model input.
+
+The issue must be attributable to the configured GitHub App, contain exactly one
+valid advisor fingerprint, and still map to a current active recommendation. A
+decision must not be widened from one finding to an entire concern when multiple
+active findings share that concern. In that case, or when listing is incomplete,
+the feedback run fails without proposing policy.
+
+The generated policy receives a deterministic new version and is delivered only
+as a pull request in the advisor repository. It is never merged automatically.
+An exact versioned marker deduplicates both an open proposal and a closed,
+declined proposal across unrelated intervening proposals. Pull-request history
+is read to a declared bound and fails closed if completeness cannot be proven.
+After a policy change, feedback preserves any open proposal and waits for a
+report produced under that policy version rather than interpreting a stale
+report as revoked. If the underlying issue decision is revoked before merge,
+the workflow withdraws only its own stale proposal and distinguishes that
+cancellation from a human decline. A partial push without a pull request may be
+recovered only after the reserved branch is proven to contain one policy-only
+commit based on merged history.
+
 ## Non-functional requirements
 
 ### Safety and security
 
-- Use read-only GitHub permissions against the fleet repository in CI. The
+- Use read-only GitHub permissions against fleet code in CI. The
   `fleet-advisory` workflow additionally holds `contents: write` and
   `pull-requests: write` **on this repository only**, solely to propose the
-  report it just produced. It holds no credential for the fleet beyond public
-  read, and no workflow may acquire one.
+  report it just produced. The separate issue publisher may acquire a GitHub
+  App installation token restricted to `issues: write` on the fleet; it has no
+  contents or pull-request permission. The feedback workflow downscopes that
+  App installation to `issues: read` and holds contents and pull-request write
+  only in the advisor repository so it can propose `policy.yaml`. The
+  remediation workflow's separate
+  write credential remains manual-only and cannot be reached by either path.
 - Never require cloud or cluster credentials for the MVP.
 - Treat repository content, scanner output, and model output as untrusted.
 - Do not log environment values, credentials, unbounded file contents, or raw
@@ -230,6 +286,12 @@ cluster, or wall-clock timing.
    recommendations.
 7. Collector failures are visible in the report's coverage section.
 8. All automated tests run deterministically without external systems.
+9. A merged report can produce retry-safe, fingerprint-deduplicated issue
+   actions without granting the publisher access to fleet code or changing
+   issue state.
+10. A closed, reason-labelled advisor issue can produce a reviewable,
+    deterministic policy pull request without trusting issue prose or changing
+    fleet state.
 
 ## Success measures
 
@@ -270,10 +332,7 @@ Future work must be justified by demonstrated value from the previous phase:
 
 ## Open product decisions
 
-- Where maintainers should consume the recurring report.
-- Which deterministic collectors form the smallest useful first vertical
-  slice.
-- How suppression decisions are stored without granting write access to the
-  target repository.
-- Which model and structured-output interface best fits the first
-  implementation.
+- Which additional deterministic collectors have demonstrated enough value to
+  enter the single repository-review scenario.
+- Whether and at what cadence the model-backed advisory workflow should run
+  automatically, given its external API cost.

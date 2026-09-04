@@ -94,6 +94,48 @@ def test_load_prior_report_parses_evidence_table() -> None:
     assert ev.kind == "gha_credential_method"
 
 
+def test_load_prior_report_carries_owner_accepted_trade_off(tmp_path: Path) -> None:
+    payload = json.loads((FIXTURES / "prior_reports" / "prior_report_sample.json").read_text())
+    payload["recommendations"][0]["owner_accepted_trade_off"] = "Accepted temporarily."
+    path = tmp_path / "report.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    report = load_prior_report(path)
+
+    assert report is not None
+    assert report.recommendations[0].owner_accepted_trade_off == "Accepted temporarily."
+
+
+def test_load_prior_report_rejects_unknown_status(tmp_path: Path) -> None:
+    payload = json.loads((FIXTURES / "prior_reports" / "prior_report_sample.json").read_text())
+    payload["recommendations"][0]["status"] = "reopened"
+    path = tmp_path / "report.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(PolicyError, match="status is not recognized"):
+        load_prior_report(path)
+
+
+def test_load_prior_report_rejects_non_primitive_evidence_fact(tmp_path: Path) -> None:
+    payload = json.loads((FIXTURES / "prior_reports" / "prior_report_sample.json").read_text())
+    payload["evidence"][0]["fact"] = {"nested": {"untrusted": True}}
+    path = tmp_path / "report.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(PolicyError, match="evidence fact must map strings"):
+        load_prior_report(path)
+
+
+def test_load_prior_report_rejects_duplicate_evidence_ids(tmp_path: Path) -> None:
+    payload = json.loads((FIXTURES / "prior_reports" / "prior_report_sample.json").read_text())
+    payload["evidence"].append(payload["evidence"][0])
+    path = tmp_path / "report.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(PolicyError, match="duplicate evidence_id"):
+        load_prior_report(path)
+
+
 def test_load_prior_report_rejects_non_string_fingerprint(tmp_path: Path) -> None:
     bad = tmp_path / "bad.json"
     bad.write_text(

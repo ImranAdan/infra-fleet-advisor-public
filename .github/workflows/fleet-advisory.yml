@@ -85,6 +85,43 @@ jobs:
             --synthesizer "${{ inputs.synthesizer }}" \
             "${prior[@]}"
 
+      # A closed, unmerged advisory PR created by this workflow is an explicit
+      # decline at the report signature recorded in its body. Two 100-item pages
+      # paired with a 199-record gate prove the history is complete or fail
+      # closed. Trusted code selects the newest workflow-authored PR, so a newer
+      # human PR cannot hide a decline and a newer workflow merge supersedes it.
+      # The REST `head` filter includes this repository's owner, so a fork reusing
+      # the branch name cannot forge a decision. PR prose remains untrusted.
+      - name: Read bounded closed advisory history
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          gh api \
+            --method GET \
+            "repos/${GITHUB_REPOSITORY}/pulls" \
+            -f state=closed \
+            -f head="${GITHUB_REPOSITORY_OWNER}:${BRANCH}" \
+            -f sort=created \
+            -f direction=desc \
+            -f per_page=100 \
+            -f page=1 \
+            > "$RUNNER_TEMP/advisory-prs-page-1.json"
+          gh api \
+            --method GET \
+            "repos/${GITHUB_REPOSITORY}/pulls" \
+            -f state=closed \
+            -f head="${GITHUB_REPOSITORY_OWNER}:${BRANCH}" \
+            -f sort=created \
+            -f direction=desc \
+            -f per_page=100 \
+            -f page=2 \
+            > "$RUNNER_TEMP/advisory-prs-page-2.json"
+          jq -s 'add' \
+            "$RUNNER_TEMP/advisory-prs-page-1.json" \
+            "$RUNNER_TEMP/advisory-prs-page-2.json" \
+            > "$RUNNER_TEMP/advisory-pr-history.json"
+
       # Compares findings, not file bytes. Every report embeds a fresh run
       # timestamp, and a finding legitimately moves from "new" to "unchanged"
       # on the very next run over an identical fleet — so a plain diff is
@@ -92,57 +129,57 @@ jobs:
       - name: Decide whether the findings changed
         id: publish
         run: |
-          # Deterministic, collector- and policy-derived material only. The
-          # cited evidence facts are included so that a finding whose supporting
-          # detail changed at the same path still counts as changed, even though
-          # its evidence ID and fingerprint are stable by design.
-          #
-          # Rejection *reasons* are included — a synthesizer that starts
-          # refusing candidates has drifted, and that must reach a human even
-          # when the accepted findings are identical. Only the reasons, which
-          # are a closed vocabulary; the rejected concern keys are arbitrary
-          # synthesizer output and would churn the signature.
-          #
-          # Model-authored fields (title, summary, priority, confidence, rank)
-          # are deliberately excluded: they are re-generated on every run and
-          # would make every run look changed, which is the exact failure this
-          # comparison exists to avoid.
-          signature() {
-            jq -Sr '{
-              findings: [.recommendations[]
-                | "\(.fingerprint)"
-                + ":\(if .status == "new" or .status == "unchanged"
-                      then "open" else .status end)"
-                + ":\(.owner_accepted_trade_off // "")"] | sort,
-              evidence: [.evidence[]
-                | {id: .evidence_id, kind: .kind, fact: .fact, excerpt: .excerpt}]
-                | sort_by(.id),
-              coverage: [.coverage[] | "\(.collector_id):\(.status)"] | sort,
-              rejections: [.rejected[] | .reason] | sort
-            }' "$1"
-          }
-
-          new_sig="$(signature "$RUNNER_TEMP/advisory/report.json")"
-          old_sig=""
-          if [ -f reports/report.json ]; then
-            old_sig="$(signature reports/report.json)"
+          if [ ! -f "$RUNNER_TEMP/advisory-pr-history.json" ]; then
+            echo "The closed advisory history was not read." >&2
+            exit 1
           fi
+          decision_args=(
+            publication-decision
+            --report "$RUNNER_TEMP/advisory/report.json"
+            --closed-pr-history "$RUNNER_TEMP/advisory-pr-history.json"
+            --repository "$GITHUB_REPOSITORY"
+            --branch "$BRANCH"
+          )
+          if [ -f reports/report.json ]; then
+            decision_args+=(--prior-report reports/report.json)
+          fi
+
+          result="$(uv run infra-fleet-advisor "${decision_args[@]}")"
+          decision="$(jq -er '.decision' <<< "$result")"
+          signature="$(jq -er '.signature' <<< "$result")"
+          marker="$(jq -er '.marker' <<< "$result")"
 
           mkdir -p reports
           cp "$RUNNER_TEMP/advisory/report.json" "$RUNNER_TEMP/advisory/report.md" reports/
 
-          if [ "$new_sig" = "$old_sig" ]; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "Findings and collector coverage are unchanged; nothing to propose."
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
+          printf 'signature=%s\nmarker=%s\n' "$signature" "$marker" >> "$GITHUB_OUTPUT"
+          case "$decision" in
+            unchanged)
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+              echo "Findings and collector coverage are unchanged; nothing to propose."
+              ;;
+            declined)
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+              echo "This exact report state was declined; nothing to re-propose."
+              ;;
+            changed)
+              echo "changed=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Unknown publication decision." >&2
+              exit 1
+              ;;
+          esac
 
       - name: Compose the pull request body
         if: steps.publish.outputs.changed == 'true'
+        env:
+          REPORT_SIGNATURE_MARKER: ${{ steps.publish.outputs.marker }}
         run: |
           sha="${{ steps.target.outputs.sha }}"
           {
+            printf '%s\n' "$REPORT_SIGNATURE_MARKER"
+            echo
             echo "Review of [\`${sha:0:7}\`](https://github.com/${TARGET_REPO}/commit/${sha})" \
                  "in \`${TARGET_REPO}\`, produced by the \`fleet-advisory\` workflow."
             echo

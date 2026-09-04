@@ -80,3 +80,6 @@ be re-evaluated from a verified source snapshot before appearing in a report.
 6. Read-only operation is a product feature and a security boundary.
 7. Live cluster data may improve later recommendations, but it is not required
    to validate the initial product.
+8. Fleet decisions should return as a closed, typed signal rather than prose:
+   issue state plus a small reason-label vocabulary can propose policy without
+   making comments or issue descriptions trusted input.

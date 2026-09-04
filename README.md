@@ -31,8 +31,7 @@ The first version will:
 - produce both a human-readable Markdown report and structured JSON;
 - track recommendations as new, unchanged, resolved, or suppressed across
   runs; and
-- remain read-only with respect to both the fleet repository and its runtime
-  infrastructure.
+- remain read-only with respect to fleet code and runtime infrastructure.
 
 The MVP will not modify infrastructure, merge anything, inspect a live cluster,
 support arbitrary repositories, or implement autonomous remediation. Reports are
@@ -42,6 +41,12 @@ Reviewing the fleet is read-only. Separately, a manually dispatched workflow may
 **propose** a mechanical fix as a pull request against the fleet — never merge
 one — for the narrow set of concerns fixable without judgement. See
 [PDR 0002](docs/decisions/0002-mechanical-remediation-of-the-fleet.md).
+
+After an advisory report is merged, a separate issues-only workflow can publish
+each active recommendation to the fleet as a deduplicated issue. It never
+changes issue state; when evidence disappears it adds a note and leaves closure
+to a maintainer. See
+[PDR 0001](docs/decisions/0001-advisory-delivery-and-feedback-loop.md).
 
 ## Review flow
 
@@ -104,9 +109,76 @@ Reports also record *why* candidates were refused, not just how many. A
 synthesizer that starts rejecting candidates has drifted, and that is the case
 the rejection comparison exists to surface.
 
+Closing an advisory pull request without merging declines that exact material
+report state. The workflow records a versioned signature in the pull-request
+body and does not re-propose the same findings, evidence, coverage, rejection
+reasons, accepted trade-offs, and policy version until one of them changes. It
+selects the latest workflow-authored decision from a bounded, complete branch
+history, so a newer human-authored pull request cannot hide an earlier workflow
+decision. It never interprets pull-request prose as policy or evidence.
+
 If synthesis fails, the run exits non-zero and writes no report. It never
 degrades to an empty result, because an empty result would mark every
 outstanding finding resolved.
+
+### Publishing accepted recommendations as fleet issues
+
+`.github/workflows/fleet-issues.yml` runs when a merged commit changes
+`reports/report.json`, and can also be manually retried. Before any external
+write it reloads the report under the current policy and validates source
+identity, policy version, fingerprints, evidence support, paths, secret safety,
+suppression, accepted trade-offs, and hard output limits.
+
+Configure a GitHub App installed only on `infra-fleet-public`, with repository
+`Issues: Read and write` and no contents or pull-request permission. Store its
+client ID as `FLEET_ISSUES_APP_CLIENT_ID` and private key as
+`FLEET_ISSUES_APP_PRIVATE_KEY` in this repository. The generated installation
+token is scoped again in the workflow to that one repository and
+`issues: write`.
+
+Each issue carries an `advisor:fp:<digest>` label and an inert fingerprint
+marker. Retries check both identities before every create, so a failure after
+five of eight issues continues with the remaining three. Existing closed issues
+remain closed, active issues remain open, and each fingerprint receives at most
+one resolution note; issue prose never enters the advisor.
+
+### Recording a fleet decision in policy
+
+To decline an advisor issue as an accepted trade-off, a maintainer closes the
+issue and applies `advisor:wontfix` plus exactly one reason label:
+
+- `advisor:tradeoff:availability`
+- `advisor:tradeoff:compatibility`
+- `advisor:tradeoff:complexity`
+- `advisor:tradeoff:cost`
+- `advisor:tradeoff:risk-accepted`
+
+`.github/workflows/fleet-feedback.yml` checks those decisions daily at 05:17 UTC
+and can be run manually. Its fleet token is restricted to `issues: read`. The
+adapter retains only issue number, state, workflow-App author, and labels; it
+does not read issue title, body, or comments.
+
+A decision is eligible only for an issue created by the configured App, with
+one valid fingerprint that still maps to one active recommendation. Because
+policy accepts trade-offs at concern level, feedback fails safely if multiple
+active findings share that concern. Eligible decisions produce a pull request
+in this repository that changes only `policy.yaml` and assigns the changed
+policy a deterministic new version. A maintainer must merge it. Closing the
+pull request declines that exact feedback plan across intervening proposals.
+The workflow reads up to 199 branch-history records and fails closed rather than
+forgetting a decision if that bound is exceeded.
+
+If the issue is reopened or either decision label is removed before merge, the
+workflow withdraws its own stale policy pull request. That automated closure is
+marked as a cancellation and does not count as a maintainer declining the plan.
+If a push succeeds but pull-request creation fails, the next run can reclaim the
+reserved `advisor/feedback-wontfix` branch only after proving it is a
+single-parent commit from merged history that changes only `policy.yaml`.
+
+After a feedback policy is merged, this job waits for an advisory report made
+under the new policy version. That report keeps the finding visible with the
+accepted rationale while making it ineligible for issue publication and
+mechanical remediation.
 
 ### Proposing a fix to the fleet
 
@@ -158,8 +230,9 @@ so far used `--synthesizer stub`, so the findings are real — the collectors ar
 deterministic — while the prose around them is templated.
 
 `docs/decisions/0001-advisory-delivery-and-feedback-loop.md` records what closing
-the loop requires: issues raised against the fleet, a decline record, and a
-feedback path back into policy. None of that is built yet.
+the loop requires. Stable evidence identity, closed-pull-request decline
+records, deduplicated fleet issue publication, and label-only `wontfix`
+feedback into human-reviewed policy are implemented.
 
 ## Documentation
 

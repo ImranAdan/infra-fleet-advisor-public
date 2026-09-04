@@ -28,6 +28,11 @@ _SECRET_PATTERNS = tuple(
 )
 
 
+def contains_secret(value: str) -> bool:
+    """Conservative screen shared by every publication boundary."""
+    return any(pattern.search(value) for pattern in _SECRET_PATTERNS)
+
+
 @dataclass(frozen=True, slots=True)
 class RejectedCandidate:
     """Records why a candidate was rejected — never its raw text."""
@@ -56,7 +61,7 @@ def _safe_identifier(value: object) -> str:
     otherwise slip through."""
     if not isinstance(value, str) or not _SAFE_IDENTIFIER.match(value):
         return "unknown"
-    if any(p.search(value) for p in _SECRET_PATTERNS):
+    if contains_secret(value):
         return "unknown"
     return value
 
@@ -107,7 +112,7 @@ def _field_violation(
         return "text_field_too_long"
     if len(text_fields[-1]) > MAX_EXPLANATION_LENGTH:
         return "explanation_too_long"
-    if any(p.search(f) for f in text_fields for p in _SECRET_PATTERNS):
+    if any(contains_secret(field) for field in text_fields):
         return "secret_pattern_detected"
     return None
 
@@ -161,7 +166,7 @@ def is_prior_recommendation_valid(
         or any(not isinstance(e, str) for e in prior.evidence_ids)
     ):
         return False
-    if any(p.search(eid) for eid in prior.evidence_ids for p in _SECRET_PATTERNS):
+    if any(contains_secret(eid) for eid in prior.evidence_ids):
         return False
     # Membership alone isn't identity: an entry filed under the cited ID must
     # also *be* that evidence, or the citation names one thing while the

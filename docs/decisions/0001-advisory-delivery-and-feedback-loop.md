@@ -157,6 +157,19 @@ real weight with fleet maintainers.
 4. GitHub App and issue creation with fingerprint dedupe (D2, D5)
 5. `wontfix` label to policy pull request (D6)
 
+Implementation status: steps 1–5 are delivered. The issue publisher derives a
+bounded plan from the merged report, uses a one-repository GitHub App token with
+only `issues: write`, and deduplicates before every create so partial runs are
+retry-safe. The feedback workflow reads only issue identity, state, App author,
+and a closed reason-label vocabulary through an `issues: read` token. It maps a
+decision back to one current fingerprint, refuses ambiguous concern-level
+widening, and proposes a deterministically versioned `policy.yaml` for human
+review. A human closing that pull request declines its exact feedback signature;
+if the fleet decision is revoked first, the workflow withdraws its own proposal
+with a distinct cancellation marker. Decline signatures remain effective across
+intervening proposals within a bounded, complete branch history, and partial
+branch pushes can recover only after a policy-only ancestry proof.
+
 Steps 1–3 need no new credentials. Step 4 is where the App arrives.
 
 ### Deferred

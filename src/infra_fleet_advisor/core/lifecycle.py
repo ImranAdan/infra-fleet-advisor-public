@@ -24,6 +24,7 @@ class PriorRecommendation:
     # suppressed or that is already resolved. Lifecycle comparison itself does
     # not read this — it recomputes status from the current run.
     status: str = "new"
+    owner_accepted_trade_off: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

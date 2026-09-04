@@ -1,12 +1,34 @@
 import argparse
+import json
 import sys
 from collections.abc import Sequence
+from dataclasses import asdict
 from pathlib import Path
 
 from infra_fleet_advisor.core.errors import AdvisorError, PolicyError, ProvenanceError
 from infra_fleet_advisor.provenance.source_verification import verify_snapshot
 from infra_fleet_advisor.runtime.clock import SystemClock
 from infra_fleet_advisor.runtime.composition import SYNTHESIZERS, RunInputs, compose_and_run
+from infra_fleet_advisor.runtime.fleet_feedback import (
+    MAX_FEEDBACK_PR_HISTORY,
+    build_feedback_plan,
+    decide_feedback_publication,
+    read_feedback_plan,
+    read_feedback_pull_requests,
+    write_feedback_outputs,
+)
+from infra_fleet_advisor.runtime.github_issues import GhCliIssueClient, publish_issue_plan
+from infra_fleet_advisor.runtime.issue_publication import (
+    FLEET_REPOSITORY,
+    build_issue_plan,
+    write_issue_plan,
+)
+from infra_fleet_advisor.runtime.report_signature import (
+    compute_report_signature,
+    decide_publication,
+    read_declined_pr_body,
+    read_latest_declined_pr_body,
+)
 from infra_fleet_advisor.runtime.report_writer import (
     load_prior_report,
     read_report_source_sha,
@@ -44,6 +66,60 @@ def _build_parser() -> argparse.ArgumentParser:
     remediate.add_argument(
         "--dry-run", action="store_true", help="Report what would change without writing"
     )
+
+    signature = sub.add_parser(
+        "report-signature", help="Compute the material publication signature of a report"
+    )
+    signature.add_argument("--report", required=True, type=Path)
+
+    publication = sub.add_parser(
+        "publication-decision",
+        help="Decide whether a report changed or matches an accepted or declined report",
+    )
+    publication.add_argument("--report", required=True, type=Path)
+    publication.add_argument("--prior-report", type=Path, default=None)
+    decline_source = publication.add_mutually_exclusive_group()
+    decline_source.add_argument("--latest-declined-pr-body", type=Path, default=None)
+    decline_source.add_argument("--closed-pr-history", type=Path, default=None)
+    publication.add_argument("--repository")
+    publication.add_argument("--branch")
+
+    issues = sub.add_parser(
+        "issue-plan", help="Revalidate a merged report and write bounded fleet issue actions"
+    )
+    issues.add_argument("--report", required=True, type=Path)
+    issues.add_argument("--policy", required=True, type=Path)
+    issues.add_argument("--output", required=True, type=Path)
+
+    publish_issues = sub.add_parser(
+        "publish-issues",
+        help="Publish a revalidated merged report through the issues-only adapter",
+    )
+    publish_issues.add_argument("--report", required=True, type=Path)
+    publish_issues.add_argument("--policy", required=True, type=Path)
+    publish_issues.add_argument("--app-bot-login", required=True)
+
+    feedback = sub.add_parser(
+        "feedback-plan",
+        help="Read closed fleet issue labels and propose accepted policy trade-offs",
+    )
+    feedback.add_argument("--report", required=True, type=Path)
+    feedback.add_argument("--policy", required=True, type=Path)
+    feedback.add_argument("--app-bot-login", required=True)
+    feedback.add_argument("--output-policy", required=True, type=Path)
+    feedback.add_argument("--output-plan", required=True, type=Path)
+
+    feedback_decision = sub.add_parser(
+        "feedback-publication-decision",
+        help="Choose a safe PR transition for one validated feedback plan",
+    )
+    feedback_decision.add_argument("--plan", required=True, type=Path)
+    feedback_decision.add_argument("--open-prs", required=True, type=Path)
+    feedback_decision.add_argument("--history-prs", required=True, type=Path)
+    feedback_decision.add_argument("--repository", required=True)
+    feedback_decision.add_argument("--branch", required=True)
+    feedback_decision.add_argument("--branch-tip")
+    feedback_decision.add_argument("--branch-is-recoverable", action="store_true")
     return parser
 
 
@@ -72,8 +148,9 @@ def _remediate(args: argparse.Namespace) -> int:
     applied: list[str] = []
     for rec in prior.recommendations:
         # A suppressed concern is one the owner deliberately excluded; a
-        # resolved one is already fixed. Neither justifies touching the fleet.
-        if rec.status not in ("new", "unchanged"):
+        # resolved one is already fixed, and an accepted trade-off is a choice
+        # to live with the finding. None justifies touching the fleet.
+        if rec.status not in ("new", "unchanged") or rec.owner_accepted_trade_off:
             continue
         patches = build_patches(
             checkout_root=args.checkout,
@@ -99,6 +176,137 @@ def _remediate(args: argparse.Namespace) -> int:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
+
+    if args.command == "feedback-publication-decision":
+        try:
+            feedback_plan = read_feedback_plan(args.plan)
+            open_prs = read_feedback_pull_requests(
+                args.open_prs,
+                repository=args.repository,
+                branch=args.branch,
+                maximum=1,
+            )
+            history_prs = read_feedback_pull_requests(
+                args.history_prs,
+                repository=args.repository,
+                branch=args.branch,
+                maximum=MAX_FEEDBACK_PR_HISTORY,
+            )
+            feedback_decision = decide_feedback_publication(
+                feedback_plan,
+                open_prs,
+                history_prs,
+                branch_tip=args.branch_tip,
+                branch_is_recoverable=args.branch_is_recoverable,
+            )
+            print(json.dumps(asdict(feedback_decision), sort_keys=True))
+            return EXIT_OK
+        except PolicyError as exc:
+            print(f"policy error: {exc}", file=sys.stderr)
+            return EXIT_POLICY_ERROR
+
+    if args.command == "feedback-plan":
+        try:
+            client = GhCliIssueClient(FLEET_REPOSITORY)
+            feedback_plan = build_feedback_plan(
+                args.report,
+                args.policy,
+                client.all_advisor_issue_records(),
+                args.app_bot_login,
+            )
+            write_feedback_outputs(
+                feedback_plan,
+                args.policy,
+                args.output_policy,
+                args.output_plan,
+            )
+            print(
+                f"wrote {feedback_plan.status} feedback plan with "
+                f"{len(feedback_plan.additions)} policy addition(s)"
+            )
+            return EXIT_OK
+        except PolicyError as exc:
+            print(f"policy error: {exc}", file=sys.stderr)
+            return EXIT_POLICY_ERROR
+        except AdvisorError as exc:
+            print(f"pipeline error: {exc}", file=sys.stderr)
+            return EXIT_PIPELINE_ERROR
+        except OSError as exc:
+            print(f"pipeline error: cannot write feedback: {type(exc).__name__}", file=sys.stderr)
+            return EXIT_PIPELINE_ERROR
+
+    if args.command == "publish-issues":
+        try:
+            issue_plan = build_issue_plan(args.report, args.policy)
+            result = publish_issue_plan(
+                issue_plan,
+                GhCliIssueClient(issue_plan.target_repository),
+                args.app_bot_login,
+            )
+            print(
+                f"published {result.created} issue(s), found {result.existing} existing, "
+                f"restored {result.labels_restored} label set(s), and added "
+                f"{result.resolution_comments} resolution note(s)"
+            )
+            return EXIT_OK
+        except PolicyError as exc:
+            print(f"policy error: {exc}", file=sys.stderr)
+            return EXIT_POLICY_ERROR
+        except AdvisorError as exc:
+            print(f"pipeline error: {exc}", file=sys.stderr)
+            return EXIT_PIPELINE_ERROR
+
+    if args.command == "issue-plan":
+        try:
+            issue_plan = build_issue_plan(args.report, args.policy)
+            write_issue_plan(issue_plan, args.output)
+            print(f"wrote issue plan with {len(issue_plan.actions)} action(s)")
+            return EXIT_OK
+        except PolicyError as exc:
+            print(f"policy error: {exc}", file=sys.stderr)
+            return EXIT_POLICY_ERROR
+        except OSError as exc:
+            print(f"pipeline error: cannot write issue plan: {type(exc).__name__}", file=sys.stderr)
+            return EXIT_PIPELINE_ERROR
+
+    if args.command == "publication-decision":
+        try:
+            if args.closed_pr_history is not None:
+                if args.repository is None or args.branch is None:
+                    raise PolicyError(
+                        "--repository and --branch are required with --closed-pr-history"
+                    )
+                declined_body = read_latest_declined_pr_body(
+                    args.closed_pr_history,
+                    repository=args.repository,
+                    branch=args.branch,
+                )
+            else:
+                if args.repository is not None or args.branch is not None:
+                    raise PolicyError("--repository and --branch require --closed-pr-history")
+                declined_body = (
+                    read_declined_pr_body(args.latest_declined_pr_body)
+                    if args.latest_declined_pr_body is not None
+                    else ""
+                )
+            publication_decision = decide_publication(
+                args.report,
+                prior_report=args.prior_report,
+                latest_declined_pr_body=declined_body,
+            )
+            print(json.dumps(asdict(publication_decision), sort_keys=True))
+            return EXIT_OK
+        except PolicyError as exc:
+            print(f"policy error: {exc}", file=sys.stderr)
+            return EXIT_POLICY_ERROR
+
+    if args.command == "report-signature":
+        try:
+            print(compute_report_signature(args.report))
+            return EXIT_OK
+        except PolicyError as exc:
+            print(f"policy error: {exc}", file=sys.stderr)
+            return EXIT_POLICY_ERROR
 
     if args.command == "remediate":
         try:

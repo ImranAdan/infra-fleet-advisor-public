@@ -15,6 +15,13 @@ Verified fleet snapshot → collectors → evidence set
 Prior report ───────────────────────────┘                  │
                                                            ↓
                                              JSON + Markdown report
+                                                           │ merged
+                                                           ↓
+                                      revalidated issue plan → fleet issues
+                                                                    │
+                                                   closed + typed reason labels
+                                                                    ↓
+                                      validated feedback plan → policy PR
 ```
 
 ## Domain boundaries
@@ -48,8 +55,9 @@ not a speculative extension point.
 ### `runtime`
 
 Binds a verified checkout, policy, prior report, model client, output streams,
-and explicit scenario provider for one invocation. It owns CLI composition and
-execution but not recommendation semantics.
+explicit scenario provider, and external publication plans for one invocation.
+It owns CLI composition, safe output handling, and GitHub adapter inputs but not
+recommendation semantics.
 
 ## Supporting adapters
 
@@ -94,6 +102,44 @@ response is untrusted until validated.
 Deterministic code checks schema, evidence existence, category, limits, and
 secret-safe fields. Only validated recommendations reach JSON or Markdown
 output.
+
+Report delivery derives a versioned signature from deterministic material only:
+the policy version, recommendation fingerprints and lifecycle, cited evidence
+records including repository locations, collector coverage records, rejection
+reasons, and accepted trade-offs. Model prose, ranking, and run timestamps are
+excluded. The signature is recorded as an inert marker in an advisory pull
+request. Deterministic code reads a bounded, complete branch history and selects
+the latest workflow-authored decision. An unmerged decision with the same exact
+marker is a decline; a newer workflow merge supersedes it. Arbitrary
+pull-request prose never enters analysis or policy.
+
+Fleet issue publication is a second publication boundary after report merge.
+Deterministic code reloads the report under the current policy, recomputes every
+fingerprint, resolves every citation, validates evidence support and secret-safe
+fields, and emits a bounded issue plan. A workflow adapter consumes only that
+plan. It uses an installation token limited to `issues: write`, deduplicates on a
+per-fingerprint label and body marker, and never changes issue state. Resolution
+means “no longer detected” and produces an idempotent note for human review, not
+automatic closure.
+
+Fleet decision feedback is a third deterministic boundary. The GitHub adapter
+projects fleet issues into number, state, author, and label sets; title, body,
+and comments are discarded at the boundary. Trusted code accepts only closed,
+App-authored advisor issues with one fingerprint and one reason from a static
+vocabulary. It resolves the fingerprint against the revalidated current report
+and refuses to widen one issue into a concern-level policy decision when that
+concern has multiple active findings. The resulting plan changes only
+`policy.yaml`, assigns a deterministic new policy version, and is proposed as a
+human-reviewed pull request in the advisor repository. A fleet token with
+`issues: read` cannot change the fleet. A stale report caused by a policy version
+change pauses feedback without withdrawing an open proposal. An open
+workflow-authored proposal is withdrawn only after current evidence shows its
+source labels or closed state were revoked; a typed cancellation marker prevents
+that closure from becoming a decline record. Declines are matched by signature
+across a bounded complete history rather than only the newest proposal. A
+workflow-owned branch left by partial PR creation is recoverable only when its
+single parent is merged history and its sole changed path is `policy.yaml`;
+replacement remains protected by an exact lease.
 
 ## Run lifecycle
 
