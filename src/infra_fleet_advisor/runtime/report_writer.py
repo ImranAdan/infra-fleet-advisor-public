@@ -91,9 +91,8 @@ def _safe_markdown_text(value: str) -> str:
     escaped = re.sub(r"(?i)\bwww\.", "www&#46;", escaped)
     safe_lines = []
     for line in escaped.splitlines():
-        if line.startswith(("-", "+", ">")):
-            line = f"\\{line}"
-        line = re.sub(r"^(\d+)\.", r"\1\\.", line)
+        line = re.sub(r"^([ \t]*)([-+>])", r"\1\\\2", line)
+        line = re.sub(r"^([ \t]*)(\d+)\.", r"\1\2\\.", line)
         safe_lines.append(line)
     return "\n".join(safe_lines)
 

@@ -156,4 +156,5 @@ def run_review(
         prior=prior,
         intent_evaluations=intent_evaluations,
         required_candidates=required_candidates,
+        intent_enabled=intent_catalog is not None,
     )

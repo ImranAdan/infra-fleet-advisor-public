@@ -67,6 +67,7 @@ def assemble_report(
     prior: PriorReport | None,
     intent_evaluations: Sequence[IntentEvaluation] = (),
     required_candidates: Sequence[RawRecommendationCandidate] = (),
+    intent_enabled: bool = False,
 ) -> Report:
     """Bounded pipeline coordination: validate → compare with prior → rank."""
     validated = (
@@ -77,7 +78,7 @@ def assemble_report(
             bounds,
             concern_rules,
         )
-        if required_candidates
+        if intent_enabled or required_candidates
         else validate_candidates(candidates, evidence_by_id, bounds, concern_rules)
     )
     collection_complete = all(c.status == "ok" for c in coverage)

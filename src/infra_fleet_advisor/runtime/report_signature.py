@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from infra_fleet_advisor.core.contracts import STATUSES
+from infra_fleet_advisor.core.contracts import PRIORITIES, STATUSES
 from infra_fleet_advisor.core.errors import PolicyError
 from infra_fleet_advisor.runtime.report_writer import MAX_PRIOR_REPORT_BYTES
 
@@ -141,6 +141,9 @@ def _signature_payload(report: dict[str, Any]) -> dict[str, Any]:
         check_key = evaluation.get("check_key")
         if check_key is not None and not isinstance(check_key, str):
             raise TypeError("intent evaluation check_key must be a string or null")
+        priority = evaluation.get("priority")
+        if priority is not None and (not isinstance(priority, str) or priority not in PRIORITIES):
+            raise TypeError("intent evaluation priority must be recognized or null")
         status = _require_str(evaluation.get("status"), "intent evaluation status")
         if status not in ("satisfied", "divergent", "declared_unverified"):
             raise TypeError("intent evaluation status is not recognized")
@@ -156,6 +159,11 @@ def _signature_payload(report: dict[str, Any]) -> dict[str, Any]:
                 ),
                 "proposition_id": _require_str(
                     evaluation.get("proposition_id"), "intent evaluation proposition_id"
+                ),
+                "category": _require_str(evaluation.get("category"), "intent evaluation category"),
+                "priority": priority,
+                "statement": _require_str(
+                    evaluation.get("statement"), "intent evaluation statement"
                 ),
                 "check_key": check_key,
                 "status": status,

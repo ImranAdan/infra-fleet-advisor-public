@@ -55,17 +55,19 @@ CONCERN_TEMPLATES: dict[str, ConcernTemplate] = {
         priority="high",
         title="CI workflow does not use OIDC-only AWS credentials",
         summary=(
-            "A GitHub Actions step configures AWS credentials without an exclusive "
-            "short-lived OIDC role-to-assume flow."
+            "A GitHub Actions step cannot establish an exclusive short-lived "
+            "OIDC role-to-assume flow from its permissions and action inputs."
         ),
         impact="Long-lived or ambient credentials widen the blast radius of CI compromise.",
         suggested_change=(
-            "Configure aws-actions/configure-aws-credentials with role-to-assume and remove "
-            "static access-key inputs."
+            "Grant the job id-token: write, configure role-to-assume, remove static-key "
+            "inputs, and keep credential-reuse and OIDC-bypass inputs disabled."
         ),
         trade_offs="Requires provisioning and trusting an OIDC IAM role for this workflow.",
         confidence=0.9,
-        confidence_explanation="Directly observed from the workflow step's `with:` keys.",
+        confidence_explanation=(
+            "Directly observed from effective workflow/job permissions and the step's `with:` keys."
+        ),
     ),
     CONCERN_STATIC_AWS_CREDENTIALS: ConcernTemplate(
         category="security",

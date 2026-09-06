@@ -69,6 +69,12 @@ registry, but is not attached to the production security proposition because
 the current collector cannot prove that proposition's full fixed-vulnerability
 and documented-exception semantics.
 
+The OIDC mapping can prove a divergence in a specific
+`configure-aws-credentials` step from effective workflow/job permissions and
+action inputs. It cannot rule out ambient or shell-provided credentials across
+the repository, so a catalog with no observed conflict reports that
+repository-wide proposition as `declared_unverified`, not `satisfied`.
+
 ## Deferred
 
 - Additional categories and checks enter the same repository-review scenario

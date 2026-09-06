@@ -58,7 +58,7 @@ def _coverage(collector_id: str, status: str = "ok") -> tuple[CollectorCoverage,
     return (CollectorCoverage(collector_id, status, 1),)
 
 
-def test_oidc_intent_is_divergent_or_satisfied_from_complete_evidence() -> None:
+def test_oidc_intent_is_divergent_but_cannot_be_proven_satisfied() -> None:
     divergent = _evidence(fact={"uses_oidc_only": False})
     failed = compile_intents(
         _catalog(CHECK_GITHUB_ACTIONS_USES_OIDC),
@@ -79,7 +79,8 @@ def test_oidc_intent_is_divergent_or_satisfied_from_complete_evidence() -> None:
         evidence=(compliant,),
         coverage=_coverage(GHA_COLLECTOR_ID),
     )
-    assert passed.evaluations[0].status == "satisfied"
+    assert passed.evaluations[0].status == "declared_unverified"
+    assert passed.evaluations[0].reason == "collector_cannot_prove_satisfaction"
 
 
 def test_missing_or_incomplete_evidence_is_never_treated_as_satisfied() -> None:

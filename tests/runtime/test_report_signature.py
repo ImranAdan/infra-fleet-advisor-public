@@ -152,6 +152,30 @@ def test_signature_changes_with_intent_digest_or_evaluation(tmp_path: Path) -> N
 
 
 @pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("category", "reliability"),
+        ("priority", "critical"),
+        ("statement", "CI may use long-lived credentials."),
+    ],
+)
+def test_signature_changes_with_rendered_intent_fields(
+    tmp_path: Path, field: str, value: str
+) -> None:
+    original = _report()
+    changed = deepcopy(original)
+    evaluations = changed["intent_evaluations"]
+    assert isinstance(evaluations, list)
+    evaluation = evaluations[0]
+    assert isinstance(evaluation, dict)
+    evaluation[field] = value
+
+    assert compute_report_signature(_write(tmp_path, original, "original.json")) != (
+        compute_report_signature(_write(tmp_path, changed, "changed.json"))
+    )
+
+
+@pytest.mark.parametrize(
     ("section", "field", "value"),
     [
         ("recommendations", "owner_accepted_trade_off", "new decision"),
@@ -196,6 +220,18 @@ def test_signature_is_independent_of_report_order(tmp_path: Path) -> None:
 def test_signature_rejects_malformed_material_fields(tmp_path: Path) -> None:
     malformed = _report()
     malformed["coverage"] = "not a list"
+
+    with pytest.raises(PolicyError, match="cannot compute report signature"):
+        compute_report_signature(_write(tmp_path, malformed))
+
+
+def test_signature_rejects_an_unknown_intent_priority(tmp_path: Path) -> None:
+    malformed = _report()
+    evaluations = malformed["intent_evaluations"]
+    assert isinstance(evaluations, list)
+    evaluation = evaluations[0]
+    assert isinstance(evaluation, dict)
+    evaluation["priority"] = "urgent"
 
     with pytest.raises(PolicyError, match="cannot compute report signature"):
         compute_report_signature(_write(tmp_path, malformed))

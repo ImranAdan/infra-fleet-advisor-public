@@ -1,8 +1,5 @@
 name: ci
 on: push
-permissions:
-  id-token: write
-  contents: read
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -12,8 +9,3 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::123456789012:role/GitHubActions
           aws-region: eu-west-2
-      - id: trivy
-        uses: aquasecurity/trivy-action@0.24.0
-        with:
-          severity: CRITICAL,HIGH
-          ignore-unfixed: "false"

@@ -199,7 +199,11 @@ def test_intent_evaluations_reach_both_formats_as_inert_text() -> None:
         priority="high",
         statement=(
             "Notify @ops. ## This remains text.\n"
-            "- Do not make a list or visit https://example.invalid."
+            "- Do not make a list or visit https://example.invalid.\n"
+            " - Indented list marker.\n"
+            " + Indented plus marker.\n"
+            " > Indented quote marker.\n"
+            " 1. Indented numbered marker."
         ),
         check_key="github_actions_uses_oidc",
         status="divergent",
@@ -220,4 +224,8 @@ def test_intent_evaluations_reach_both_formats_as_inert_text() -> None:
     assert "Notify &#64;ops. \\#\\# This remains text." in markdown
     assert "## This remains text" not in markdown
     assert r"\- Do not make a list" in markdown
+    assert "   \\- Indented list marker." in markdown
+    assert "   \\+ Indented plus marker." in markdown
+    assert "   \\> Indented quote marker." in markdown
+    assert "   1\\. Indented numbered marker." in markdown
     assert "https&#58;//example.invalid" in markdown

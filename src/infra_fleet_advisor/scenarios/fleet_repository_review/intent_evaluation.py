@@ -71,7 +71,10 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
                 evidence_kind=EVIDENCE_KIND_CREDENTIAL_METHOD,
                 required_facts={"uses_oidc_only": False},
             ),
-            can_prove_satisfaction=True,
+            # This collector can prove a configure-aws-credentials step conflicts
+            # with the intent, but cannot rule out ambient or shell-provided
+            # credentials elsewhere in the repository.
+            can_prove_satisfaction=False,
             requires_relevant_evidence=True,
         ),
         CHECK_PERSISTENT_IAM_AVOIDS_WILDCARDS: IntentCheckDefinition(
@@ -209,12 +212,12 @@ def compile_intents(
                 elif collector_coverage.status != "ok":
                     status = "declared_unverified"
                     reason = "collector_incomplete"
-                elif not definition.can_prove_satisfaction:
-                    status = "declared_unverified"
-                    reason = "collector_cannot_prove_satisfaction"
                 elif definition.requires_relevant_evidence and not relevant:
                     status = "declared_unverified"
                     reason = "no_relevant_evidence"
+                elif not definition.can_prove_satisfaction:
+                    status = "declared_unverified"
+                    reason = "collector_cannot_prove_satisfaction"
                 else:
                     status = "satisfied"
                     reason = "complete_evidence_supports_intent"
