@@ -1,3 +1,5 @@
+"""Tests for the GitHub Actions workflow evidence collector."""
+
 import pytest
 
 from infra_fleet_advisor.core.limits import ExecutionLimits
