@@ -1,6 +1,7 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
 
-from infra_fleet_advisor.core.contracts import ConcernRule
+from infra_fleet_advisor.core.contracts import ConcernRule, RawRecommendationCandidate
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     EVIDENCE_KIND_CREDENTIAL_METHOD,
     EVIDENCE_KIND_IAM_WILDCARD,
@@ -8,6 +9,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
 )
 
 CONCERN_STATIC_AWS_CREDENTIALS = "static_aws_credentials_in_ci"
+CONCERN_CI_CREDENTIALS_WITHOUT_OIDC = "ci_credentials_without_oidc"
 CONCERN_TRIVY_IGNORE_UNFIXED = "trivy_ignore_unfixed"
 CONCERN_WILDCARD_IAM_PERMISSIONS = "wildcard_iam_permissions"
 
@@ -48,6 +50,25 @@ class ConcernTemplate:
 
 
 CONCERN_TEMPLATES: dict[str, ConcernTemplate] = {
+    CONCERN_CI_CREDENTIALS_WITHOUT_OIDC: ConcernTemplate(
+        category="security",
+        priority="high",
+        title="CI workflow does not use OIDC-only AWS credentials",
+        summary=(
+            "A GitHub Actions step cannot establish an exclusive short-lived "
+            "OIDC role-to-assume flow from its permissions and action inputs."
+        ),
+        impact="Long-lived or ambient credentials widen the blast radius of CI compromise.",
+        suggested_change=(
+            "Grant the job id-token: write, configure role-to-assume, remove static-key "
+            "inputs, and keep credential-reuse and OIDC-bypass inputs disabled."
+        ),
+        trade_offs="Requires provisioning and trusting an OIDC IAM role for this workflow.",
+        confidence=0.9,
+        confidence_explanation=(
+            "Directly observed from effective workflow/job permissions and the step's `with:` keys."
+        ),
+    ),
     CONCERN_STATIC_AWS_CREDENTIALS: ConcernTemplate(
         category="security",
         priority="high",
@@ -104,3 +125,25 @@ CONCERN_TEMPLATES: dict[str, ConcernTemplate] = {
         confidence_explanation="Directly observed from the IAM policy's parsed statement.",
     ),
 }
+
+
+def candidate_from_template(
+    concern_key: str,
+    evidence_ids: Sequence[str],
+    priority: str | None = None,
+) -> RawRecommendationCandidate:
+    """Build trusted fallback wording for a deterministically proven divergence."""
+    template = CONCERN_TEMPLATES[concern_key]
+    return RawRecommendationCandidate(
+        concern_key=concern_key,
+        category=template.category,
+        priority=priority or template.priority,
+        title=template.title,
+        summary=template.summary,
+        evidence_ids=tuple(evidence_ids),
+        impact=template.impact,
+        suggested_change=template.suggested_change,
+        trade_offs=template.trade_offs,
+        confidence=template.confidence,
+        confidence_explanation=template.confidence_explanation,
+    )

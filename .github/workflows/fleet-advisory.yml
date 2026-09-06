@@ -81,6 +81,7 @@ jobs:
             --checkout target \
             --sha "${{ steps.target.outputs.sha }}" \
             --policy policy.yaml \
+            --intent-dir intent \
             --output-dir "$RUNNER_TEMP/advisory" \
             --synthesizer "${{ inputs.synthesizer }}" \
             "${prior[@]}"

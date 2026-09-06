@@ -42,23 +42,51 @@ def _is_truthy_yaml_value(value: Any) -> bool:
     return False
 
 
-def _iter_steps(workflow: dict[str, Any], rel_path: str) -> list[tuple[str, dict[str, Any]]]:
-    steps: list[tuple[str, dict[str, Any]]] = []
+def _grants_id_token_write(permissions: Any) -> bool:
+    if isinstance(permissions, str):
+        return permissions.strip().lower() == "write-all"
+    if not isinstance(permissions, dict):
+        return False
+    value = permissions.get("id-token")
+    return isinstance(value, str) and value.strip().lower() == "write"
+
+
+def _input_is_disabled(with_block: dict[str, Any], key: str) -> bool:
+    if key not in with_block:
+        return True
+    value = with_block[key]
+    if isinstance(value, bool):
+        return not value
+    return isinstance(value, str) and value.strip().lower() == "false"
+
+
+def _iter_steps(workflow: dict[str, Any], rel_path: str) -> list[tuple[str, dict[str, Any], bool]]:
+    steps: list[tuple[str, dict[str, Any], bool]] = []
     jobs = workflow.get("jobs")
     if not isinstance(jobs, dict):
         return steps
+    workflow_permissions = workflow.get("permissions")
     for job_id, job in jobs.items():
         if not isinstance(job, dict):
             continue
+        effective_permissions = (
+            job.get("permissions") if "permissions" in job else workflow_permissions
+        )
+        has_id_token_write = _grants_id_token_write(effective_permissions)
         for index, step in enumerate(job.get("steps") or []):
             if not isinstance(step, dict):
                 continue
             locator = f"jobs.{job_id}.steps[{step.get('id', index)}]"
-            steps.append((f"{rel_path}::{locator}", step))
+            steps.append((f"{rel_path}::{locator}", step, has_id_token_write))
     return steps
 
 
-def _build_step_evidence(rel_path: str, locator: str, step: dict[str, Any]) -> Evidence | None:
+def _build_step_evidence(
+    rel_path: str,
+    locator: str,
+    step: dict[str, Any],
+    has_id_token_write: bool,
+) -> Evidence | None:
     uses = step.get("uses")
     if not isinstance(uses, str):
         return None
@@ -66,6 +94,15 @@ def _build_step_evidence(rel_path: str, locator: str, step: dict[str, Any]) -> E
     with_block: dict[str, Any] = raw_with if isinstance(raw_with, dict) else {}
 
     if _matches_action(uses, _CREDENTIALS_ACTION):
+        role_to_assume = with_block.get("role-to-assume")
+        uses_role_to_assume = isinstance(role_to_assume, str) and bool(role_to_assume.strip())
+        uses_static_keys = (
+            "aws-access-key-id" in with_block or "aws-secret-access-key" in with_block
+        )
+        force_skip_oidc_disabled = _input_is_disabled(with_block, "force-skip-oidc")
+        use_existing_credentials_disabled = _input_is_disabled(
+            with_block, "use-existing-credentials"
+        )
         return build_evidence(
             collector_id=GHA_COLLECTOR_ID,
             collector_version=GHA_COLLECTOR_VERSION,
@@ -74,9 +111,17 @@ def _build_step_evidence(rel_path: str, locator: str, step: dict[str, Any]) -> E
             locator=locator,
             excerpt=f"uses: {uses}",
             fact={
-                "uses_role_to_assume": "role-to-assume" in with_block,
-                "uses_static_keys": (
-                    "aws-access-key-id" in with_block or "aws-secret-access-key" in with_block
+                "uses_role_to_assume": uses_role_to_assume,
+                "uses_static_keys": uses_static_keys,
+                "has_id_token_write": has_id_token_write,
+                "force_skip_oidc_disabled": force_skip_oidc_disabled,
+                "use_existing_credentials_disabled": use_existing_credentials_disabled,
+                "uses_oidc_only": (
+                    uses_role_to_assume
+                    and not uses_static_keys
+                    and has_id_token_write
+                    and force_skip_oidc_disabled
+                    and use_existing_credentials_disabled
                 ),
             },
             # Workflow paths and step positions are still the best available
@@ -156,8 +201,8 @@ def collect(
             if not isinstance(workflow, dict):
                 failures += 1
                 continue
-            for locator, step in _iter_steps(workflow, rel_path):
-                item = _build_step_evidence(rel_path, locator, step)
+            for locator, step, has_id_token_write in _iter_steps(workflow, rel_path):
+                item = _build_step_evidence(rel_path, locator, step, has_id_token_write)
                 if item is not None:
                     evidence.append(item)
         except (OSError, yaml.YAMLError, UnsafePathError):

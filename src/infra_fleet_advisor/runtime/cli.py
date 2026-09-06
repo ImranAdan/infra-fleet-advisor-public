@@ -53,6 +53,7 @@ def _build_parser() -> argparse.ArgumentParser:
     review.add_argument("--checkout", required=True, type=Path)
     review.add_argument("--sha", required=True)
     review.add_argument("--policy", required=True, type=Path)
+    review.add_argument("--intent-dir", required=True, type=Path)
     review.add_argument("--output-dir", required=True, type=Path)
     review.add_argument("--prior-report", type=Path, default=None)
     review.add_argument("--source-label", default="infra-fleet-public")
@@ -89,6 +90,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     issues.add_argument("--report", required=True, type=Path)
     issues.add_argument("--policy", required=True, type=Path)
+    issues.add_argument("--intent-dir", required=True, type=Path)
     issues.add_argument("--output", required=True, type=Path)
 
     publish_issues = sub.add_parser(
@@ -97,6 +99,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     publish_issues.add_argument("--report", required=True, type=Path)
     publish_issues.add_argument("--policy", required=True, type=Path)
+    publish_issues.add_argument("--intent-dir", required=True, type=Path)
     publish_issues.add_argument("--app-bot-login", required=True)
 
     feedback = sub.add_parser(
@@ -105,6 +108,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     feedback.add_argument("--report", required=True, type=Path)
     feedback.add_argument("--policy", required=True, type=Path)
+    feedback.add_argument("--intent-dir", required=True, type=Path)
     feedback.add_argument("--app-bot-login", required=True)
     feedback.add_argument("--output-policy", required=True, type=Path)
     feedback.add_argument("--output-plan", required=True, type=Path)
@@ -213,6 +217,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.policy,
                 client.all_advisor_issue_records(),
                 args.app_bot_login,
+                args.intent_dir,
             )
             write_feedback_outputs(
                 feedback_plan,
@@ -237,7 +242,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "publish-issues":
         try:
-            issue_plan = build_issue_plan(args.report, args.policy)
+            issue_plan = build_issue_plan(args.report, args.policy, args.intent_dir)
             result = publish_issue_plan(
                 issue_plan,
                 GhCliIssueClient(issue_plan.target_repository),
@@ -258,7 +263,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "issue-plan":
         try:
-            issue_plan = build_issue_plan(args.report, args.policy)
+            issue_plan = build_issue_plan(args.report, args.policy, args.intent_dir)
             write_issue_plan(issue_plan, args.output)
             print(f"wrote issue plan with {len(issue_plan.actions)} action(s)")
             return EXIT_OK
@@ -336,6 +341,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         source_label=args.source_label,
         prior_report_path=args.prior_report,
         synthesizer_name=args.synthesizer,
+        intent_dir=args.intent_dir,
     )
     try:
         report = compose_and_run(inputs, SystemClock())

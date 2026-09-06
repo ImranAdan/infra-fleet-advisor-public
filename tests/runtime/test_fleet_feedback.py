@@ -29,6 +29,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
 )
 
 POLICY = Path(__file__).parent.parent / "fixtures" / "policies" / "valid_policy.yaml"
+INTENTS = Path(__file__).parent.parent / "fixtures" / "intents"
 ROOT_POLICY = Path(__file__).parents[2] / "policy.yaml"
 BOT = "infra-fleet-advisor[bot]"
 EVIDENCE_ID = "github_actions_workflow_collector:aaaaaaaaaaaaaaaa"
@@ -429,6 +430,21 @@ def test_policy_version_mismatch_waits_for_a_fresh_report(tmp_path: Path) -> Non
     )
 
     assert plan.status == "awaiting_report_refresh"
+
+
+def test_intent_digest_mismatch_waits_for_a_fresh_report(tmp_path: Path) -> None:
+    report, _fingerprint = _report(tmp_path)
+
+    plan = build_feedback_plan(
+        report,
+        POLICY,
+        FleetIssueRecords((), True),
+        BOT,
+        INTENTS,
+    )
+
+    assert plan.status == "awaiting_report_refresh"
+    assert plan.additions == ()
     assert plan.additions == ()
     open_pr = _pull_request(plan)
     decision = decide_feedback_publication(

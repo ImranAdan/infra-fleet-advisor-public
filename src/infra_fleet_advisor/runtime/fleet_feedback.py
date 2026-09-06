@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from infra_fleet_advisor.config.intents import load_intent_catalog
 from infra_fleet_advisor.config.loader import MAX_POLICY_FILE_BYTES, load_policy
 from infra_fleet_advisor.core.errors import PolicyError
 from infra_fleet_advisor.runtime.issue_publication import build_issue_plan
@@ -341,6 +342,7 @@ def build_feedback_plan(
     policy_path: Path,
     records: FleetIssueRecords,
     app_bot_login: str,
+    intent_dir: Path | None = None,
 ) -> FeedbackPlan:
     """Convert closed, bot-authored label decisions into policy additions."""
     if not records.complete:
@@ -352,8 +354,12 @@ def build_feedback_plan(
     policy = load_policy(policy_path, TAXONOMY)
     if metadata.policy_version != policy.version:
         return _feedback_plan((), "awaiting_report_refresh")
+    if intent_dir is not None:
+        catalog = load_intent_catalog(intent_dir, TAXONOMY)
+        if metadata.intent_digest != catalog.digest:
+            return _feedback_plan((), "awaiting_report_refresh")
 
-    issue_plan = build_issue_plan(report_path, policy_path)
+    issue_plan = build_issue_plan(report_path, policy_path, intent_dir)
     active_actions = {
         action.fingerprint: action for action in issue_plan.actions if action.action == "active"
     }

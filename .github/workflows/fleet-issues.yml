@@ -55,6 +55,7 @@ jobs:
           uv run infra-fleet-advisor issue-plan \
             --report reports/report.json \
             --policy policy.yaml \
+            --intent-dir intent \
             --output "$RUNNER_TEMP/fleet-issue-plan.json"
           count="$(jq -er '.actions | length' "$RUNNER_TEMP/fleet-issue-plan.json")"
           echo "count=$count" >> "$GITHUB_OUTPUT"
@@ -81,4 +82,5 @@ jobs:
           uv run infra-fleet-advisor publish-issues \
             --report reports/report.json \
             --policy policy.yaml \
+            --intent-dir intent \
             --app-bot-login "$APP_BOT_LOGIN"

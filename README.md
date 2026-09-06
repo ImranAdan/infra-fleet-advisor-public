@@ -4,15 +4,14 @@ Infra Fleet Advisor is a read-only advisor for the
 [`infra-fleet-public`](https://github.com/ImranAdan/infra-fleet-public) GitOps
 platform.
 
-It periodically inspects the repository at an immutable Git revision, combines
-deterministic evidence with bounded AI analysis, and produces a small,
-prioritized set of actionable recommendations for keeping the fleet secure,
-reliable, current, maintainable, and cost-conscious.
+It compiles the owner's declared intent into deterministic checks over an
+immutable repository revision, then turns each evidenced divergence into
+reviewable work in the fleet.
 
 ## Product promise
 
-> Turn the desired state and existing validation signals of one GitOps fleet
-> into a trustworthy, evidence-backed improvement backlog.
+> Turn a fleet's declared intent into continuously verified state, and deliver
+> every evidenced divergence back to the fleet as human-ratified work.
 
 The advisor does not claim that there is one universally optimal platform
 configuration. Recommendations are evaluated against the owner's declared
@@ -23,6 +22,10 @@ priorities and accepted trade-offs.
 The first version will:
 
 - review only `infra-fleet-public`;
+- load bounded Markdown intent documents with a small structural contract and
+  free-text proposition bodies;
+- compile only explicitly registered checks, reporting every unsupported
+  proposition as declared but unverified;
 - analyze a complete repository snapshot identified by a full Git commit SHA;
 - run without AWS or Kubernetes credentials;
 - reuse deterministic findings from repository-aware collectors;
@@ -51,22 +54,21 @@ to a maintainer. See
 ## Review flow
 
 ```text
-load policy and source revision
-              ↓
-capture repository evidence
-              ↓
-run deterministic collectors
-              ↓
-synthesize bounded recommendations
-              ↓
-validate evidence and safety rules
-              ↓
-fingerprint, compare, rank, and report
+load intent, policy, and source revision
+                  ↓
+capture typed repository evidence
+                  ↓
+compile registered propositions into deterministic evaluations
+                  ↓
+divergent ──→ required recommendation ──→ validate/fingerprint/report
+satisfied ──→ recorded evaluation
+unverified ─→ explicit coverage gap
 ```
 
 Every recommendation must identify concrete evidence, expected impact,
-trade-offs, and confidence. Unsupported model output is rejected rather than
-published.
+trade-offs, and confidence. An analyst may improve the wording of a compiled
+divergence, but cannot omit it, reshape it into different work, or add work that
+no declared proposition and registered check produced.
 
 ## Usage
 
@@ -77,12 +79,57 @@ uv run infra-fleet-advisor review \
   --checkout ../infra-fleet-public \
   --sha <full-40-char-commit-sha> \
   --policy path/to/policy.yaml \
+  --intent-dir ./intent \
   --output-dir ./review-output \
   --prior-report ./previous-run/report.json   # optional, enables lifecycle tracking
 ```
 
 `--synthesizer stub` swaps the model for a deterministic table-driven
 stand-in, which needs no API key and is what the test suite runs on.
+
+### Declaring intent
+
+Markdown files under `intent/` are the authoritative human interface. The
+document metadata and heading names are deliberately small and strict; the
+content under each `### Intent` heading is free-form Markdown and becomes the
+declared proposition:
+
+```markdown
+# Platform reliability intent
+
+- Format: `1`
+- Intent ID: `platform_reliability`
+- Version: `1.0`
+- Category: `reliability`
+
+## R-001 · Rollout capacity
+
+### Intent
+
+Deployments retain enough healthy capacity during rollout. Temporary capacity
+cost is acceptable when it prevents user-visible interruption.
+
+### Evaluation
+
+- Check: `deployment_rollout_capacity`
+- Priority: `high`
+```
+
+`### Evaluation` is optional and may contain `Check`, `Priority`, or both. A
+priority can therefore be recorded before evaluation support exists. Adding the
+document immediately records `R-001`, but the prose does not invent a way to
+verify itself. Until `deployment_rollout_capacity` is implemented in the static
+check registry with a deterministic collector, the report marks the proposition
+`declared_unverified`. Registered propositions produce exactly one of:
+
+- `satisfied`: complete evidence supports the proposition;
+- `divergent`: concrete evidence conflicts with it and produces required,
+  reviewable advice; or
+- `declared_unverified`: coverage or a trusted check is missing.
+
+The catalog digest is part of report provenance and material signatures. Issue
+publication reloads the current catalog, requires the digest to match the merged
+report, and names the source intent document and proposition in each issue.
 
 ### As a GitHub Actions workflow
 
@@ -111,8 +158,9 @@ the rejection comparison exists to surface.
 
 Closing an advisory pull request without merging declines that exact material
 report state. The workflow records a versioned signature in the pull-request
-body and does not re-propose the same findings, evidence, coverage, rejection
-reasons, accepted trade-offs, and policy version until one of them changes. It
+body and does not re-propose the same intent digest, proposition evaluations,
+findings, evidence, coverage, rejection reasons, accepted trade-offs, and policy
+version until one of them changes. It
 selects the latest workflow-authored decision from a bounded, complete branch
 history, so a newer human-authored pull request cannot hide an earlier workflow
 decision. It never interprets pull-request prose as policy or evidence.
@@ -125,9 +173,10 @@ outstanding finding resolved.
 
 `.github/workflows/fleet-issues.yml` runs when a merged commit changes
 `reports/report.json`, and can also be manually retried. Before any external
-write it reloads the report under the current policy and validates source
-identity, policy version, fingerprints, evidence support, paths, secret safety,
-suppression, accepted trade-offs, and hard output limits.
+write it reloads the report under the current policy and intent catalog, then
+validates source identity, policy and intent versions, fingerprints, evidence
+support, paths, secret safety, suppression, accepted trade-offs, and hard output
+limits.
 
 Configure a GitHub App installed only on `infra-fleet-public`, with repository
 `Issues: Read and write` and no contents or pull-request permission. Store its
@@ -175,10 +224,10 @@ If a push succeeds but pull-request creation fails, the next run can reclaim the
 reserved `advisor/feedback-wontfix` branch only after proving it is a
 single-parent commit from merged history that changes only `policy.yaml`.
 
-After a feedback policy is merged, this job waits for an advisory report made
-under the new policy version. That report keeps the finding visible with the
-accepted rationale while making it ineligible for issue publication and
-mechanical remediation.
+After a feedback policy or intent catalog change, this job waits for an advisory
+report made under the current versions. A feedback-policy report keeps the
+finding visible with the accepted rationale while making it ineligible for issue
+publication and mechanical remediation.
 
 ### Proposing a fix to the fleet
 
@@ -220,9 +269,12 @@ The Anthropic synthesizer is exercised through recorded responses.
 
 ## Status
 
-The `fleet_repository_review` scenario runs end to end: two deterministic
-collectors (GitHub Actions workflows, Terraform IAM policies) feeding synthesis,
-validation, and lifecycle tracking.
+The `fleet_repository_review` scenario runs end to end: a closed intent catalog,
+two deterministic collectors (GitHub Actions workflows and Terraform IAM
+policies), proposition evaluation, required divergence delivery, validation,
+and lifecycle tracking. The initial security catalog contains eleven declared
+positions; two have registered checks and the remaining nine are explicitly
+reported as unverified rather than silently assumed true.
 
 The Anthropic synthesizer is implemented and unit-tested against recorded
 responses, but **has never been run against the live API**. Every report produced
@@ -241,6 +293,7 @@ feedback into human-reviewed policy are implemented.
 - [Architecture](docs/architecture.md)
 - [PDR 0001: Advisory delivery and the fleet feedback loop](docs/decisions/0001-advisory-delivery-and-feedback-loop.md)
 - [PDR 0002: Mechanical remediation of the fleet](docs/decisions/0002-mechanical-remediation-of-the-fleet.md)
+- [PDR 0003: Intent compilation and guaranteed divergence delivery](docs/decisions/0003-intent-compilation-and-divergence-delivery.md)
 - [Repository guidance](AGENTS.md)
 
 ## License

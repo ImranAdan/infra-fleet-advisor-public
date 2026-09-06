@@ -55,13 +55,15 @@ class Recommendation:
 @dataclass(frozen=True, slots=True)
 class ConcernRule:
     """What a concern means and what the evidence must deterministically show
-    before it may be published. The analyst decides whether to raise a concern
-    and how to describe it; it cannot decide what counts as support for one,
-    nor file a concern under a category that isn't its own."""
+    before it may be published. Intent compilation decides whether a divergence
+    requires work. An analyst may describe that work, but cannot decide what
+    counts as support or file it under another category."""
 
     category: str
     evidence_kind: str
     required_facts: Mapping[str, bool | str | int] = field(default_factory=dict)
+    priority: str | None = None
+    source_path_prefixes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

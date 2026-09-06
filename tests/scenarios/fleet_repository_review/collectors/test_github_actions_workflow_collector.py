@@ -1,3 +1,7 @@
+"""Tests for the GitHub Actions workflow evidence collector."""
+
+import pytest
+
 from infra_fleet_advisor.core.limits import ExecutionLimits
 from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
     github_actions_workflow_collector as gha_collector,
@@ -22,6 +26,7 @@ def test_detects_static_credentials(git_checkout) -> None:
     cred_evidence = [e for e in result.evidence if e.kind == EVIDENCE_KIND_CREDENTIAL_METHOD]
     assert len(cred_evidence) == 1
     assert cred_evidence[0].fact["uses_static_keys"] is True
+    assert cred_evidence[0].fact["uses_oidc_only"] is False
     assert result.coverage.status == "ok"
 
 
@@ -32,7 +37,30 @@ def test_detects_oidc_and_safe_trivy_gate(git_checkout) -> None:
     trivy = next(e for e in result.evidence if e.kind == EVIDENCE_KIND_TRIVY_GATE)
     assert cred.fact["uses_role_to_assume"] is True
     assert cred.fact["uses_static_keys"] is False
+    assert cred.fact["has_id_token_write"] is True
+    assert cred.fact["force_skip_oidc_disabled"] is True
+    assert cred.fact["use_existing_credentials_disabled"] is True
+    assert cred.fact["uses_oidc_only"] is True
     assert trivy.fact["ignore_unfixed"] is False
+
+
+@pytest.mark.parametrize(
+    "fixture_name",
+    [
+        "oidc_missing_permission.yml",
+        "oidc_job_permission_override.yml",
+        "oidc_force_skip.yml",
+        "oidc_use_existing.yml",
+    ],
+)
+def test_oidc_requires_effective_permission_and_no_bypass_inputs(
+    git_checkout, fixture_name: str
+) -> None:
+    repo, _sha = git_checkout(fixture_name)
+    result = gha_collector.collect(repo, LIMITS)
+    cred = next(e for e in result.evidence if e.kind == EVIDENCE_KIND_CREDENTIAL_METHOD)
+
+    assert cred.fact["uses_oidc_only"] is False
 
 
 def test_detects_trivy_ignore_unfixed(git_checkout) -> None:

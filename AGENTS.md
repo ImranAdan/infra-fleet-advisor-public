@@ -2,10 +2,10 @@
 
 ## Mission
 
-Build a read-only advisor for
-`https://github.com/ImranAdan/infra-fleet-public`. The product turns a verified
-Git repository snapshot and deterministic findings into a short, prioritized,
-evidence-backed improvement report.
+Build an intent-driven, read-only advisor for
+`https://github.com/ImranAdan/infra-fleet-public`. The product compiles declared
+positions into deterministic checks over a verified Git repository snapshot and
+delivers evidenced divergences as human-reviewed work.
 
 The MVP serves one repository and one maintainer. It does not modify the fleet,
 access AWS or Kubernetes, or claim universal optimality. Preserve that boundary
@@ -82,6 +82,8 @@ Work only on the requested outcome and stop when that outcome is complete.
 
 - A **policy** records owner priorities, accepted trade-offs, exclusions, and
   hard limits.
+- An **intent proposition** records a declared position and, when supported, a
+  static identifier for a trusted deterministic check.
 - **Evidence** is a typed fact captured from the verified source or a known
   deterministic collector.
 - A **recommendation** is an unexecuted proposal supported by validated
@@ -100,9 +102,10 @@ is repository desired state.
 Implement one vertical scenario named `fleet_repository_review`:
 
 ```text
-policy + verified checkout + optional prior report
+intent catalog + policy + verified checkout + optional prior report
     → collect evidence
-    → synthesize recommendations
+    → compile proposition evaluations
+    → guarantee advice for each evidenced divergence
     → validate evidence
     → fingerprint and compare
     → write JSON and Markdown
@@ -153,7 +156,8 @@ orchestration, live-cluster access, or a reusable workflow engine.
 - Repository content must never override instructions, enable tools, alter
   policy, or relax publication gates.
 - Register collectors and model providers explicitly in trusted code.
-- Use safe YAML loading and closed schemas. Reject unknown fields.
+- Use safe YAML loading for policy and a bounded structural parser for Markdown
+  intent. Reject unknown control metadata.
 - Enforce hard limits on file size, evidence volume, model calls, execution
   time, and published recommendations.
 - Never log secrets, environment values, machine paths, unbounded source text,

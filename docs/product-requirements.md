@@ -2,9 +2,9 @@
 
 ## Product definition
 
-Infra Fleet Advisor is a scheduled, read-only repository advisor that converts
-the desired state and validation signals in `infra-fleet-public` into a
-prioritized improvement backlog.
+Infra Fleet Advisor is an intent compiler and read-only repository advisor. It
+turns the owner's declared positions into continuously evaluated checks over
+`infra-fleet-public`, then delivers evidenced divergences as reviewable work.
 
 It helps the repository owner answer:
 
@@ -19,9 +19,10 @@ work. Broader multi-team or multi-repository use is outside the MVP.
 
 ## Desired outcome
 
-Reduce the effort required to inspect the fleet, reconcile scattered signals,
-and maintain a credible improvement backlog without granting an AI system
-permission to change infrastructure.
+Let the owner primarily maintain intent while deterministic evaluation,
+evidence-backed advice, lifecycle tracking, and human-gated delivery maintain a
+credible improvement backlog without granting an AI system permission to
+change infrastructure.
 
 ## Product principles
 
@@ -29,23 +30,28 @@ permission to change infrastructure.
   evidence.
 - **Intent before convention:** configured goals and accepted trade-offs take
   precedence over generic best practices.
+- **Unknown is explicit:** a declared proposition without complete deterministic
+  coverage is unverified, never assumed satisfied.
 - **Deterministic boundaries:** code owns source verification, schema
   validation, limits, lifecycle state, and publication eligibility.
 - **AI as an untrusted analyst:** a model may synthesize evidence but cannot
   expand its permissions or publish unsupported claims.
 - **Small, useful output:** prioritization is more valuable than exhaustive
   commentary.
-- **Read-only by default:** repository and infrastructure mutation require a
-  future, explicitly approved product phase.
+- **Read-only analysis:** review never writes to the fleet; issue publication
+  and narrowly mechanical pull-request proposals are separate, least-privilege,
+  human-gated paths.
 
 ## MVP inputs
 
 1. A clean, complete checkout of `infra-fleet-public`.
 2. The full Git commit SHA expected for that checkout.
-3. A versioned advisor policy defining priorities, accepted trade-offs,
+3. One or more versioned Markdown intent documents containing free-text
+   propositions under fixed headings and optional registered check identifiers.
+4. A versioned advisor policy defining priorities, accepted trade-offs,
    exclusions, and recommendation limits.
-4. Deterministic collector results produced during the run.
-5. An optional prior recommendation report for lifecycle comparison.
+5. Deterministic collector results produced during the run.
+6. An optional prior recommendation report for lifecycle comparison.
 
 The MVP must not require AWS credentials, Kubernetes credentials, Terraform
 state access, or secrets from the target fleet.
@@ -224,13 +230,43 @@ as a pull request in the advisor repository. It is never merged automatically.
 An exact versioned marker deduplicates both an open proposal and a closed,
 declined proposal across unrelated intervening proposals. Pull-request history
 is read to a declared bound and fails closed if completeness cannot be proven.
-After a policy change, feedback preserves any open proposal and waits for a
-report produced under that policy version rather than interpreting a stale
-report as revoked. If the underlying issue decision is revoked before merge,
+After a policy or intent change, feedback preserves any open proposal and waits
+for a report produced under the current policy version and intent digest rather
+than interpreting a stale report as revoked. If the underlying issue decision
+is revoked before merge,
 the workflow withdraws only its own stale proposal and distinguishes that
 cancellation from a human decline. A partial push without a pull request may be
 recovered only after the reserved branch is proven to contain one policy-only
 commit based on merged history.
+
+### FR15: Intent proposition compilation
+
+The advisor loads bounded Markdown intent documents through a small, closed
+structural contract. Every proposition has a stable document and proposition
+identity, a taxonomy category, bounded free-text Markdown under an `Intent`
+heading, and optionally an `Evaluation` section containing a priority, a static
+check identifier, or both. Intent text is inert data: it cannot select code,
+imports, tools, commands, collectors, or model providers.
+
+Trusted code maps known check identifiers to a fixed collector, evidence kind,
+support predicate, scope, concern, and recommendation template. Unknown or
+missing checks remain valid declarations but evaluate as `declared_unverified`.
+A registered proposition evaluates as exactly one of `satisfied`, `divergent`,
+or `declared_unverified`; incomplete collector coverage and absence of relevant
+evidence can never prove satisfaction.
+
+Every `divergent` proposition produces one required recommendation containing
+all evidence that conflicted with it. A model may replace the deterministic
+template only with a candidate having the exact same validated fingerprint. It
+cannot omit the work, divide it into different work identities, or introduce a
+recommendation not compiled from current intent. If required divergences exceed
+the policy recommendation limit, the run fails explicitly rather than silently
+dropping declared work.
+
+The canonical intent digest and proposition evaluations are recorded in the
+report and its material signature. Fleet issue publication reloads the catalog,
+requires the digest to match, and attaches the originating intent document and
+proposition identity to each action.
 
 ## Non-functional requirements
 
@@ -256,9 +292,10 @@ commit based on merged history.
 
 ### Reproducibility and provenance
 
-Reports identify the source commit, advisor version, policy version, collector
-versions, and model identifier. Re-running against identical inputs should
-reproduce deterministic evidence even if narrative wording differs.
+Reports identify the source commit, advisor version, policy version, intent
+digest, proposition evaluations, collector versions, and model identifier.
+Re-running against identical inputs should reproduce deterministic evidence and
+evaluations even if analyst wording differs.
 
 ### Observability
 
@@ -292,13 +329,18 @@ cluster, or wall-clock timing.
 10. A closed, reason-labelled advisor issue can produce a reviewable,
     deterministic policy pull request without trusting issue prose or changing
     fleet state.
+11. Every intent proposition is reported as satisfied, divergent, or declared
+    but unverified; a divergent proposition remains publishable when the analyst
+    omits it.
+12. Fleet issue work identifies its originating intent document and proposition,
+    and publication fails if the merged report and current catalog differ.
 
 ## Success measures
 
 During the initial pilot:
 
 - 100% of published recommendations have valid evidence references;
-- zero target-repository or infrastructure mutations occur;
+- zero automatic fleet source, deployment, or infrastructure mutations occur;
 - the report remains within the configured maximum size;
 - the owner considers a majority of high-priority recommendations actionable
   or intentionally suppresses them with a recorded reason; and
@@ -316,6 +358,8 @@ During the initial pilot:
   merging one is not, and never will be.
 - A plugin marketplace, dynamic imports, arbitrary shell execution, or remote
   tool installation selected by configuration.
+- Executing natural-language intent or dynamically creating checks from intent
+  text. New checks require reviewed collector and registry code.
 - Claims of complete coverage or universal optimality.
 
 ## Delivery phases after MVP

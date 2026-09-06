@@ -11,6 +11,7 @@ from infra_fleet_advisor.core.contracts import (
     Recommendation,
     compute_fingerprint,
 )
+from infra_fleet_advisor.core.errors import BoundedExecutionExceeded, SynthesisError
 from infra_fleet_advisor.core.evidence import Evidence
 
 MAX_TITLE_LENGTH = 120
@@ -100,6 +101,9 @@ def _field_violation(
         return "category_does_not_match_concern"
     if not isinstance(priority, str) or priority not in PRIORITIES:
         return "invalid_priority"
+    expected_priority = concern_rules[concern_key].priority
+    if expected_priority is not None and priority != expected_priority:
+        return "priority_does_not_match_intent"
     if not isinstance(confidence, (int, float)) or isinstance(confidence, bool):
         return "confidence_out_of_range"
     if not (0.0 <= confidence <= 1.0):
@@ -213,6 +217,11 @@ def _evidence_supports(
         item = evidence_by_id[eid]
         if item.kind != rule.evidence_kind:
             return False
+        if rule.source_path_prefixes and not any(
+            item.source_path == prefix or item.source_path.startswith(f"{prefix}/")
+            for prefix in rule.source_path_prefixes
+        ):
+            return False
         if any(item.fact.get(k) != v for k, v in rule.required_facts.items()):
             return False
     return True
@@ -293,3 +302,59 @@ def validate_candidates(
         )
 
     return ValidatedRecommendations(accepted=tuple(accepted), rejected=tuple(rejected))
+
+
+def validate_intent_candidates(
+    analyst_candidates: Sequence[RawRecommendationCandidate],
+    required_candidates: Sequence[RawRecommendationCandidate],
+    evidence_by_id: Mapping[str, Evidence],
+    bounds: PolicyBounds,
+    concern_rules: Mapping[str, ConcernRule],
+) -> ValidatedRecommendations:
+    """Use valid analyst wording only when it exactly represents a proven divergence.
+
+    Every required candidate is created by the trusted intent compiler. A model may
+    improve its narrative, but cannot omit it, split it into different work, or add
+    work that no declared proposition and deterministic check produced.
+    """
+    if len(required_candidates) > bounds.max_recommendations:
+        raise BoundedExecutionExceeded("intent divergences exceed the policy recommendation limit")
+
+    analyst = validate_candidates(analyst_candidates, evidence_by_id, bounds, concern_rules)
+    required = validate_candidates(required_candidates, evidence_by_id, bounds, concern_rules)
+    if required.rejected or len(required.accepted) != len(required_candidates):
+        raise SynthesisError("a compiled intent divergence failed the publication gate")
+
+    required_by_fingerprint = {
+        recommendation.fingerprint: recommendation for recommendation in required.accepted
+    }
+    if len(required_by_fingerprint) != len(required.accepted):
+        raise SynthesisError("compiled intent divergences produced duplicate work identities")
+
+    analyst_by_fingerprint: dict[str, Recommendation] = {}
+    rejected = list(analyst.rejected)
+    for recommendation in analyst.accepted:
+        if recommendation.fingerprint not in required_by_fingerprint:
+            rejected.append(
+                RejectedCandidate(
+                    concern_key=recommendation.concern_key,
+                    category=recommendation.category,
+                    reason="not_a_compiled_intent_divergence",
+                )
+            )
+        elif recommendation.fingerprint in analyst_by_fingerprint:
+            rejected.append(
+                RejectedCandidate(
+                    concern_key=recommendation.concern_key,
+                    category=recommendation.category,
+                    reason="duplicate_intent_divergence",
+                )
+            )
+        else:
+            analyst_by_fingerprint[recommendation.fingerprint] = recommendation
+
+    selected = tuple(
+        analyst_by_fingerprint.get(fingerprint, fallback)
+        for fingerprint, fallback in required_by_fingerprint.items()
+    )
+    return ValidatedRecommendations(accepted=selected, rejected=tuple(rejected))

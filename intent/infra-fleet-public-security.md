@@ -1,5 +1,10 @@
 # Initial security intent for `infra-fleet-public`
 
+- Format: `1`
+- Intent ID: `infra_fleet_public_security`
+- Version: `1.0`
+- Category: `security`
+
 Source: [`infra-fleet-public@65857138c50f3ab24bb8f58834c8ca3afe84a929/docs`](https://github.com/ImranAdan/infra-fleet-public/tree/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs)
 
 This PR contains security decisions only. Review each proposition with an
@@ -7,6 +12,8 @@ inline `Yes` or `No` comment. Product behaviour, cost, and availability are out
 of scope.
 
 ## S-001 · CI credentials
+
+### Intent
 
 GitHub Actions uses short-lived OIDC credentials; long-lived AWS access keys are not allowed.
 
@@ -18,7 +25,13 @@ does not match `ImranAdan/infra-fleet-public`. As deployed, AWS STS would deny
 this role to GitHub Actions; verify the actual deployed subject before relying
 on this control.
 
+### Evaluation
+
+- Check: `github_actions_uses_oidc`
+
 ## S-002 · Workload identity
+
+### Intent
 
 Application containers run as non-root users with privilege escalation disabled and all Linux capabilities dropped.
 
@@ -26,17 +39,23 @@ Evidence: [pod security context](https://github.com/ImranAdan/infra-fleet-public
 
 ## S-003 · Network ingress
 
+### Intent
+
 Application ingress is limited to the NGINX ingress and Prometheus namespaces.
 
 Evidence: [NetworkPolicy](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md#L50-L87)
 
 ## S-004 · Network egress
 
+### Intent
+
 Permissive application egress is accepted for the current staging environment.
 
 Evidence: [current egress policy](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md#L78-L87)
 
 ## S-005 · External transport
+
+### Intent
 
 External application traffic uses HTTPS with certificates managed by cert-manager and Let’s Encrypt.
 
@@ -48,11 +67,15 @@ certificate configuration before treating this proposition as resolved.
 
 ## S-006 · Staging API exposure
 
+### Intent
+
 A publicly reachable EKS API protected by IAM is accepted for staging only.
 
 Evidence: [staging access decision](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/EKS-ACCESS.md#L94-L116)
 
 ## S-007 · IAM scope
+
+### Intent
 
 Wildcard IAM permissions are not acceptable for a production or persistent environment.
 
@@ -63,7 +86,13 @@ stack — grants `eks:*`, `ec2:*`, `autoscaling:*`, `ssm:*`, and `ecr:*` on `*`
 today. A `Yes` on this proposition is a gate to remediate that role, not a
 statement that the persistent stack already complies.
 
+### Evaluation
+
+- Check: `persistent_iam_avoids_wildcards`
+
 ## S-008 · CSRF
+
+### Intent
 
 CSRF protection is not required for the current API-first staging application.
 
@@ -77,11 +106,15 @@ control for those routes; otherwise CSRF exposure remains.
 
 ## S-009 · Service-account tokens
 
+### Intent
+
 Automatic Kubernetes service-account token mounting is accepted for the current application.
 
 Evidence: [documented token-mount decision](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md#L239-L243)
 
 ## S-010 · Security updates
+
+### Intent
 
 Security dependency updates are handled immediately rather than waiting for the routine monthly update cycle.
 
@@ -93,6 +126,8 @@ owner or remediation deadline. Treat "handled immediately" as scoped to
 alerting and PR creation, not an end-to-end SLA.
 
 ## S-011 · Image scanning
+
+### Intent
 
 Trivy blocks ECR publication when an image has any fixed Critical or High vulnerability; a documented exception is required to permit one.
 

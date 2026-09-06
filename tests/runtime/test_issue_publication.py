@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from infra_fleet_advisor.config.intents import load_intent_catalog
 from infra_fleet_advisor.core.contracts import Recommendation, compute_fingerprint
 from infra_fleet_advisor.core.errors import PolicyError
 from infra_fleet_advisor.core.evidence import Evidence
@@ -18,9 +19,11 @@ from infra_fleet_advisor.runtime.report_writer import write_report
 from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
     CONCERN_TRIVY_IGNORE_UNFIXED,
 )
+from infra_fleet_advisor.scenarios.fleet_repository_review.constants import TAXONOMY
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
 POLICY = FIXTURES / "policies" / "valid_policy.yaml"
+INTENTS = FIXTURES / "intents"
 SOURCE_SHA = "a" * 40
 EVIDENCE_ID = "github_actions_workflow_collector:aaaaaaaaaaaaaaaa"
 SECOND_EVIDENCE_ID = "github_actions_workflow_collector:bbbbbbbbbbbbbbbb"
@@ -74,6 +77,7 @@ def _write_report(
     source_label: str = "infra-fleet-public",
     policy_version: str = "1.0",
     source_sha: str = SOURCE_SHA,
+    intent_digest: str = "",
 ) -> Path:
     rec = recommendation or _recommendation()
     ev = evidence or _evidence()
@@ -86,6 +90,7 @@ def _write_report(
             collector_versions={"github_actions_workflow_collector": "1.1.0"},
             model_identifier="stub-synthesizer-v1",
             run_started_at="2026-09-03T00:00:00Z",
+            intent_digest=intent_digest,
         ),
         coverage=(CollectorCoverage("github_actions_workflow_collector", "ok", 1, None),),
         recommendations=(rec,),
@@ -122,6 +127,25 @@ def test_active_issue_plan_is_pinned_evidence_backed_and_inert(tmp_path: Path) -
     assert "@ops" not in action.body
     assert "＠unfixed" in action.title
     assert str(tmp_path) not in action.body
+
+
+def test_intent_backed_issue_names_the_declared_proposition(tmp_path: Path) -> None:
+    catalog = load_intent_catalog(INTENTS, TAXONOMY)
+    report = _write_report(tmp_path, intent_digest=catalog.digest)
+
+    action = build_issue_plan(report, POLICY, INTENTS).actions[0]
+
+    assert action.intent_document_id == "test_security_intent"
+    assert action.intent_proposition_id == "T-001"
+    assert r"Intent: test\_security\_intent/T-001" in action.body
+    assert "Declared position: Trivy does not ignore unfixed" in action.body
+
+
+def test_issue_plan_rejects_a_different_current_intent_catalog(tmp_path: Path) -> None:
+    report = _write_report(tmp_path, intent_digest="intent-md-v1:" + "0" * 64)
+
+    with pytest.raises(PolicyError, match="intent digest does not match"):
+        build_issue_plan(report, POLICY, INTENTS)
 
 
 def test_resolved_issue_action_comments_but_never_closes(tmp_path: Path) -> None:

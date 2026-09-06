@@ -4,6 +4,7 @@ from infra_fleet_advisor.core.contracts import (
     RawRecommendationCandidate,
 )
 from infra_fleet_advisor.core.evidence import build_evidence
+from infra_fleet_advisor.core.intent import IntentEvaluation
 from infra_fleet_advisor.core.lifecycle import PriorRecommendation, PriorReport
 from infra_fleet_advisor.core.report import RunProvenance, assemble_report
 
@@ -94,6 +95,162 @@ def test_valid_candidate_flows_through_to_a_ranked_report() -> None:
     assert report.recommendations[0].rank == 1
     assert report.new_count == 1
     assert report.evidence == (ev,)
+
+
+def test_compiled_divergence_is_published_when_the_analyst_omits_it() -> None:
+    ev = build_evidence(
+        collector_id="c",
+        collector_version="1.0.0",
+        kind="k",
+        source_path="a.yml",
+        locator="loc",
+        excerpt="e",
+        fact={},
+    )
+    required = RawRecommendationCandidate(
+        concern_key="concern",
+        category="security",
+        priority="high",
+        title="deterministic fallback",
+        summary="s",
+        evidence_ids=(ev.evidence_id,),
+        impact="i",
+        suggested_change="c",
+        trade_offs="t",
+        confidence=0.9,
+        confidence_explanation="e",
+    )
+
+    report = assemble_report(
+        provenance=PROVENANCE,
+        coverage=[],
+        candidates=[],
+        evidence_by_id={ev.evidence_id: ev},
+        bounds=BOUNDS,
+        concern_rules=RULES,
+        prior=None,
+        required_candidates=[required],
+    )
+
+    assert len(report.recommendations) == 1
+    assert report.recommendations[0].title == "deterministic fallback"
+
+
+def test_intent_gate_rejects_undeclared_advice_when_no_intent_diverges() -> None:
+    ev = build_evidence(
+        collector_id="c",
+        collector_version="1.0.0",
+        kind="k",
+        source_path="a.yml",
+        locator="loc",
+        excerpt="e",
+        fact={},
+    )
+    candidate = RawRecommendationCandidate(
+        concern_key="concern",
+        category="security",
+        priority="high",
+        title="analyst-only advice",
+        summary="s",
+        evidence_ids=(ev.evidence_id,),
+        impact="i",
+        suggested_change="c",
+        trade_offs="t",
+        confidence=0.9,
+        confidence_explanation="e",
+    )
+    evaluation = IntentEvaluation(
+        document_id="security",
+        proposition_id="S-001",
+        category="security",
+        priority="high",
+        statement="The observed state already satisfies this intent.",
+        check_key="registered_check",
+        status="satisfied",
+        evidence_ids=(),
+        reason="complete_evidence_supports_intent",
+    )
+
+    report = assemble_report(
+        provenance=PROVENANCE,
+        coverage=[],
+        candidates=[candidate],
+        evidence_by_id={ev.evidence_id: ev},
+        bounds=BOUNDS,
+        concern_rules=RULES,
+        prior=None,
+        intent_evaluations=[evaluation],
+        intent_enabled=True,
+    )
+
+    assert report.recommendations == ()
+    assert report.rejected[0].reason == "not_a_compiled_intent_divergence"
+
+
+def test_analyst_cannot_turn_one_compiled_divergence_into_different_work() -> None:
+    first = build_evidence(
+        collector_id="c",
+        collector_version="1.0.0",
+        kind="k",
+        source_path="a.yml",
+        locator="first",
+        excerpt="e",
+        fact={},
+    )
+    second = build_evidence(
+        collector_id="c",
+        collector_version="1.0.0",
+        kind="k",
+        source_path="b.yml",
+        locator="second",
+        excerpt="e",
+        fact={},
+    )
+    required = RawRecommendationCandidate(
+        concern_key="concern",
+        category="security",
+        priority="high",
+        title="one intent divergence",
+        summary="s",
+        evidence_ids=(first.evidence_id, second.evidence_id),
+        impact="i",
+        suggested_change="c",
+        trade_offs="t",
+        confidence=0.9,
+        confidence_explanation="e",
+    )
+    split = RawRecommendationCandidate(
+        concern_key="concern",
+        category="security",
+        priority="high",
+        title="model split",
+        summary="s",
+        evidence_ids=(first.evidence_id,),
+        impact="i",
+        suggested_change="c",
+        trade_offs="t",
+        confidence=0.9,
+        confidence_explanation="e",
+    )
+
+    report = assemble_report(
+        provenance=PROVENANCE,
+        coverage=[],
+        candidates=[split],
+        evidence_by_id={first.evidence_id: first, second.evidence_id: second},
+        bounds=BOUNDS,
+        concern_rules=RULES,
+        prior=None,
+        required_candidates=[required],
+    )
+
+    assert len(report.recommendations) == 1
+    assert report.recommendations[0].title == "one intent divergence"
+    assert set(report.recommendations[0].evidence_ids) == {
+        first.evidence_id,
+        second.evidence_id,
+    }
+    assert report.rejected[0].reason == "not_a_compiled_intent_divergence"
 
 
 def test_resolved_recommendation_carries_its_prior_evidence_into_the_report() -> None:

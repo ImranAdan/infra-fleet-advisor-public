@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+from infra_fleet_advisor.config.intents import load_intent_catalog
 from infra_fleet_advisor.config.loader import load_policy
 from infra_fleet_advisor.core.errors import PolicyError
 from infra_fleet_advisor.core.limits import ExecutionLimits
@@ -31,6 +32,7 @@ class RunInputs:
     source_label: str
     prior_report_path: Path | None
     synthesizer_name: str = "anthropic"
+    intent_dir: Path | None = None
 
 
 def _select_synthesizer(name: str, timeout_seconds: float) -> Synthesizer:
@@ -49,6 +51,9 @@ def compose_and_run(
     """Wires one invocation: verify checkout, load policy, load prior report,
     run the scenario. The only place a real model client would be wired in."""
     policy = load_policy(inputs.policy_path, TAXONOMY)
+    intent_catalog = (
+        load_intent_catalog(inputs.intent_dir, TAXONOMY) if inputs.intent_dir is not None else None
+    )
     source = verify_snapshot(inputs.checkout, inputs.expected_sha, inputs.source_label)
     prior = load_prior_report(inputs.prior_report_path)
     limits = ExecutionLimits(
@@ -67,4 +72,5 @@ def compose_and_run(
         limits=limits,
         prior=prior,
         run_started_at=clock.now_iso(),
+        intent_catalog=intent_catalog,
     )
