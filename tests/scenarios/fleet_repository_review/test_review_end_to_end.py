@@ -106,9 +106,11 @@ def test_authoritative_markdown_drives_the_production_review(git_checkout) -> No
     )
 
     evaluations = {item.proposition_id: item for item in report.intent_evaluations}
-    assert len(evaluations) == 11
+    assert len(evaluations) == 12
     assert evaluations["S-001"].status == "divergent"
     assert evaluations["S-007"].status == "divergent"
+    assert evaluations["R-001"].status == "declared_unverified"
+    assert evaluations["R-001"].reason == "check_not_registered"
     assert {item.status for key, item in evaluations.items() if key not in {"S-001", "S-007"}} == {
         "declared_unverified"
     }

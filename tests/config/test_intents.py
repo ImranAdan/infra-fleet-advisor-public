@@ -188,9 +188,23 @@ def test_rejects_symlinked_intent_documents(tmp_path: Path) -> None:
 def test_production_markdown_is_the_authoritative_catalog() -> None:
     catalog = load_intent_catalog(PRODUCTION_INTENTS, TAXONOMY)
 
-    assert len(catalog.propositions) == 11
+    assert len(catalog.propositions) == 12
     assert {item.check_key for item in catalog.propositions if item.check_key is not None} == {
+        "deployment_rollout_capacity",
         "github_actions_uses_oidc",
         "persistent_iam_avoids_wildcards",
     }
-    assert "Caveat:" in catalog.propositions[0].statement
+    security_oidc = next(
+        item
+        for item in catalog.propositions
+        if item.document_id == "infra_fleet_public_security" and item.proposition_id == "S-001"
+    )
+    assert "Caveat:" in security_oidc.statement
+    reliability = next(
+        item
+        for item in catalog.propositions
+        if item.document_id == "infra_fleet_public_reliability"
+    )
+    assert reliability.proposition_id == "R-001"
+    assert reliability.category == "reliability"
+    assert reliability.priority == "high"
