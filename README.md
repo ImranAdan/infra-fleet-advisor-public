@@ -116,16 +116,23 @@ cost is acceptable when it prevents user-visible interruption.
 ```
 
 `### Evaluation` is optional and may contain `Check`, `Priority`, or both. A
-priority can therefore be recorded before evaluation support exists. Adding the
-document immediately records `R-001`, but the prose does not invent a way to
-verify itself. Until `deployment_rollout_capacity` is implemented in the static
-check registry with a deterministic collector, the report marks the proposition
-`declared_unverified`. Registered propositions produce exactly one of:
+priority can therefore be recorded before evaluation support exists. Adding a
+document records its propositions immediately, but its prose does not invent a
+way to verify itself. Registered propositions produce exactly one of:
 
 - `satisfied`: complete evidence supports the proposition;
 - `divergent`: concrete evidence conflicts with it and produces required,
   reviewable advice; or
 - `declared_unverified`: coverage or a trusted check is missing.
+
+The registered `deployment_rollout_capacity` check reads tracked `apps/v1`
+Deployment manifests under `k8s/`. For each active Deployment it deterministically
+resolves integer or percentage rollout fenceposts against the declared replica
+count. Capacity is preserved only when RollingUpdate has an effective
+`maxUnavailable` of zero, a positive effective `maxSurge`, and every application
+container has a readiness probe. A complete set of conforming Deployment evidence
+can prove the proposition satisfied; malformed, duplicate, missing, excluded, or
+truncated evidence leaves it explicitly unverified.
 
 The catalog digest is part of report provenance and material signatures. Issue
 publication reloads the current catalog, requires the digest to match the merged
@@ -133,10 +140,14 @@ report, and names the source intent document and proposition in each issue.
 
 ### As a GitHub Actions workflow
 
-`.github/workflows/fleet-advisory.yml` runs the same review on demand
-(**Actions → Fleet advisory report → Run workflow**) and proposes the result as
-a pull request on the `advisory/latest` branch. It needs an `ANTHROPIC_API_KEY`
-repository secret; pick the `stub` synthesizer to dry-run it without one.
+`.github/workflows/fleet-advisory.yml` runs the same review after merged intent,
+policy, dependency, or advisor implementation changes and once daily at 04:23
+UTC, using the deterministic `stub` synthesizer. The schedule provides bounded
+polling for changes to fleet `main`; unchanged material produces no pull request.
+The workflow can also be run on demand (**Actions → Fleet advisory report → Run
+workflow**) with either `stub` or `anthropic`. Only a manual `anthropic` run needs
+the `ANTHROPIC_API_KEY` repository secret. Changed output is proposed on the
+`advisory/latest` branch for human review.
 
 The committed `reports/report.json` is the prior report the next run compares
 against, which is why it is tracked rather than ignored. Lifecycle therefore
@@ -183,7 +194,9 @@ Configure a GitHub App installed only on `infra-fleet-public`, with repository
 client ID as `FLEET_ISSUES_APP_CLIENT_ID` and private key as
 `FLEET_ISSUES_APP_PRIVATE_KEY` in this repository. The generated installation
 token is scoped again in the workflow to that one repository and
-`issues: write`.
+`issues: write`. The publisher validates both secrets before requesting a token
+and fails with the missing secret names; it never falls back to a personal token
+or a broader credential.
 
 Each issue carries an `advisor:fp:<digest>` label and an inert fingerprint
 marker. Retries check both identities before every create, so a failure after

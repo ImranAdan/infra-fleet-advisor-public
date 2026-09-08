@@ -11,3 +11,5 @@ class ExecutionLimits:
     max_workflow_files: int
     max_file_bytes: int
     max_recommendations: int
+    max_manifest_files: int = 100
+    max_manifest_file_bytes: int = 1024 * 1024

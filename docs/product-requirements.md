@@ -162,6 +162,12 @@ advisor's own repository. This is delivery of the report, not remediation: the
 pull request carries `reports/report.json` and `reports/report.md` and nothing
 else, and the fleet repository is cloned, analyzed, and left untouched.
 
+CI runs automatically after merged intent, policy, dependency, or advisor
+implementation changes and polls fleet `main` daily. Automatic runs use the
+deterministic stub and make no model API call. A maintainer may manually dispatch
+the same workflow with model-backed synthesis. Every path preserves the report
+pull request as the human ratification gate.
+
 The committed report is the baseline the next run compares against, so lifecycle
 advances only when an advisory pull request is merged. A run whose findings,
 cited evidence, collector coverage, and rejection reasons all match the committed
@@ -254,6 +260,14 @@ missing checks remain valid declarations but evaluate as `declared_unverified`.
 A registered proposition evaluates as exactly one of `satisfied`, `divergent`,
 or `declared_unverified`; incomplete collector coverage and absence of relevant
 evidence can never prove satisfaction.
+
+The initial reliability check `deployment_rollout_capacity` evaluates tracked
+`apps/v1` Deployment desired state. For an active Deployment, satisfaction
+requires RollingUpdate, an effective `maxUnavailable` of zero, a positive
+effective `maxSurge`, and a readiness probe on every application container.
+Integer and percentage fenceposts are resolved against declared replicas using
+Kubernetes rollout rounding. Missing Deployment evidence or incomplete manifest
+coverage is unverified, not satisfied.
 
 Every `divergent` proposition produces one required recommendation containing
 all evidence that conflicted with it. A model may replace the deterministic

@@ -1,0 +1,11 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: no-readiness
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: app
+          image: example.invalid/app:v1

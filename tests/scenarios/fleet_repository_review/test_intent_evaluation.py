@@ -6,11 +6,14 @@ from infra_fleet_advisor.core.evidence import Evidence
 from infra_fleet_advisor.core.report import CollectorCoverage
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     EVIDENCE_KIND_CREDENTIAL_METHOD,
+    EVIDENCE_KIND_DEPLOYMENT_ROLLOUT_CAPACITY,
     EVIDENCE_KIND_IAM_WILDCARD,
     GHA_COLLECTOR_ID,
+    K8S_DEPLOYMENT_COLLECTOR_ID,
     TF_IAM_COLLECTOR_ID,
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.intent_evaluation import (
+    CHECK_DEPLOYMENT_ROLLOUT_CAPACITY,
     CHECK_GITHUB_ACTIONS_USES_OIDC,
     CHECK_PERSISTENT_IAM_AVOIDS_WILDCARDS,
     compile_intents,
@@ -129,6 +132,59 @@ def test_persistent_iam_check_ignores_wildcards_outside_its_declared_scope() -> 
         coverage=_coverage(TF_IAM_COLLECTOR_ID),
     )
     assert compilation.evaluations[0].status == "divergent"
+
+
+def test_rollout_capacity_check_can_prove_satisfaction_or_divergence() -> None:
+    safe = _evidence(
+        collector_id=K8S_DEPLOYMENT_COLLECTOR_ID,
+        kind=EVIDENCE_KIND_DEPLOYMENT_ROLLOUT_CAPACITY,
+        path="k8s/applications/safe.yaml",
+        fact={"retains_healthy_capacity": True},
+    )
+    satisfied = compile_intents(
+        _catalog(CHECK_DEPLOYMENT_ROLLOUT_CAPACITY, category="reliability"),
+        enabled_categories=frozenset({"reliability"}),
+        evidence=(safe,),
+        coverage=_coverage(K8S_DEPLOYMENT_COLLECTOR_ID),
+    )
+    assert satisfied.evaluations[0].status == "satisfied"
+    assert satisfied.divergence_candidates == ()
+
+    unsafe = _evidence(
+        collector_id=K8S_DEPLOYMENT_COLLECTOR_ID,
+        kind=EVIDENCE_KIND_DEPLOYMENT_ROLLOUT_CAPACITY,
+        path="k8s/applications/unsafe.yaml",
+        fact={"retains_healthy_capacity": False},
+        digest="b" * 16,
+    )
+    divergent = compile_intents(
+        _catalog(CHECK_DEPLOYMENT_ROLLOUT_CAPACITY, category="reliability"),
+        enabled_categories=frozenset({"reliability"}),
+        evidence=(safe, unsafe),
+        coverage=_coverage(K8S_DEPLOYMENT_COLLECTOR_ID),
+    )
+    assert divergent.evaluations[0].status == "divergent"
+    assert divergent.evaluations[0].evidence_ids == (unsafe.evidence_id,)
+    assert divergent.divergence_candidates[0].category == "reliability"
+
+
+def test_rollout_capacity_requires_complete_relevant_evidence() -> None:
+    missing = compile_intents(
+        _catalog(CHECK_DEPLOYMENT_ROLLOUT_CAPACITY, category="reliability"),
+        enabled_categories=frozenset({"reliability"}),
+        evidence=(),
+        coverage=_coverage(K8S_DEPLOYMENT_COLLECTOR_ID),
+    )
+    assert missing.evaluations[0].status == "declared_unverified"
+    assert missing.evaluations[0].reason == "no_relevant_evidence"
+
+    incomplete = compile_intents(
+        _catalog(CHECK_DEPLOYMENT_ROLLOUT_CAPACITY, category="reliability"),
+        enabled_categories=frozenset({"reliability"}),
+        evidence=(),
+        coverage=_coverage(K8S_DEPLOYMENT_COLLECTOR_ID, "partial"),
+    )
+    assert incomplete.evaluations[0].reason == "collector_incomplete"
 
 
 def test_unmapped_and_unknown_checks_are_explicitly_unverified() -> None:

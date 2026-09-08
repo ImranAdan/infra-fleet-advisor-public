@@ -60,6 +60,20 @@ jobs:
           count="$(jq -er '.actions | length' "$RUNNER_TEMP/fleet-issue-plan.json")"
           echo "count=$count" >> "$GITHUB_OUTPUT"
 
+      - name: Verify issue publisher credentials
+        if: steps.plan.outputs.count != '0'
+        env:
+          APP_CLIENT_ID: ${{ secrets.FLEET_ISSUES_APP_CLIENT_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.FLEET_ISSUES_APP_PRIVATE_KEY }}
+        run: |
+          missing=()
+          [ -n "$APP_CLIENT_ID" ] || missing+=(FLEET_ISSUES_APP_CLIENT_ID)
+          [ -n "$APP_PRIVATE_KEY" ] || missing+=(FLEET_ISSUES_APP_PRIVATE_KEY)
+          if [ "${#missing[@]}" -ne 0 ]; then
+            echo "::error::Issue publication is not configured. Missing: ${missing[*]}"
+            exit 1
+          fi
+
       # The installation is scoped to infra-fleet-public and the generated
       # token requests only issues:write. It cannot read or modify fleet code.
       - name: Create issues-only fleet token

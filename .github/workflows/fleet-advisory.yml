@@ -4,6 +4,16 @@ name: Fleet advisory report
 # report as a pull request here. The fleet repository is only ever read: it is
 # checked out, analyzed, and left untouched.
 on:
+  push:
+    branches: [main]
+    paths:
+      - intent/**
+      - policy.yaml
+      - src/**
+      - pyproject.toml
+      - uv.lock
+  schedule:
+    - cron: "23 4 * * *"
   workflow_dispatch:
     inputs:
       target_ref:
@@ -45,7 +55,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: ${{ env.TARGET_REPO }}
-          ref: ${{ inputs.target_ref }}
+          ref: ${{ inputs.target_ref || 'main' }}
           path: target
           persist-credentials: false
 
@@ -83,7 +93,7 @@ jobs:
             --policy policy.yaml \
             --intent-dir intent \
             --output-dir "$RUNNER_TEMP/advisory" \
-            --synthesizer "${{ inputs.synthesizer }}" \
+            --synthesizer "${{ inputs.synthesizer || 'stub' }}" \
             "${prior[@]}"
 
       # A closed, unmerged advisory PR created by this workflow is an explicit

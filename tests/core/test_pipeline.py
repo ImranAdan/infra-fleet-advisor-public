@@ -6,7 +6,7 @@ from infra_fleet_advisor.core.contracts import (
 from infra_fleet_advisor.core.evidence import build_evidence
 from infra_fleet_advisor.core.intent import IntentEvaluation
 from infra_fleet_advisor.core.lifecycle import PriorRecommendation, PriorReport
-from infra_fleet_advisor.core.report import RunProvenance, assemble_report
+from infra_fleet_advisor.core.report import CollectorCoverage, RunProvenance, assemble_report
 
 PROVENANCE = RunProvenance(
     source_commit_sha="abc123",
@@ -284,7 +284,7 @@ def test_resolved_recommendation_carries_its_prior_evidence_into_the_report() ->
     )
     report = assemble_report(
         provenance=PROVENANCE,
-        coverage=[],
+        coverage=[CollectorCoverage("c", "ok", 0)],
         candidates=[],
         evidence_by_id={},
         bounds=BOUNDS,
