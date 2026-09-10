@@ -62,9 +62,8 @@ def _list_items(document: Mapping[Any, Any]) -> tuple[tuple[Mapping[Any, Any], .
     items = document.get("items")
     if not isinstance(items, list):
         return (), True
-    if any(not isinstance(item, Mapping) for item in items):
-        return (), True
-    return tuple(items), False
+    resources = tuple(item for item in items if isinstance(item, Mapping))
+    return resources, len(resources) != len(items)
 
 
 def _build_deployment_evidence(
@@ -202,11 +201,21 @@ def collect(
         for path in manifests_dir.rglob("*")
         if path.suffix.lower() in {".yml", ".yaml"} and path.is_file()
     )
-    files = all_files[: limits.max_manifest_files]
-    omitted_files = len(all_files) - len(files)
-    failures = 0
     excluded_count = 0
     untracked_count = 0
+    eligible_files: list[Path] = []
+    for path in all_files:
+        rel_path = path.relative_to(checkout_root).as_posix()
+        if _is_excluded(rel_path, excluded_paths):
+            excluded_count += 1
+        elif tracked_paths is not None and rel_path not in tracked_paths:
+            untracked_count += 1
+        else:
+            eligible_files.append(path)
+
+    files = eligible_files[: limits.max_manifest_files]
+    omitted_files = len(eligible_files) - len(files)
+    failures = 0
     deployment_limit_reached = False
     evidence_by_id: dict[str, Evidence] = {}
     seen_ids: set[str] = set()
@@ -214,12 +223,6 @@ def collect(
 
     for path in files:
         rel_path = path.relative_to(checkout_root).as_posix()
-        if _is_excluded(rel_path, excluded_paths):
-            excluded_count += 1
-            continue
-        if tracked_paths is not None and rel_path not in tracked_paths:
-            untracked_count += 1
-            continue
         try:
             if path.is_symlink() or not path.resolve().is_relative_to(checkout_real):
                 failures += 1

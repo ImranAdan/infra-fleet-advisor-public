@@ -1,6 +1,8 @@
 from dataclasses import replace
 from pathlib import Path
 
+import yaml
+
 from infra_fleet_advisor.core.limits import ExecutionLimits
 from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
     kubernetes_deployment_collector as collector,
@@ -77,6 +79,23 @@ def test_malformed_manifest_makes_coverage_partial_without_hiding_good_evidence(
 
     assert result.coverage.status == "partial"
     assert result.coverage.error_summary is not None
+    assert len(result.evidence) == 1
+
+
+def test_malformed_list_item_does_not_hide_valid_sibling(git_checkout) -> None:
+    repo, _sha = git_checkout(kubernetes_files=("rollout_default_single.yaml",))
+    path = repo / "k8s" / "applications" / "rollout_default_single.yaml"
+    deployment = yaml.safe_load(path.read_text(encoding="utf-8"))
+    path.write_text(
+        yaml.safe_dump(
+            {"apiVersion": "v1", "kind": "List", "items": [deployment, "invalid-resource"]}
+        ),
+        encoding="utf-8",
+    )
+
+    result = collector.collect(repo, LIMITS)
+
+    assert result.coverage.status == "partial"
     assert len(result.evidence) == 1
 
 
@@ -168,6 +187,30 @@ def test_manifest_file_limit_is_explicitly_partial(git_checkout) -> None:
     assert result.coverage.status == "partial"
     assert len(result.evidence) == 1
     assert "omitted by safety limit" in (result.coverage.error_summary or "")
+
+
+def test_ineligible_manifests_do_not_consume_file_limit(git_checkout) -> None:
+    repo, _sha = git_checkout(kubernetes_files=("rollout_default_single.yaml",))
+    source = repo / "k8s" / "applications" / "rollout_default_single.yaml"
+    excluded = source.with_name("aaa-excluded.yaml")
+    untracked = source.with_name("bbb-untracked.yaml")
+    excluded.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    untracked.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    source_rel = source.relative_to(repo).as_posix()
+    excluded_rel = excluded.relative_to(repo).as_posix()
+
+    result = collector.collect(
+        repo,
+        replace(LIMITS, max_manifest_files=1),
+        excluded_paths=frozenset({excluded_rel}),
+        tracked_paths=frozenset({excluded_rel, source_rel}),
+    )
+
+    assert len(result.evidence) == 1
+    assert result.coverage.status == "partial"
+    assert "excluded by policy" in (result.coverage.error_summary or "")
+    assert "not part of the verified commit" in (result.coverage.error_summary or "")
+    assert "omitted by safety limit" not in (result.coverage.error_summary or "")
 
 
 def test_duplicate_after_evidence_cap_removes_the_retained_identity(
