@@ -303,9 +303,11 @@ The `fleet_repository_review` scenario runs end to end: a closed intent catalog,
 three deterministic collectors (GitHub Actions workflows, Terraform IAM
 policies, and Kubernetes Deployments), proposition evaluation, required
 divergence delivery, validation, lifecycle tracking, and deduplicated fleet
-issue publication. The initial security and reliability catalogs contain twelve
-declared positions; three have registered checks and the remainder are
-explicitly reported as unverified rather than silently assumed true.
+issue publication. The initial security, reliability, and cost catalogs contain
+seventeen declared positions; three have registered checks and the remainder
+are explicitly reported as unverified rather than silently assumed true. The
+cost catalog deliberately has no registered checks yet, exercising the path
+from new free-text intent to explicit advisor capability work.
 
 The Anthropic synthesizer is implemented and unit-tested against recorded
 responses, but **has never been run against the live API**. Every report produced
