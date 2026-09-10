@@ -32,6 +32,8 @@ change infrastructure.
   precedence over generic best practices.
 - **Unknown is explicit:** a declared proposition without complete deterministic
   coverage is unverified, never assumed satisfied.
+- **Unknown becomes work:** ratified evaluation gaps produce deduplicated
+  advisor-side capability work without being misrepresented as fleet defects.
 - **Deterministic boundaries:** code owns source verification, schema
   validation, limits, lifecycle state, and publication eligibility.
 - **AI as an untrusted analyst:** a model may synthesize evidence but cannot
@@ -282,6 +284,33 @@ report and its material signature. Fleet issue publication reloads the catalog,
 requires the digest to match, and attaches the originating intent document and
 proposition identity to each action.
 
+### FR16: Intent-driven capability evolution
+
+A merged advisory report produces a second, bounded plan for propositions that
+remain `declared_unverified`. All unverified reasons except a category
+deliberately disabled by policy are actionable evaluation gaps. They create
+deduplicated issues in the advisor repository, never in the fleet repository.
+
+The planner reloads the current intent catalog and policy, requires their digest
+and version to match the report, and validates that the report contains exactly
+one structurally consistent evaluation for every current proposition. An issue
+identity derives only from the stable intent document and proposition IDs, so
+retries and wording changes do not create duplicate capability work.
+When the ratified statement or gap reason changes, a separate content signature
+allows the publisher to update only the matching bot-authored issue body.
+
+Capability issue bodies contain bounded, inert intent text, the closed
+evaluation reason, and a definition of done. They explicitly state that an
+unverified proposition is not evidence of fleet divergence. When a later
+ratified report evaluates the proposition as satisfied or divergent, the
+publisher may add one deduplicated resolution note but may not close, reopen, or
+otherwise change issue state.
+
+Agents may propose the missing collector and check implementation through a
+normal advisor pull request with deterministic tests. Natural-language intent
+cannot itself execute or install code, select arbitrary tools, or bypass the
+trusted registry, and no generated implementation is merged automatically.
+
 ## Non-functional requirements
 
 ### Safety and security
@@ -348,6 +377,9 @@ cluster, or wall-clock timing.
     omits it.
 12. Fleet issue work identifies its originating intent document and proposition,
     and publication fails if the merged report and current catalog differ.
+13. A merged report turns each actionable unverified proposition into at most
+    one advisor capability issue, while no unverified proposition is published
+    to the fleet as a divergence.
 
 ## Success measures
 
@@ -372,8 +404,9 @@ During the initial pilot:
   merging one is not, and never will be.
 - A plugin marketplace, dynamic imports, arbitrary shell execution, or remote
   tool installation selected by configuration.
-- Executing natural-language intent or dynamically creating checks from intent
-  text. New checks require reviewed collector and registry code.
+- Executing natural-language intent or dynamically loading checks from intent
+  text. Agents may propose new collector and registry code from capability work,
+  but it requires normal review, deterministic tests, and human approval.
 - Claims of complete coverage or universal optimality.
 
 ## Delivery phases after MVP

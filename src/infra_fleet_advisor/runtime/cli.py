@@ -7,6 +7,11 @@ from pathlib import Path
 
 from infra_fleet_advisor.core.errors import AdvisorError, PolicyError, ProvenanceError
 from infra_fleet_advisor.provenance.source_verification import verify_snapshot
+from infra_fleet_advisor.runtime.capability_publication import (
+    build_capability_plan,
+    publish_capability_plan,
+    write_capability_plan,
+)
 from infra_fleet_advisor.runtime.clock import SystemClock
 from infra_fleet_advisor.runtime.composition import SYNTHESIZERS, RunInputs, compose_and_run
 from infra_fleet_advisor.runtime.fleet_feedback import (
@@ -102,6 +107,25 @@ def _build_parser() -> argparse.ArgumentParser:
     publish_issues.add_argument("--intent-dir", required=True, type=Path)
     publish_issues.add_argument("--app-bot-login", required=True)
 
+    capabilities = sub.add_parser(
+        "capability-plan",
+        help="Revalidate a merged report and write bounded advisor capability actions",
+    )
+    capabilities.add_argument("--report", required=True, type=Path)
+    capabilities.add_argument("--policy", required=True, type=Path)
+    capabilities.add_argument("--intent-dir", required=True, type=Path)
+    capabilities.add_argument("--output", required=True, type=Path)
+
+    publish_capabilities = sub.add_parser(
+        "publish-capability-gaps",
+        help="Publish revalidated intent evaluation gaps in the advisor repository",
+    )
+    publish_capabilities.add_argument("--report", required=True, type=Path)
+    publish_capabilities.add_argument("--policy", required=True, type=Path)
+    publish_capabilities.add_argument("--intent-dir", required=True, type=Path)
+    publish_capabilities.add_argument("--repository", required=True)
+    publish_capabilities.add_argument("--workflow-bot-login", required=True)
+
     feedback = sub.add_parser(
         "feedback-plan",
         help="Read closed fleet issue labels and propose accepted policy trade-offs",
@@ -180,6 +204,50 @@ def _remediate(args: argparse.Namespace) -> int:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
+
+    if args.command == "publish-capability-gaps":
+        try:
+            capability_plan = build_capability_plan(args.report, args.policy, args.intent_dir)
+            if args.repository != capability_plan.target_repository:
+                raise PolicyError("capability publisher is running in an unexpected repository")
+            result = publish_capability_plan(
+                capability_plan,
+                GhCliIssueClient(capability_plan.target_repository),
+                args.workflow_bot_login,
+            )
+            print(
+                f"published {result.created} capability issue(s), found "
+                f"{result.existing} existing, updated {result.updated}, restored "
+                f"{result.labels_restored} label set(s), and added "
+                f"{result.resolution_comments} resolution note(s)"
+            )
+            return EXIT_OK
+        except PolicyError as exc:
+            print(f"policy error: {exc}", file=sys.stderr)
+            return EXIT_POLICY_ERROR
+        except AdvisorError as exc:
+            print(f"pipeline error: {exc}", file=sys.stderr)
+            return EXIT_PIPELINE_ERROR
+
+    if args.command == "capability-plan":
+        try:
+            capability_plan = build_capability_plan(args.report, args.policy, args.intent_dir)
+            write_capability_plan(capability_plan, args.output)
+            active = sum(action.action == "active" for action in capability_plan.actions)
+            print(
+                f"wrote capability plan with {active} active gap(s) and "
+                f"{len(capability_plan.actions) - active} resolution action(s)"
+            )
+            return EXIT_OK
+        except PolicyError as exc:
+            print(f"policy error: {exc}", file=sys.stderr)
+            return EXIT_POLICY_ERROR
+        except OSError as exc:
+            print(
+                f"pipeline error: cannot write capability plan: {type(exc).__name__}",
+                file=sys.stderr,
+            )
+            return EXIT_PIPELINE_ERROR
 
     if args.command == "feedback-publication-decision":
         try:

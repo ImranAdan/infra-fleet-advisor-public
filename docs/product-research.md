@@ -87,3 +87,6 @@ be re-evaluated from a verified source snapshot before appearing in a report.
 9. A proposition outside deterministic collector coverage must remain visible
    as declared but unverified; the advisor must not infer a check from prose or
    treat missing evidence as compliance.
+10. A ratified unverified proposition should become deduplicated implementation
+    work in the advisor repository. This lets intent drive capability evolution
+    without presenting missing coverage as a fleet defect.

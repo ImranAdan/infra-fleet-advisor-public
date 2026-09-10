@@ -11,10 +11,12 @@ from infra_fleet_advisor.runtime.github_issues import (
     ADVISOR_ISSUE_LABEL,
     CommentResult,
     GhCliIssueClient,
+    IssuePublicationProfile,
     PublicationResult,
     RemoteComment,
     RemoteIssue,
     SearchResult,
+    publish_issue_actions,
     publish_issue_plan,
 )
 from infra_fleet_advisor.runtime.issue_publication import (
@@ -95,6 +97,10 @@ class FakeIssueClient:
         self.issue_comments[number] = []
         assert title
 
+    def update_issue(self, issue_number: int, title: str, body: str) -> None:
+        assert title
+        self.issues[issue_number] = replace(self.issues[issue_number], body=body)
+
     def comments(self, issue_number: int) -> CommentResult:
         return CommentResult(
             tuple(self.issue_comments.get(issue_number, [])),
@@ -142,6 +148,66 @@ def test_active_publication_is_idempotent_per_fingerprint() -> None:
     assert len(client.issues) == 1
     assert WONTFIX_LABEL in client.labels
     assert set(TRADE_OFF_LABELS).issubset(client.labels)
+
+
+def test_advisor_local_profile_does_not_provision_fleet_feedback_labels() -> None:
+    client = FakeIssueClient()
+    action = _action("0" * 24)
+    profile = IssuePublicationProfile(
+        target_repository="ImranAdan/infra-fleet-advisor-public",
+        primary_label="intent-capability-gap",
+        primary_label_color="ffffff",
+        primary_label_description="Advisor capability work",
+        identity_label_color="eeeeee",
+        identity_label_description="Stable intent identity",
+    )
+
+    result = publish_issue_actions(
+        "ImranAdan/infra-fleet-advisor-public",
+        (action,),
+        client,
+        BOT,
+        profile,
+    )
+
+    assert result == PublicationResult(created=1)
+    assert client.issue_labels[1] == {"intent-capability-gap", action.fingerprint_label}
+    assert WONTFIX_LABEL not in client.labels
+    assert not set(TRADE_OFF_LABELS).intersection(client.labels)
+
+
+def test_content_marker_updates_bot_owned_issue_without_changing_identity() -> None:
+    client = FakeIssueClient()
+    profile = IssuePublicationProfile(
+        target_repository="ImranAdan/infra-fleet-advisor-public",
+        primary_label="intent-capability-gap",
+        primary_label_color="ffffff",
+        primary_label_description="Advisor capability work",
+        identity_label_color="eeeeee",
+        identity_label_description="Stable intent identity",
+    )
+    base = _action("1" * 24)
+    first_marker = "<!-- capability-content: first -->"
+    first = replace(
+        base,
+        body=f"{base.fingerprint_marker}\n{first_marker}\n\nFirst wording.",
+        content_marker=first_marker,
+    )
+    second_marker = "<!-- capability-content: second -->"
+    second = replace(
+        base,
+        body=f"{base.fingerprint_marker}\n{second_marker}\n\nRevised wording.",
+        content_marker=second_marker,
+    )
+
+    assert publish_issue_actions(
+        profile.target_repository, (first,), client, BOT, profile
+    ) == PublicationResult(created=1)
+    result = publish_issue_actions(profile.target_repository, (second,), client, BOT, profile)
+
+    assert result == PublicationResult(existing=1, updated=1)
+    assert second_marker in client.issues[1].body
+    assert first_marker not in client.issues[1].body
 
 
 def test_body_marker_recovers_labels_without_creating_a_duplicate() -> None:
@@ -396,6 +462,31 @@ def test_gh_adapter_sends_issue_body_as_json_stdin(
         "title": "title",
         "body": "body with $(inert)",
         "labels": ["label"],
+    }
+
+
+def test_gh_adapter_updates_only_title_and_body_with_json_stdin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _adapter()
+    captured: dict[str, object] = {}
+
+    def fake_api(endpoint, *, method="GET", fields=None, payload=None):
+        captured["endpoint"] = endpoint
+        captured["method"] = method
+        captured["fields"] = fields
+        captured["payload"] = payload
+        return {"number": 7}
+
+    monkeypatch.setattr(client, "_api_json", fake_api)
+
+    client.update_issue(7, "current title", "current body")
+
+    assert captured == {
+        "endpoint": f"repos/{FLEET_REPOSITORY}/issues/7",
+        "method": "PATCH",
+        "fields": None,
+        "payload": {"title": "current title", "body": "current body"},
     }
 
 

@@ -13,7 +13,12 @@ Intent catalog → static check registry ─────────────
 Verified fleet snapshot → collectors → evidence set ─┼→ evaluations
                                                       │       │
 Advisor policy ───────────────────────────────────────┘       ├→ satisfied
-                                                              ├→ unverified
+                                                              ├→ unverified ─→ capability plan
+                                                              │                    │ merged report
+                                                              │                    ↓
+                                                              │              advisor issue
+                                                              │                    │ agent + human PR
+                                                              │                    └→ trusted capability
                                                               └→ divergent
                                                                      │
                                       required candidate ← analyst wording
@@ -158,6 +163,24 @@ consumes only that plan. It uses an installation token limited to
 changes issue state. Resolution means “no longer detected” and produces an
 idempotent note for human review, not automatic closure.
 
+Intent capability publication is a parallel, advisor-local boundary after
+report merge. Deterministic code validates report provenance and a complete
+one-to-one correspondence between the current catalog and its recorded
+evaluations. Every unverified reason except `category_not_enabled_by_policy`
+becomes a stable action keyed by intent document and proposition identity. A
+same-repository token with `issues: write` reconciles exact labels and body
+markers. Stable identity deduplicates the issue while a separate content marker
+allows current ratified intent to replace stale bot-authored issue text. The
+issue describes advisor work and cannot cross the fleet issue
+publisher because it contains no recommendation fingerprint or evidence-backed
+divergence. Later supported evaluations receive an idempotent resolution note;
+issue state remains human-owned.
+
+Capability issues may drive agent-authored implementation pull requests, but
+those changes enter through the normal advisor review and CI boundary. Intent
+text is never executed, dynamically imported, or treated as proof. This creates
+a self-evolving work queue without making the model or configuration trusted.
+
 Fleet decision feedback is a third deterministic boundary. The GitHub adapter
 projects fleet issues into number, state, author, and label sets; title, body,
 and comments are discarded at the boundary. Trusted code accepts only closed,
@@ -194,6 +217,8 @@ replacement remains protected by an exact lease.
 10. Compute stable fingerprints and compare with the prior report.
 11. Apply deterministic output limits and ordering rules.
 12. Write equivalent JSON and Markdown reports.
+13. After report merge, reconcile unverified evaluations into advisor capability
+    issues and verified divergences into fleet issues through separate plans.
 
 ## Initial implementation shape
 
