@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: explicit-safe
+  namespace: applications
+spec:
+  replicas: 4
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    spec:
+      containers:
+        - name: app
+          image: example.invalid/app:v1
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080

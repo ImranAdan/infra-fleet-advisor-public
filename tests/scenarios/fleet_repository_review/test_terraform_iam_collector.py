@@ -126,8 +126,7 @@ def test_non_iam_resource_produces_no_evidence_or_failure(git_checkout) -> None:
 
 def test_missing_infrastructure_dir_is_ok_not_failed(tmp_path) -> None:
     # No Terraform in this repo at all is a legitimate zero-evidence result —
-    # it must not permanently block other collectors' findings from ever
-    # being marked resolved (collection_complete spans every collector).
+    # it records complete Terraform coverage without inventing evidence.
     result = tf_collector.collect(tmp_path, LIMITS)
     assert result.coverage.status == "ok"
     assert result.evidence == ()

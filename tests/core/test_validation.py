@@ -6,7 +6,7 @@ from infra_fleet_advisor.core.contracts import (
 from infra_fleet_advisor.core.evidence import Evidence, build_evidence
 from infra_fleet_advisor.core.validation import is_prior_recommendation_valid, validate_candidates
 
-ALLOWED = {"concern": ConcernRule(category="security", evidence_kind="k")}
+ALLOWED = {"concern": ConcernRule(category="security", evidence_kind="k", collector_id="c")}
 
 
 def _bounds(
@@ -101,12 +101,37 @@ def test_real_evidence_of_the_wrong_kind_does_not_support_the_concern() -> None:
     assert result.rejected[0].reason == "evidence_does_not_support_concern"
 
 
+def test_evidence_from_the_wrong_collector_does_not_support_the_concern() -> None:
+    evidence = build_evidence(
+        collector_id="untrusted",
+        collector_version="1.0.0",
+        kind="k",
+        source_path="a.yml",
+        locator="loc",
+        excerpt="e",
+        fact={},
+    )
+
+    result = validate_candidates(
+        [_candidate(evidence_ids=(evidence.evidence_id,))],
+        {evidence.evidence_id: evidence},
+        _bounds(),
+        ALLOWED,
+    )
+
+    assert not result.accepted
+    assert result.rejected[0].reason == "evidence_does_not_support_concern"
+
+
 def test_evidence_whose_facts_contradict_the_concern_is_rejected() -> None:
     # The collector emits this evidence for every credential step it finds,
     # including correctly configured ones. Only the fact makes it a finding.
     rules = {
         "concern": ConcernRule(
-            category="security", evidence_kind="k", required_facts={"uses_static_keys": True}
+            category="security",
+            evidence_kind="k",
+            collector_id="c",
+            required_facts={"uses_static_keys": True},
         )
     }
     ev = build_evidence(
@@ -245,7 +270,13 @@ def _prior_evidence(eid: str, keyed_as: str | None = None):
     """The evidence table a prior report carries, keyed the way the loader
     keys it: by each entry's own evidence_id."""
     ev = Evidence(
-        evidence_id=eid, kind="k", source_path="a.yml", locator="loc", excerpt="e", fact={}
+        evidence_id=eid,
+        kind="k",
+        source_path="a.yml",
+        locator="loc",
+        excerpt="e",
+        fact={},
+        collector_id="c",
     )
     return {keyed_as or eid: ev}
 

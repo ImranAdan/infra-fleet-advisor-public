@@ -15,6 +15,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.anthropic_synthesis i
     build_prompt,
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
+    CONCERN_DEPLOYMENT_ROLLOUT_CAPACITY,
     CONCERN_RULES,
     CONCERN_TEMPLATES,
 )
@@ -187,9 +188,9 @@ def test_concerns_of_a_disabled_category_are_not_offered_to_the_model() -> None:
 
     schema = client.messages.calls[0]["output_config"]["format"]["schema"]
     candidate = schema["properties"]["recommendations"]["items"]
-    # Every concern in this scenario is a security concern, so enabling only
-    # reliability must leave the model nothing to report.
-    assert candidate["properties"]["concern_key"]["enum"] == []
+    # Security concerns are withheld; the registered reliability concern is
+    # the only work identity the model can select.
+    assert candidate["properties"]["concern_key"]["enum"] == [CONCERN_DEPLOYMENT_ROLLOUT_CAPACITY]
 
 
 def test_concern_rules_and_stub_templates_agree_on_category() -> None:

@@ -61,6 +61,7 @@ class ConcernRule:
 
     category: str
     evidence_kind: str
+    collector_id: str
     required_facts: Mapping[str, bool | str | int] = field(default_factory=dict)
     priority: str | None = None
     source_path_prefixes: tuple[str, ...] = ()

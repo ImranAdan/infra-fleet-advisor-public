@@ -110,7 +110,7 @@ def test_authoritative_markdown_drives_the_production_review(git_checkout) -> No
     assert evaluations["S-001"].status == "divergent"
     assert evaluations["S-007"].status == "divergent"
     assert evaluations["R-001"].status == "declared_unverified"
-    assert evaluations["R-001"].reason == "check_not_registered"
+    assert evaluations["R-001"].reason == "no_relevant_evidence"
     assert {item.status for key, item in evaluations.items() if key not in {"S-001", "S-007"}} == {
         "declared_unverified"
     }
@@ -118,6 +118,32 @@ def test_authoritative_markdown_drives_the_production_review(git_checkout) -> No
         "ci_credentials_without_oidc",
         "wildcard_iam_permissions",
     }
+
+
+def test_reliability_intent_produces_required_advice_for_unsafe_rollout(git_checkout) -> None:
+    repo, sha = git_checkout(kubernetes_files=("rollout_default_unsafe.yaml",))
+    policy = load_policy(POLICY_PATH, TAXONOMY)
+    catalog = load_intent_catalog(PRODUCTION_INTENT_PATH, TAXONOMY)
+    source = verify_snapshot(repo, sha, "infra-fleet-public")
+
+    report = run_review(
+        checkout_root=repo,
+        policy=policy,
+        source=source,
+        synthesizer=_EmptySynthesizer(),
+        limits=LIMITS,
+        prior=None,
+        run_started_at="2026-08-26T00:00:00+00:00",
+        intent_catalog=catalog,
+    )
+
+    evaluation = next(item for item in report.intent_evaluations if item.proposition_id == "R-001")
+    assert evaluation.status == "divergent"
+    assert len(evaluation.evidence_ids) == 1
+    assert [item.concern_key for item in report.recommendations] == [
+        "deployment_rollout_capacity_loss"
+    ]
+    assert report.recommendations[0].evidence_ids == evaluation.evidence_ids
 
 
 def test_collector_failure_visible_in_coverage(git_checkout) -> None:
@@ -192,7 +218,7 @@ def test_third_run_marks_removed_finding_resolved(git_checkout) -> None:
     assert all(c.status == "ok" for c in second.coverage)
 
 
-def test_both_collectors_contribute_to_one_report(git_checkout) -> None:
+def test_registered_collectors_contribute_to_one_report(git_checkout) -> None:
     repo, sha = git_checkout(
         "trivy_ignore_unfixed_bad.yml", terraform_files=("wildcard_iam_policy.tf",)
     )
@@ -201,7 +227,7 @@ def test_both_collectors_contribute_to_one_report(git_checkout) -> None:
     concern_keys = {r.concern_key for r in report.recommendations}
     assert "trivy_ignore_unfixed" in concern_keys
     assert "wildcard_iam_permissions" in concern_keys
-    assert len(report.coverage) == 2
+    assert len(report.coverage) == 3
     assert all(c.status == "ok" for c in report.coverage)
     assert len(report.evidence) == 2
 

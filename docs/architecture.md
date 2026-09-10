@@ -98,6 +98,16 @@ same module preserves lifecycle identity without conflating separate root
 modules. GitHub Actions evidence remains keyed by workflow path and step locator
 because steps without explicit IDs have no stable resource handle; file moves
 or inserted steps can therefore still produce a one-time lifecycle change.
+Kubernetes Deployment rollout evidence uses the API version, kind, namespace,
+and name as its stable handle. Duplicate declarations of that handle make
+coverage partial and are withheld rather than selecting one declaration
+arbitrarily.
+
+The Deployment collector reads only bounded, tracked YAML under `k8s/`. It
+resolves RollingUpdate percentage fenceposts against desired replicas, records
+readiness-probe coverage, and emits one typed capacity fact per unambiguous
+`apps/v1` Deployment. Malformed, excluded, untracked, duplicate, or truncated
+inputs cannot prove satisfaction.
 
 ### Intent compilation
 

@@ -21,6 +21,8 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.synthesis import (
 
 MAX_WORKFLOW_FILES = 50
 MAX_WORKFLOW_FILE_BYTES = 256 * 1024
+MAX_MANIFEST_FILES = 100
+MAX_MANIFEST_FILE_BYTES = 1024 * 1024
 SYNTHESIZERS = ("anthropic", "stub")
 
 
@@ -62,6 +64,8 @@ def compose_and_run(
         max_workflow_files=MAX_WORKFLOW_FILES,
         max_file_bytes=MAX_WORKFLOW_FILE_BYTES,
         max_recommendations=policy.max_recommendations,
+        max_manifest_files=MAX_MANIFEST_FILES,
+        max_manifest_file_bytes=MAX_MANIFEST_FILE_BYTES,
     )
     return run_review(
         checkout_root=inputs.checkout,

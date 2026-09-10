@@ -81,9 +81,12 @@ def assemble_report(
         if intent_enabled or required_candidates
         else validate_candidates(candidates, evidence_by_id, bounds, concern_rules)
     )
-    collection_complete = all(c.status == "ok" for c in coverage)
     lifecycle = compare_with_prior(
-        validated.accepted, prior, bounds, concern_rules, collection_complete
+        validated.accepted,
+        prior,
+        bounds,
+        concern_rules,
+        {record.collector_id: record.status for record in coverage},
     )
     ranked = rank(lifecycle.recommendations, bounds.category_priority)
 

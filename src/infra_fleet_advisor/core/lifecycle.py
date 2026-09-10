@@ -68,7 +68,7 @@ def compare_with_prior(
     prior: PriorReport | None,
     bounds: PolicyBounds,
     concern_rules: Mapping[str, ConcernRule],
-    collection_complete: bool,
+    collector_status: Mapping[str, str],
 ) -> LifecycleResult:
     """Fingerprint identity drives comparison, not narrative text, so this
     stays stable once a real model reworks wording each run.
@@ -77,9 +77,9 @@ def compare_with_prior(
     publication gate a fresh candidate would (`is_prior_recommendation_valid`)
     — an untrusted prior report can't smuggle invented evidence, secrets, or
     invalid fields straight into the report. And it's only marked `resolved`
-    when this run's collection was complete (`collection_complete`); if a
-    collector was partial/failed, absence of evidence isn't proof the concern
-    is gone, so it's carried forward as `unchanged` instead.
+    when every collector that produced its cited evidence completed this run.
+    An unrelated partial collector cannot reactivate the recommendation, while
+    incomplete relevant coverage still carries it forward as `unchanged`.
     """
     # A malformed prior report could carry a non-string fingerprint (e.g. a
     # JSON list); guard the dict build so that alone can't crash the run.
@@ -110,7 +110,9 @@ def compare_with_prior(
             continue
         if not is_prior_recommendation_valid(prior_rec, bounds, concern_rules, prior_evidence):
             continue
-        if collection_complete:
+        trusted_collector_id = concern_rules[prior_rec.concern_key].collector_id
+        relevant_collection_complete = collector_status.get(trusted_collector_id) == "ok"
+        if relevant_collection_complete:
             results.append(_prior_as_recommendation(prior_rec, "resolved", bounds))
             resolved += 1
         else:

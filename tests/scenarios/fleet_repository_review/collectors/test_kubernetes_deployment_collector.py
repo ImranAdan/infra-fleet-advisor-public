@@ -1,0 +1,231 @@
+from dataclasses import replace
+from pathlib import Path
+
+import yaml
+
+from infra_fleet_advisor.core.limits import ExecutionLimits
+from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
+    kubernetes_deployment_collector as collector,
+)
+from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
+    EVIDENCE_KIND_DEPLOYMENT_ROLLOUT_CAPACITY,
+)
+
+LIMITS = ExecutionLimits(
+    max_wall_seconds=60,
+    max_model_calls=1,
+    max_workflow_files=50,
+    max_file_bytes=256 * 1024,
+    max_recommendations=10,
+)
+
+
+def test_single_replica_defaults_preserve_capacity(git_checkout) -> None:
+    repo, _sha = git_checkout(kubernetes_files=("rollout_default_single.yaml",))
+
+    result = collector.collect(repo, LIMITS)
+
+    assert result.coverage.status == "ok"
+    assert len(result.evidence) == 1
+    evidence = result.evidence[0]
+    assert evidence.kind == EVIDENCE_KIND_DEPLOYMENT_ROLLOUT_CAPACITY
+    assert evidence.fact["effective_max_unavailable"] == 0
+    assert evidence.fact["effective_max_surge"] == 1
+    assert evidence.fact["retains_healthy_capacity"] is True
+
+
+def test_explicit_zero_unavailable_preserves_multi_replica_capacity(git_checkout) -> None:
+    repo, _sha = git_checkout(kubernetes_files=("rollout_explicit_safe.yaml",))
+
+    evidence = collector.collect(repo, LIMITS).evidence[0]
+
+    assert evidence.fact["replicas"] == 4
+    assert evidence.fact["retains_healthy_capacity"] is True
+
+
+def test_default_fenceposts_can_reduce_multi_replica_capacity(git_checkout) -> None:
+    repo, _sha = git_checkout(kubernetes_files=("rollout_default_unsafe.yaml",))
+
+    evidence = collector.collect(repo, LIMITS).evidence[0]
+
+    assert evidence.fact["effective_max_unavailable"] == 1
+    assert evidence.fact["retains_healthy_capacity"] is False
+
+
+def test_missing_readiness_probe_is_not_treated_as_healthy_capacity(git_checkout) -> None:
+    repo, _sha = git_checkout(kubernetes_files=("rollout_without_readiness.yaml",))
+
+    evidence = collector.collect(repo, LIMITS).evidence[0]
+
+    assert evidence.fact["all_containers_have_readiness_probe"] is False
+    assert evidence.fact["retains_healthy_capacity"] is False
+
+
+def test_recreate_strategy_cannot_preserve_active_capacity(git_checkout) -> None:
+    repo, _sha = git_checkout(kubernetes_files=("rollout_recreate.yaml",))
+
+    evidence = collector.collect(repo, LIMITS).evidence[0]
+
+    assert evidence.fact["strategy_type"] == "Recreate"
+    assert evidence.fact["retains_healthy_capacity"] is False
+
+
+def test_malformed_manifest_makes_coverage_partial_without_hiding_good_evidence(
+    git_checkout,
+) -> None:
+    repo, _sha = git_checkout(kubernetes_files=("malformed.yaml", "rollout_default_single.yaml"))
+
+    result = collector.collect(repo, LIMITS)
+
+    assert result.coverage.status == "partial"
+    assert result.coverage.error_summary is not None
+    assert len(result.evidence) == 1
+
+
+def test_malformed_list_item_does_not_hide_valid_sibling(git_checkout) -> None:
+    repo, _sha = git_checkout(kubernetes_files=("rollout_default_single.yaml",))
+    path = repo / "k8s" / "applications" / "rollout_default_single.yaml"
+    deployment = yaml.safe_load(path.read_text(encoding="utf-8"))
+    path.write_text(
+        yaml.safe_dump(
+            {"apiVersion": "v1", "kind": "List", "items": [deployment, "invalid-resource"]}
+        ),
+        encoding="utf-8",
+    )
+
+    result = collector.collect(repo, LIMITS)
+
+    assert result.coverage.status == "partial"
+    assert len(result.evidence) == 1
+
+
+def test_duplicate_resource_identity_is_unverified_not_arbitrarily_selected(git_checkout) -> None:
+    repo, _sha = git_checkout(kubernetes_files=("rollout_default_single.yaml",))
+    source = repo / "k8s" / "applications" / "rollout_default_single.yaml"
+    duplicate = source.with_name("duplicate.yaml")
+    duplicate.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+
+    result = collector.collect(repo, LIMITS)
+
+    assert result.coverage.status == "partial"
+    assert result.evidence == ()
+
+
+def test_resource_identity_survives_a_manifest_rename(git_checkout) -> None:
+    repo, _sha = git_checkout(kubernetes_files=("rollout_default_single.yaml",))
+    before = collector.collect(repo, LIMITS).evidence[0]
+    source = repo / "k8s" / "applications" / "rollout_default_single.yaml"
+    source.rename(source.with_name("renamed.yaml"))
+
+    after = collector.collect(repo, LIMITS).evidence[0]
+
+    assert before.source_path != after.source_path
+    assert before.evidence_id == after.evidence_id
+
+
+def test_k8s_directory_escaping_checkout_is_failed(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    (checkout / "k8s").symlink_to(outside)
+
+    result = collector.collect(checkout, LIMITS)
+
+    assert result.coverage.status == "failed"
+    assert result.evidence == ()
+
+
+def test_untracked_manifest_is_not_evidence(git_checkout) -> None:
+    repo, _sha = git_checkout(kubernetes_files=("rollout_default_unsafe.yaml",))
+
+    result = collector.collect(repo, LIMITS, tracked_paths=frozenset())
+
+    assert result.coverage.status == "partial"
+    assert result.evidence == ()
+    assert "not part of the verified commit" in (result.coverage.error_summary or "")
+
+
+def test_in_checkout_symlink_cannot_bypass_exclusions(git_checkout) -> None:
+    repo, _sha = git_checkout(kubernetes_files=("rollout_default_unsafe.yaml",))
+    target = "k8s/applications/rollout_default_unsafe.yaml"
+    link = repo / "k8s" / "applications" / "allowed-link.yaml"
+    link.symlink_to("rollout_default_unsafe.yaml")
+
+    result = collector.collect(
+        repo,
+        LIMITS,
+        excluded_paths=frozenset({target}),
+        tracked_paths=frozenset({"k8s/applications/allowed-link.yaml", target}),
+    )
+
+    assert result.coverage.status == "partial"
+    assert result.evidence == ()
+
+
+def test_out_of_range_rollout_integer_is_partial_not_a_crash(git_checkout) -> None:
+    repo, _sha = git_checkout(kubernetes_files=("rollout_default_single.yaml",))
+    path = repo / "k8s" / "applications" / "rollout_default_single.yaml"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("replicas: 1", f"replicas: {'9' * 400}"),
+        encoding="utf-8",
+    )
+
+    result = collector.collect(repo, LIMITS)
+
+    assert result.coverage.status == "partial"
+    assert result.evidence == ()
+
+
+def test_manifest_file_limit_is_explicitly_partial(git_checkout) -> None:
+    repo, _sha = git_checkout(
+        kubernetes_files=("rollout_default_single.yaml", "rollout_explicit_safe.yaml")
+    )
+
+    result = collector.collect(repo, replace(LIMITS, max_manifest_files=1))
+
+    assert result.coverage.status == "partial"
+    assert len(result.evidence) == 1
+    assert "omitted by safety limit" in (result.coverage.error_summary or "")
+
+
+def test_ineligible_manifests_do_not_consume_file_limit(git_checkout) -> None:
+    repo, _sha = git_checkout(kubernetes_files=("rollout_default_single.yaml",))
+    source = repo / "k8s" / "applications" / "rollout_default_single.yaml"
+    excluded = source.with_name("aaa-excluded.yaml")
+    untracked = source.with_name("bbb-untracked.yaml")
+    excluded.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    untracked.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    source_rel = source.relative_to(repo).as_posix()
+    excluded_rel = excluded.relative_to(repo).as_posix()
+
+    result = collector.collect(
+        repo,
+        replace(LIMITS, max_manifest_files=1),
+        excluded_paths=frozenset({excluded_rel}),
+        tracked_paths=frozenset({excluded_rel, source_rel}),
+    )
+
+    assert len(result.evidence) == 1
+    assert result.coverage.status == "partial"
+    assert "excluded by policy" in (result.coverage.error_summary or "")
+    assert "not part of the verified commit" in (result.coverage.error_summary or "")
+    assert "omitted by safety limit" not in (result.coverage.error_summary or "")
+
+
+def test_duplicate_after_evidence_cap_removes_the_retained_identity(
+    git_checkout, monkeypatch
+) -> None:
+    repo, _sha = git_checkout(
+        kubernetes_files=("rollout_default_single.yaml", "rollout_explicit_safe.yaml")
+    )
+    first = repo / "k8s" / "applications" / "rollout_default_single.yaml"
+    first.with_name("zzz-duplicate.yaml").write_text(
+        first.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    monkeypatch.setattr(collector, "_MAX_DEPLOYMENT_EVIDENCE", 1)
+
+    result = collector.collect(repo, LIMITS)
+
+    assert result.coverage.status == "partial"
+    assert result.evidence == ()

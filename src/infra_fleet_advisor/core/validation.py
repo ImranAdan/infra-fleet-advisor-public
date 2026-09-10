@@ -215,7 +215,7 @@ def _evidence_supports(
     cited as proof of static keys — is not support."""
     for eid in evidence_ids:
         item = evidence_by_id[eid]
-        if item.kind != rule.evidence_kind:
+        if item.collector_id != rule.collector_id or item.kind != rule.evidence_kind:
             return False
         if rule.source_path_prefixes and not any(
             item.source_path == prefix or item.source_path.startswith(f"{prefix}/")

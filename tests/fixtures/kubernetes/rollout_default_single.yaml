@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: safe-defaults
+  namespace: applications
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: app
+          image: example.invalid/app:v1
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
