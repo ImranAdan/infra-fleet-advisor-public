@@ -127,6 +127,37 @@ def test_untracked_manifest_is_not_evidence(git_checkout) -> None:
     assert "not part of the verified commit" in (result.coverage.error_summary or "")
 
 
+def test_in_checkout_symlink_cannot_bypass_exclusions(git_checkout) -> None:
+    repo, _sha = git_checkout(kubernetes_files=("rollout_default_unsafe.yaml",))
+    target = "k8s/applications/rollout_default_unsafe.yaml"
+    link = repo / "k8s" / "applications" / "allowed-link.yaml"
+    link.symlink_to("rollout_default_unsafe.yaml")
+
+    result = collector.collect(
+        repo,
+        LIMITS,
+        excluded_paths=frozenset({target}),
+        tracked_paths=frozenset({"k8s/applications/allowed-link.yaml", target}),
+    )
+
+    assert result.coverage.status == "partial"
+    assert result.evidence == ()
+
+
+def test_out_of_range_rollout_integer_is_partial_not_a_crash(git_checkout) -> None:
+    repo, _sha = git_checkout(kubernetes_files=("rollout_default_single.yaml",))
+    path = repo / "k8s" / "applications" / "rollout_default_single.yaml"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("replicas: 1", f"replicas: {'9' * 400}"),
+        encoding="utf-8",
+    )
+
+    result = collector.collect(repo, LIMITS)
+
+    assert result.coverage.status == "partial"
+    assert result.evidence == ()
+
+
 def test_manifest_file_limit_is_explicitly_partial(git_checkout) -> None:
     repo, _sha = git_checkout(
         kubernetes_files=("rollout_default_single.yaml", "rollout_explicit_safe.yaml")
@@ -137,3 +168,21 @@ def test_manifest_file_limit_is_explicitly_partial(git_checkout) -> None:
     assert result.coverage.status == "partial"
     assert len(result.evidence) == 1
     assert "omitted by safety limit" in (result.coverage.error_summary or "")
+
+
+def test_duplicate_after_evidence_cap_removes_the_retained_identity(
+    git_checkout, monkeypatch
+) -> None:
+    repo, _sha = git_checkout(
+        kubernetes_files=("rollout_default_single.yaml", "rollout_explicit_safe.yaml")
+    )
+    first = repo / "k8s" / "applications" / "rollout_default_single.yaml"
+    first.with_name("zzz-duplicate.yaml").write_text(
+        first.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    monkeypatch.setattr(collector, "_MAX_DEPLOYMENT_EVIDENCE", 1)
+
+    result = collector.collect(repo, LIMITS)
+
+    assert result.coverage.status == "partial"
+    assert result.evidence == ()

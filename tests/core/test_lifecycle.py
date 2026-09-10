@@ -5,12 +5,12 @@ from infra_fleet_advisor.core.evidence import Evidence
 from infra_fleet_advisor.core.lifecycle import PriorRecommendation, PriorReport, compare_with_prior
 
 ALLOWED = {
-    key: ConcernRule(category="security", evidence_kind="k")
+    key: ConcernRule(category="security", evidence_kind="k", collector_id="collector")
     for key in ("concern", "new_concern", "resolved_concern", "muted_concern")
 }
 
 
-def _evidence(kind: str = "k", **fact) -> dict[str, Evidence]:
+def _evidence(kind: str = "k", collector_id: str = "collector", **fact) -> dict[str, Evidence]:
     """The evidence table a real prior report carries for its own citations."""
     return {
         "e1": Evidence(
@@ -20,7 +20,7 @@ def _evidence(kind: str = "k", **fact) -> dict[str, Evidence]:
             locator="loc",
             excerpt="e",
             fact=fact,
-            collector_id="collector",
+            collector_id=collector_id,
         )
     }
 
@@ -128,6 +128,24 @@ def test_unrelated_incomplete_collector_does_not_block_resolution() -> None:
     assert result.resolved_count == 1
 
 
+def test_untrusted_prior_collector_identity_cannot_force_resolution() -> None:
+    prior = PriorReport(
+        recommendations=[_prior_rec("fp_missing")],
+        evidence_by_id=_evidence(collector_id="unrelated"),
+    )
+
+    result = compare_with_prior(
+        [],
+        prior,
+        _bounds(),
+        ALLOWED,
+        {"collector": "partial", "unrelated": "ok"},
+    )
+
+    assert result.recommendations == ()
+    assert result.resolved_count == 0
+
+
 def test_invalid_prior_recommendation_is_dropped_not_republished() -> None:
     # category no longer enabled -> fails is_prior_recommendation_valid
     prior = PriorReport(
@@ -159,7 +177,10 @@ def test_prior_citing_evidence_absent_from_its_own_report_is_dropped() -> None:
 def test_prior_whose_evidence_contradicts_its_concern_rule_is_dropped() -> None:
     rules = {
         "concern": ConcernRule(
-            category="security", evidence_kind="k", required_facts={"uses_static_keys": True}
+            category="security",
+            evidence_kind="k",
+            collector_id="collector",
+            required_facts={"uses_static_keys": True},
         )
     }
     prior = PriorReport(

@@ -17,7 +17,7 @@ PROVENANCE = RunProvenance(
     model_identifier="stub-synthesizer-v1",
     run_started_at="2026-08-26T00:00:00+00:00",
 )
-RULES = {"concern": ConcernRule(category="security", evidence_kind="k")}
+RULES = {"concern": ConcernRule(category="security", evidence_kind="k", collector_id="c")}
 BOUNDS = PolicyBounds(
     enabled_categories=frozenset({"security"}),
     category_priority={"security": 10},

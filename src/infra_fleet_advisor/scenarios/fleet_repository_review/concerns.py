@@ -7,6 +7,9 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     EVIDENCE_KIND_DEPLOYMENT_ROLLOUT_CAPACITY,
     EVIDENCE_KIND_IAM_WILDCARD,
     EVIDENCE_KIND_TRIVY_GATE,
+    GHA_COLLECTOR_ID,
+    K8S_DEPLOYMENT_COLLECTOR_ID,
+    TF_IAM_COLLECTOR_ID,
 )
 
 CONCERN_STATIC_AWS_CREDENTIALS = "static_aws_credentials_in_ci"
@@ -24,20 +27,24 @@ CONCERN_RULES: dict[str, ConcernRule] = {
     CONCERN_STATIC_AWS_CREDENTIALS: ConcernRule(
         category="security",
         evidence_kind=EVIDENCE_KIND_CREDENTIAL_METHOD,
+        collector_id=GHA_COLLECTOR_ID,
         required_facts={"uses_static_keys": True},
     ),
     CONCERN_TRIVY_IGNORE_UNFIXED: ConcernRule(
         category="security",
         evidence_kind=EVIDENCE_KIND_TRIVY_GATE,
+        collector_id=GHA_COLLECTOR_ID,
         required_facts={"ignore_unfixed": True},
     ),
     CONCERN_WILDCARD_IAM_PERMISSIONS: ConcernRule(
         category="security",
         evidence_kind=EVIDENCE_KIND_IAM_WILDCARD,
+        collector_id=TF_IAM_COLLECTOR_ID,
     ),
     CONCERN_DEPLOYMENT_ROLLOUT_CAPACITY: ConcernRule(
         category="reliability",
         evidence_kind=EVIDENCE_KIND_DEPLOYMENT_ROLLOUT_CAPACITY,
+        collector_id=K8S_DEPLOYMENT_COLLECTOR_ID,
         required_facts={"retains_healthy_capacity": False},
     ),
 }

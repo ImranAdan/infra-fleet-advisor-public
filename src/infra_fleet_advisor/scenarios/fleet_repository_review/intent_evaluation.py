@@ -35,7 +35,6 @@ CHECK_DEPLOYMENT_ROLLOUT_CAPACITY = "deployment_rollout_capacity"
 @dataclass(frozen=True, slots=True)
 class IntentCheckDefinition:
     concern_key: str
-    collector_id: str
     rule: ConcernRule
     can_prove_satisfaction: bool
     requires_relevant_evidence: bool = False
@@ -69,10 +68,10 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
     {
         CHECK_GITHUB_ACTIONS_USES_OIDC: IntentCheckDefinition(
             concern_key=CONCERN_CI_CREDENTIALS_WITHOUT_OIDC,
-            collector_id=GHA_COLLECTOR_ID,
             rule=ConcernRule(
                 category="security",
                 evidence_kind=EVIDENCE_KIND_CREDENTIAL_METHOD,
+                collector_id=GHA_COLLECTOR_ID,
                 required_facts={"uses_oidc_only": False},
             ),
             # This collector can prove a configure-aws-credentials step conflicts
@@ -83,20 +82,20 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
         ),
         CHECK_PERSISTENT_IAM_AVOIDS_WILDCARDS: IntentCheckDefinition(
             concern_key=CONCERN_WILDCARD_IAM_PERMISSIONS,
-            collector_id=TF_IAM_COLLECTOR_ID,
             rule=ConcernRule(
                 category="security",
                 evidence_kind=EVIDENCE_KIND_IAM_WILDCARD,
+                collector_id=TF_IAM_COLLECTOR_ID,
                 source_path_prefixes=("infrastructure/permanent",),
             ),
             can_prove_satisfaction=False,
         ),
         CHECK_TRIVY_DOES_NOT_IGNORE_UNFIXED: IntentCheckDefinition(
             concern_key=CONCERN_TRIVY_IGNORE_UNFIXED,
-            collector_id=GHA_COLLECTOR_ID,
             rule=ConcernRule(
                 category="security",
                 evidence_kind=EVIDENCE_KIND_TRIVY_GATE,
+                collector_id=GHA_COLLECTOR_ID,
                 required_facts={"ignore_unfixed": True},
             ),
             can_prove_satisfaction=True,
@@ -104,10 +103,10 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
         ),
         CHECK_DEPLOYMENT_ROLLOUT_CAPACITY: IntentCheckDefinition(
             concern_key=CONCERN_DEPLOYMENT_ROLLOUT_CAPACITY,
-            collector_id=K8S_DEPLOYMENT_COLLECTOR_ID,
             rule=ConcernRule(
                 category="reliability",
                 evidence_kind=EVIDENCE_KIND_DEPLOYMENT_ROLLOUT_CAPACITY,
+                collector_id=K8S_DEPLOYMENT_COLLECTOR_ID,
                 required_facts={"retains_healthy_capacity": False},
             ),
             can_prove_satisfaction=True,
@@ -120,7 +119,7 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
 def _is_relevant(item: Evidence, definition: IntentCheckDefinition) -> bool:
     rule = definition.rule
     return (
-        item.collector_id == definition.collector_id
+        item.collector_id == definition.rule.collector_id
         and item.kind == rule.evidence_kind
         and (
             not rule.source_path_prefixes
@@ -220,7 +219,7 @@ def compile_intents(
                 reason = "evidence_conflicts_with_intent"
                 evidence_ids = tuple(sorted(item.evidence_id for item in divergent))
             else:
-                collector_coverage = coverage_by_id.get(definition.collector_id)
+                collector_coverage = coverage_by_id.get(definition.rule.collector_id)
                 if collector_coverage is None:
                     status = "declared_unverified"
                     reason = "collector_not_run"

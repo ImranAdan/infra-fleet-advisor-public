@@ -110,12 +110,8 @@ def compare_with_prior(
             continue
         if not is_prior_recommendation_valid(prior_rec, bounds, concern_rules, prior_evidence):
             continue
-        prior_collector_ids = {
-            prior_evidence[evidence_id].collector_id for evidence_id in prior_rec.evidence_ids
-        }
-        relevant_collection_complete = bool(prior_collector_ids) and all(
-            collector_status.get(collector_id) == "ok" for collector_id in prior_collector_ids
-        )
+        trusted_collector_id = concern_rules[prior_rec.concern_key].collector_id
+        relevant_collection_complete = collector_status.get(trusted_collector_id) == "ok"
         if relevant_collection_complete:
             results.append(_prior_as_recommendation(prior_rec, "resolved", bounds))
             resolved += 1

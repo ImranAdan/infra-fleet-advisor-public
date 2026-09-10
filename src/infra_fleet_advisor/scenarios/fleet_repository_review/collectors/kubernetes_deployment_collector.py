@@ -1,4 +1,3 @@
-import math
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -19,6 +18,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
 _DEFAULT_FENCEPOST = "25%"
 _PERCENT = re.compile(r"^(0|[1-9][0-9]*)%$")
 _MAX_DEPLOYMENT_EVIDENCE = 500
+_MAX_INT_OR_PERCENT = 2_147_483_647
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,7 +37,7 @@ def _fencepost(value: Any, replicas: int, *, round_up: bool) -> tuple[str, int] 
     if isinstance(value, bool):
         return None
     if isinstance(value, int):
-        if value < 0:
+        if value < 0 or value > _MAX_INT_OR_PERCENT:
             return None
         return str(value), value
     if not isinstance(value, str):
@@ -45,9 +45,14 @@ def _fencepost(value: Any, replicas: int, *, round_up: bool) -> tuple[str, int] 
     match = _PERCENT.fullmatch(value)
     if match is None:
         return None
-    percentage = int(match.group(1))
-    scaled = replicas * percentage / 100
-    effective = math.ceil(scaled) if round_up else math.floor(scaled)
+    digits = match.group(1)
+    if len(digits) > 10:
+        return None
+    percentage = int(digits)
+    if percentage > _MAX_INT_OR_PERCENT:
+        return None
+    product = replicas * percentage
+    effective = (product + 99) // 100 if round_up else product // 100
     return value, effective
 
 
@@ -82,7 +87,7 @@ def _build_deployment_evidence(
     replicas_value = spec.get("replicas", 1)
     if isinstance(replicas_value, bool) or not isinstance(replicas_value, int):
         return None, True
-    if replicas_value < 0:
+    if replicas_value < 0 or replicas_value > _MAX_INT_OR_PERCENT:
         return None, True
 
     strategy = spec.get("strategy", {})
@@ -204,6 +209,7 @@ def collect(
     untracked_count = 0
     deployment_limit_reached = False
     evidence_by_id: dict[str, Evidence] = {}
+    seen_ids: set[str] = set()
     duplicate_ids: set[str] = set()
 
     for path in files:
@@ -215,7 +221,7 @@ def collect(
             untracked_count += 1
             continue
         try:
-            if not path.resolve().is_relative_to(checkout_real):
+            if path.is_symlink() or not path.resolve().is_relative_to(checkout_real):
                 failures += 1
                 continue
             if path.stat().st_size > limits.max_manifest_file_bytes:
@@ -239,16 +245,16 @@ def collect(
                 failures += int(item_failed)
                 if item is None:
                     continue
+                if item.evidence_id in seen_ids:
+                    duplicate_ids.add(item.evidence_id)
+                    evidence_by_id.pop(item.evidence_id, None)
+                    continue
+                seen_ids.add(item.evidence_id)
                 if len(evidence_by_id) >= _MAX_DEPLOYMENT_EVIDENCE:
                     deployment_limit_reached = True
                     continue
-                if item.evidence_id in evidence_by_id:
-                    duplicate_ids.add(item.evidence_id)
-                    continue
                 evidence_by_id[item.evidence_id] = item
 
-    for duplicate_id in duplicate_ids:
-        evidence_by_id.pop(duplicate_id, None)
     failures += len(duplicate_ids)
 
     reasons: list[str] = []
