@@ -4,7 +4,7 @@ import re
 import shutil
 import subprocess
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 from urllib.parse import quote
 
 from infra_fleet_advisor.core.errors import IssuePublicationError
@@ -61,8 +61,32 @@ class CommentResult:
 class PublicationResult:
     created: int = 0
     existing: int = 0
+    updated: int = 0
     labels_restored: int = 0
     resolution_comments: int = 0
+    reactivation_comments: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class IssuePublicationProfile:
+    target_repository: str
+    primary_label: str
+    primary_label_color: str
+    primary_label_description: str
+    identity_label_color: str
+    identity_label_description: str
+    provision_feedback_labels: bool = False
+
+
+FLEET_ISSUE_PROFILE = IssuePublicationProfile(
+    target_repository=FLEET_REPOSITORY,
+    primary_label=ADVISOR_ISSUE_LABEL,
+    primary_label_color="5319e7",
+    primary_label_description="Evidence-backed recommendation published by Infra Fleet Advisor",
+    identity_label_color="b4a7d6",
+    identity_label_description="Stable Infra Fleet Advisor recommendation fingerprint",
+    provision_feedback_labels=True,
+)
 
 
 class GitHubIssueClient(Protocol):
@@ -76,6 +100,8 @@ class GitHubIssueClient(Protocol):
 
     def create_issue(self, title: str, body: str, labels: tuple[str, ...]) -> None: ...
 
+    def update_issue(self, issue_number: int, title: str, body: str) -> None: ...
+
     def comments(self, issue_number: int) -> CommentResult: ...
 
     def add_comment(self, issue_number: int, body: str) -> None: ...
@@ -84,6 +110,43 @@ class GitHubIssueClient(Protocol):
 def _body_has_exact_marker(body: str, marker: str) -> bool:
     normalized = body.replace("\r\n", "\n").replace("\r", "\n")
     return marker in normalized.split("\n")
+
+
+def _reactivation_metadata(action: IssueAction) -> tuple[str, str] | None:
+    marker = action.reactivation_marker
+    comment = action.reactivation_comment
+    if marker is None and comment is None:
+        return None
+    if (
+        marker is None
+        or comment is None
+        or marker == action.resolution_marker
+        or not _body_has_exact_marker(comment, marker)
+        or _body_has_exact_marker(comment, action.resolution_marker)
+    ):
+        raise IssuePublicationError("issue action has invalid reactivation metadata")
+    return marker, comment
+
+
+def _latest_lifecycle_state(
+    action: IssueAction,
+    comments: tuple[RemoteComment, ...],
+    app_bot_login: str,
+    reactivation_marker: str,
+) -> Literal["active", "resolved"] | None:
+    latest: Literal["active", "resolved"] | None = None
+    for comment in comments:
+        if comment.author.casefold() != app_bot_login.casefold():
+            continue
+        is_resolution = _body_has_exact_marker(comment.body, action.resolution_marker)
+        is_reactivation = _body_has_exact_marker(comment.body, reactivation_marker)
+        if is_resolution and is_reactivation:
+            raise IssuePublicationError("issue comment has conflicting lifecycle markers")
+        if is_resolution:
+            latest = "resolved"
+        elif is_reactivation:
+            latest = "active"
+    return latest
 
 
 def _find_existing_issue(
@@ -117,16 +180,20 @@ def _find_existing_issue(
     return (advisor_matches[0], True) if advisor_matches else (None, False)
 
 
-def _ensure_issue_labels(client: GitHubIssueClient, fingerprint_label: str) -> None:
+def _ensure_issue_labels(
+    client: GitHubIssueClient,
+    fingerprint_label: str,
+    profile: IssuePublicationProfile,
+) -> None:
     client.ensure_label(
-        "infra-fleet-advisor",
-        "5319e7",
-        "Evidence-backed recommendation published by Infra Fleet Advisor",
+        profile.primary_label,
+        profile.primary_label_color,
+        profile.primary_label_description,
     )
     client.ensure_label(
         fingerprint_label,
-        "b4a7d6",
-        "Stable Infra Fleet Advisor recommendation fingerprint",
+        profile.identity_label_color,
+        profile.identity_label_description,
     )
 
 
@@ -148,23 +215,57 @@ def _publish_one(
     action: IssueAction,
     client: GitHubIssueClient,
     app_bot_login: str,
+    profile: IssuePublicationProfile,
 ) -> PublicationResult:
+    reactivation = _reactivation_metadata(action)
     issue, found_by_body = _find_existing_issue(action, client, app_bot_login)
     labels_restored = 0
-    expected_labels = frozenset((ADVISOR_ISSUE_LABEL, action.fingerprint_label))
+    expected_labels = frozenset((profile.primary_label, action.fingerprint_label))
     if issue is not None and (found_by_body or not expected_labels.issubset(issue.labels)):
-        _ensure_issue_labels(client, action.fingerprint_label)
+        _ensure_issue_labels(client, action.fingerprint_label, profile)
         client.add_labels(issue.number, tuple(sorted(expected_labels)))
         labels_restored = 1
 
     if action.action == "active":
         if issue is not None:
-            return PublicationResult(existing=1, labels_restored=labels_restored)
-        _ensure_issue_labels(client, action.fingerprint_label)
+            reactivation_comment: str | None = None
+            if issue.state == "open" and reactivation is not None:
+                comments = client.comments(issue.number)
+                if not comments.complete:
+                    raise IssuePublicationError(
+                        "issue comments exceed the safe lifecycle deduplication bound"
+                    )
+                if (
+                    _latest_lifecycle_state(
+                        action,
+                        comments.comments,
+                        app_bot_login,
+                        reactivation[0],
+                    )
+                    == "resolved"
+                ):
+                    reactivation_comment = reactivation[1]
+            updated = 0
+            if action.content_marker is not None and not _body_has_exact_marker(
+                issue.body, action.content_marker
+            ):
+                client.update_issue(issue.number, action.title, action.body)
+                updated = 1
+            reactivation_comments = 0
+            if reactivation_comment is not None:
+                client.add_comment(issue.number, reactivation_comment)
+                reactivation_comments = 1
+            return PublicationResult(
+                existing=1,
+                updated=updated,
+                labels_restored=labels_restored,
+                reactivation_comments=reactivation_comments,
+            )
+        _ensure_issue_labels(client, action.fingerprint_label, profile)
         client.create_issue(
             action.title,
             action.body,
-            ("infra-fleet-advisor", action.fingerprint_label),
+            (profile.primary_label, action.fingerprint_label),
         )
         return PublicationResult(created=1)
 
@@ -177,11 +278,26 @@ def _publish_one(
         )
 
     comments = client.comments(issue.number)
-    already_commented = any(
-        comment.author.casefold() == app_bot_login.casefold()
-        and _body_has_exact_marker(comment.body, action.resolution_marker)
-        for comment in comments.comments
-    )
+    if reactivation is None:
+        already_commented = any(
+            comment.author.casefold() == app_bot_login.casefold()
+            and _body_has_exact_marker(comment.body, action.resolution_marker)
+            for comment in comments.comments
+        )
+    else:
+        if not comments.complete:
+            raise IssuePublicationError(
+                "issue comments exceed the safe lifecycle deduplication bound"
+            )
+        already_commented = (
+            _latest_lifecycle_state(
+                action,
+                comments.comments,
+                app_bot_login,
+                reactivation[0],
+            )
+            == "resolved"
+        )
     if already_commented:
         return PublicationResult(existing=1, labels_restored=labels_restored)
     if not comments.complete:
@@ -194,36 +310,55 @@ def _publish_one(
     )
 
 
-def publish_issue_plan(
-    plan: IssuePlan,
+def publish_issue_actions(
+    target_repository: str,
+    actions: tuple[IssueAction, ...],
     client: GitHubIssueClient,
     app_bot_login: str,
+    profile: IssuePublicationProfile,
 ) -> PublicationResult:
     """Reconcile every plan item, collecting safe per-item failures until the end."""
-    if plan.target_repository != FLEET_REPOSITORY:
+    if target_repository != profile.target_repository:
         raise IssuePublicationError("issue plan targets an unsupported repository")
     if not _BOT_LOGIN.fullmatch(app_bot_login):
         raise IssuePublicationError("invalid GitHub App bot login")
-    if any(action.action == "active" for action in plan.actions):
+    if profile.provision_feedback_labels and any(action.action == "active" for action in actions):
         _ensure_feedback_labels(client)
 
     total = PublicationResult()
     failures = 0
-    for action in plan.actions:
+    for action in actions:
         try:
-            result = _publish_one(action, client, app_bot_login)
+            result = _publish_one(action, client, app_bot_login, profile)
         except IssuePublicationError:
             failures += 1
             continue
         total = PublicationResult(
             created=total.created + result.created,
             existing=total.existing + result.existing,
+            updated=total.updated + result.updated,
             labels_restored=total.labels_restored + result.labels_restored,
             resolution_comments=total.resolution_comments + result.resolution_comments,
+            reactivation_comments=(total.reactivation_comments + result.reactivation_comments),
         )
     if failures:
         raise IssuePublicationError(f"{failures} issue action(s) could not be safely published")
     return total
+
+
+def publish_issue_plan(
+    plan: IssuePlan,
+    client: GitHubIssueClient,
+    app_bot_login: str,
+) -> PublicationResult:
+    """Publish evidence-backed fleet recommendations through the fleet profile."""
+    return publish_issue_actions(
+        plan.target_repository,
+        plan.actions,
+        client,
+        app_bot_login,
+        FLEET_ISSUE_PROFILE,
+    )
 
 
 class GhCliIssueClient:
@@ -363,6 +498,13 @@ class GhCliIssueClient:
             f"repos/{self._repository}/issues",
             method="POST",
             payload={"title": title, "body": body, "labels": list(labels)},
+        )
+
+    def update_issue(self, issue_number: int, title: str, body: str) -> None:
+        self._api_json(
+            f"repos/{self._repository}/issues/{issue_number}",
+            method="PATCH",
+            payload={"title": title, "body": body},
         )
 
     def comments(self, issue_number: int) -> CommentResult:

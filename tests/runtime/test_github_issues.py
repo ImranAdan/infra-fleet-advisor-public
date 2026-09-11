@@ -11,10 +11,12 @@ from infra_fleet_advisor.runtime.github_issues import (
     ADVISOR_ISSUE_LABEL,
     CommentResult,
     GhCliIssueClient,
+    IssuePublicationProfile,
     PublicationResult,
     RemoteComment,
     RemoteIssue,
     SearchResult,
+    publish_issue_actions,
     publish_issue_plan,
 )
 from infra_fleet_advisor.runtime.issue_publication import (
@@ -95,6 +97,10 @@ class FakeIssueClient:
         self.issue_comments[number] = []
         assert title
 
+    def update_issue(self, issue_number: int, title: str, body: str) -> None:
+        assert title
+        self.issues[issue_number] = replace(self.issues[issue_number], body=body)
+
     def comments(self, issue_number: int) -> CommentResult:
         return CommentResult(
             tuple(self.issue_comments.get(issue_number, [])),
@@ -144,6 +150,66 @@ def test_active_publication_is_idempotent_per_fingerprint() -> None:
     assert set(TRADE_OFF_LABELS).issubset(client.labels)
 
 
+def test_advisor_local_profile_does_not_provision_fleet_feedback_labels() -> None:
+    client = FakeIssueClient()
+    action = _action("0" * 24)
+    profile = IssuePublicationProfile(
+        target_repository="ImranAdan/infra-fleet-advisor-public",
+        primary_label="intent-capability-gap",
+        primary_label_color="ffffff",
+        primary_label_description="Advisor capability work",
+        identity_label_color="eeeeee",
+        identity_label_description="Stable intent identity",
+    )
+
+    result = publish_issue_actions(
+        "ImranAdan/infra-fleet-advisor-public",
+        (action,),
+        client,
+        BOT,
+        profile,
+    )
+
+    assert result == PublicationResult(created=1)
+    assert client.issue_labels[1] == {"intent-capability-gap", action.fingerprint_label}
+    assert WONTFIX_LABEL not in client.labels
+    assert not set(TRADE_OFF_LABELS).intersection(client.labels)
+
+
+def test_content_marker_updates_bot_owned_issue_without_changing_identity() -> None:
+    client = FakeIssueClient()
+    profile = IssuePublicationProfile(
+        target_repository="ImranAdan/infra-fleet-advisor-public",
+        primary_label="intent-capability-gap",
+        primary_label_color="ffffff",
+        primary_label_description="Advisor capability work",
+        identity_label_color="eeeeee",
+        identity_label_description="Stable intent identity",
+    )
+    base = _action("1" * 24)
+    first_marker = "<!-- capability-content: first -->"
+    first = replace(
+        base,
+        body=f"{base.fingerprint_marker}\n{first_marker}\n\nFirst wording.",
+        content_marker=first_marker,
+    )
+    second_marker = "<!-- capability-content: second -->"
+    second = replace(
+        base,
+        body=f"{base.fingerprint_marker}\n{second_marker}\n\nRevised wording.",
+        content_marker=second_marker,
+    )
+
+    assert publish_issue_actions(
+        profile.target_repository, (first,), client, BOT, profile
+    ) == PublicationResult(created=1)
+    result = publish_issue_actions(profile.target_repository, (second,), client, BOT, profile)
+
+    assert result == PublicationResult(existing=1, updated=1)
+    assert second_marker in client.issues[1].body
+    assert first_marker not in client.issues[1].body
+
+
 def test_body_marker_recovers_labels_without_creating_a_duplicate() -> None:
     client = FakeIssueClient()
     action = _action("2" * 24)
@@ -180,6 +246,88 @@ def test_resolution_comment_is_once_per_fingerprint_across_source_commits() -> N
 
     assert first_result.resolution_comments == 1
     assert second_result.resolution_comments == 0
+    assert len(client.issue_comments[issue_number]) == 1
+
+
+def test_capability_lifecycle_records_each_state_transition_once() -> None:
+    client = FakeIssueClient()
+    profile = IssuePublicationProfile(
+        target_repository="ImranAdan/infra-fleet-advisor-public",
+        primary_label="intent-capability-gap",
+        primary_label_color="ffffff",
+        primary_label_description="Advisor capability work",
+        identity_label_color="eeeeee",
+        identity_label_description="Stable intent identity",
+    )
+    base = _action("4" * 24)
+    reactivation_marker = (
+        f"<!-- infra-fleet-advisor-capability-reactivation: {base.fingerprint} -->"
+    )
+    active = replace(
+        base,
+        reactivation_marker=reactivation_marker,
+        reactivation_comment=f"{reactivation_marker}\n\nActionable again.",
+    )
+    resolved = replace(active, action="resolved", body="")
+
+    assert publish_issue_actions(
+        profile.target_repository, (active,), client, BOT, profile
+    ) == PublicationResult(created=1)
+    assert (
+        publish_issue_actions(
+            profile.target_repository, (resolved,), client, BOT, profile
+        ).resolution_comments
+        == 1
+    )
+    assert (
+        publish_issue_actions(
+            profile.target_repository, (active,), client, BOT, profile
+        ).reactivation_comments
+        == 1
+    )
+    assert (
+        publish_issue_actions(
+            profile.target_repository, (active,), client, BOT, profile
+        ).reactivation_comments
+        == 0
+    )
+    assert (
+        publish_issue_actions(
+            profile.target_repository, (resolved,), client, BOT, profile
+        ).resolution_comments
+        == 1
+    )
+    assert (
+        publish_issue_actions(
+            profile.target_repository, (resolved,), client, BOT, profile
+        ).resolution_comments
+        == 0
+    )
+
+    assert client.issues[1].state == "open"
+    assert [comment.body.splitlines()[0] for comment in client.issue_comments[1]] == [
+        resolved.resolution_marker,
+        reactivation_marker,
+        resolved.resolution_marker,
+    ]
+
+
+def test_reactivation_fails_closed_when_comment_history_is_incomplete() -> None:
+    client = FakeIssueClient()
+    action = _action("5" * 24)
+    reactivation_marker = "<!-- capability-reactivation -->"
+    action = replace(
+        action,
+        reactivation_marker=reactivation_marker,
+        reactivation_comment=f"{reactivation_marker}\n\nActionable again.",
+    )
+    issue_number = client.add_existing(action)
+    client.issue_comments[issue_number] = [RemoteComment(BOT, action.resolution_comment)]
+    client.incomplete_comments.add(issue_number)
+
+    with pytest.raises(IssuePublicationError, match="1 issue action"):
+        publish_issue_plan(_plan(action), client, BOT)
+
     assert len(client.issue_comments[issue_number]) == 1
 
 
@@ -396,6 +544,31 @@ def test_gh_adapter_sends_issue_body_as_json_stdin(
         "title": "title",
         "body": "body with $(inert)",
         "labels": ["label"],
+    }
+
+
+def test_gh_adapter_updates_only_title_and_body_with_json_stdin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _adapter()
+    captured: dict[str, object] = {}
+
+    def fake_api(endpoint, *, method="GET", fields=None, payload=None):
+        captured["endpoint"] = endpoint
+        captured["method"] = method
+        captured["fields"] = fields
+        captured["payload"] = payload
+        return {"number": 7}
+
+    monkeypatch.setattr(client, "_api_json", fake_api)
+
+    client.update_issue(7, "current title", "current body")
+
+    assert captured == {
+        "endpoint": f"repos/{FLEET_REPOSITORY}/issues/7",
+        "method": "PATCH",
+        "fields": None,
+        "payload": {"title": "current title", "body": "current body"},
     }
 
 

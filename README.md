@@ -62,7 +62,7 @@ compile registered propositions into deterministic evaluations
                   ↓
 divergent ──→ required recommendation ──→ validate/fingerprint/report
 satisfied ──→ recorded evaluation
-unverified ─→ explicit coverage gap
+unverified ─→ explicit coverage gap ──→ advisor capability issue after approval
 ```
 
 Every recommendation must identify concrete evidence, expected impact,
@@ -137,6 +137,25 @@ truncated evidence leaves it explicitly unverified.
 The catalog digest is part of report provenance and material signatures. Issue
 publication reloads the current catalog, requires the digest to match the merged
 report, and names the source intent document and proposition in each issue.
+
+### Evolving unsupported intent
+
+A proposition that cannot yet be evaluated does not dead-end in the report.
+After that report is reviewed and merged,
+`.github/workflows/intent-capabilities.yml` turns each actionable
+`declared_unverified` evaluation into one deduplicated issue in this advisor
+repository. A policy-disabled category is the exception: it is a deliberate
+scope choice rather than missing capability.
+
+These issues are implementation work for the advisor, not findings against the
+fleet. They contain the inert declared position, the reason verification could
+not complete, and the tested collector/check contract needed for completion. An
+agent may propose that implementation through a normal pull request, but a
+human still reviews and merges it. The next advisory run can then prove
+satisfaction or deliver a concrete divergence to the fleet. Intent text never
+becomes executable code or selects arbitrary tools. Resolution and reactivation
+notes record later capability-state transitions once each while leaving issue
+state under human control.
 
 ### As a GitHub Actions workflow
 
@@ -283,11 +302,14 @@ The Anthropic synthesizer is exercised through recorded responses.
 ## Status
 
 The `fleet_repository_review` scenario runs end to end: a closed intent catalog,
-two deterministic collectors (GitHub Actions workflows and Terraform IAM
-policies), proposition evaluation, required divergence delivery, validation,
-and lifecycle tracking. The initial security catalog contains eleven declared
-positions; two have registered checks and the remaining nine are explicitly
-reported as unverified rather than silently assumed true.
+three deterministic collectors (GitHub Actions workflows, Terraform IAM
+policies, and Kubernetes Deployments), proposition evaluation, required
+divergence delivery, validation, lifecycle tracking, and deduplicated fleet
+issue publication. The initial security, reliability, and cost catalogs contain
+seventeen declared positions; three have registered checks and the remainder
+are explicitly reported as unverified rather than silently assumed true. The
+cost catalog deliberately has no registered checks yet, exercising the path
+from new free-text intent to explicit advisor capability work.
 
 The Anthropic synthesizer is implemented and unit-tested against recorded
 responses, but **has never been run against the live API**. Every report produced
@@ -307,6 +329,7 @@ feedback into human-reviewed policy are implemented.
 - [PDR 0001: Advisory delivery and the fleet feedback loop](docs/decisions/0001-advisory-delivery-and-feedback-loop.md)
 - [PDR 0002: Mechanical remediation of the fleet](docs/decisions/0002-mechanical-remediation-of-the-fleet.md)
 - [PDR 0003: Intent compilation and guaranteed divergence delivery](docs/decisions/0003-intent-compilation-and-divergence-delivery.md)
+- [PDR 0004: Intent-driven capability evolution](docs/decisions/0004-intent-driven-capability-evolution.md)
 - [Repository guidance](AGENTS.md)
 
 ## License
