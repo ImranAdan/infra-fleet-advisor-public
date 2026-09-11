@@ -345,7 +345,7 @@ def test_publish_capability_gaps_binds_validated_plan_to_advisor(
         captured["plan"] = plan
         captured["client"] = client
         captured["workflow_bot_login"] = workflow_bot_login
-        return PublicationResult(created=2)
+        return PublicationResult(created=2, reactivation_comments=1)
 
     monkeypatch.setattr(cli_module, "GhCliIssueClient", fake_client)
     monkeypatch.setattr(cli_module, "publish_capability_plan", fake_publish)
@@ -371,7 +371,9 @@ def test_publish_capability_gaps_binds_validated_plan_to_advisor(
 
     assert captured["repository"] == "ImranAdan/infra-fleet-advisor-public"
     assert captured["workflow_bot_login"] == "github-actions[bot]"
-    assert "published 2 capability issue(s)" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "published 2 capability issue(s)" in output
+    assert "1 reactivation note(s)" in output
 
 
 def test_publish_capability_gaps_rejects_another_repository_before_access(

@@ -329,6 +329,7 @@ def _active_body(
 def _action(evaluation: IntentEvaluation) -> IssueAction:
     fingerprint, label, marker = _identity_parts(evaluation.document_id, evaluation.proposition_id)
     resolution_marker = f"<!-- infra-fleet-advisor-capability-resolution: {fingerprint} -->"
+    reactivation_marker = f"<!-- infra-fleet-advisor-capability-reactivation: {fingerprint} -->"
     content_marker = _content_marker(evaluation)
     is_active = (
         evaluation.status == "declared_unverified" and evaluation.reason in _ACTIONABLE_GAP_REASONS
@@ -351,6 +352,16 @@ def _action(evaluation: IntentEvaluation) -> IssueAction:
                 "",
                 "The current merged advisory report no longer classifies this proposition as an",
                 "actionable evaluation gap. Issue state remains a human decision.",
+            )
+        ),
+        reactivation_marker=reactivation_marker,
+        reactivation_comment="\n".join(
+            (
+                reactivation_marker,
+                "",
+                "The current merged advisory report again classifies this proposition as an",
+                "actionable evaluation gap. The issue has not been reopened or otherwise",
+                "changed; issue state remains a human decision.",
             )
         ),
         intent_document_id=evaluation.document_id,

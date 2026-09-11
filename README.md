@@ -153,7 +153,9 @@ not complete, and the tested collector/check contract needed for completion. An
 agent may propose that implementation through a normal pull request, but a
 human still reviews and merges it. The next advisory run can then prove
 satisfaction or deliver a concrete divergence to the fleet. Intent text never
-becomes executable code or selects arbitrary tools.
+becomes executable code or selects arbitrary tools. Resolution and reactivation
+notes record later capability-state transitions once each while leaving issue
+state under human control.
 
 ### As a GitHub Actions workflow
 

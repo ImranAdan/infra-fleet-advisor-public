@@ -45,6 +45,8 @@ class IssueAction:
     intent_document_id: str | None = None
     intent_proposition_id: str | None = None
     content_marker: str | None = None
+    reactivation_marker: str | None = None
+    reactivation_comment: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -138,6 +138,9 @@ def test_missing_check_becomes_inert_advisor_capability_work(tmp_path: Path) -> 
     assert "&#64;ops" in action.body
     assert "https&#58;//example.invalid" in action.body
     assert "A later merged report is required" in action.body
+    assert action.reactivation_marker is not None
+    assert action.reactivation_comment is not None
+    assert action.reactivation_marker in action.reactivation_comment
 
 
 @pytest.mark.parametrize(

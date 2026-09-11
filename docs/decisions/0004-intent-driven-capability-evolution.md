@@ -29,6 +29,12 @@ document and proposition identity. Supported, satisfied, or divergent
 propositions produce resolution actions for any earlier capability issue. The
 publisher never closes or reopens an issue.
 
+Resolution and reactivation are recorded as alternating, bot-authored lifecycle
+notes. The publisher reads the complete bounded comment history and adds a note
+only when the latest recorded state differs from the current ratified report.
+Retries in the same state are no-ops, while active → resolved → active cannot
+leave a stale resolution as the latest lifecycle signal.
+
 A capability issue is not a fleet finding. Its inert, bounded body states the
 declared position, the validated reason evaluation could not complete, and a
 definition of done for reviewed collector and check code. It explicitly
@@ -58,6 +64,8 @@ not execute code synthesized from prose.
 - One intent proposition has at most one capability issue across wording and
   version changes; exact markers and labels make retries idempotent, while a
   separate content marker permits bot-owned issue text to track ratified intent.
+- Alternating lifecycle markers preserve repeated resolution and reactivation
+  transitions without changing human-owned issue state.
 
 ## Rejected alternatives
 

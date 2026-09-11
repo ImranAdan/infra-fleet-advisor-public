@@ -249,6 +249,88 @@ def test_resolution_comment_is_once_per_fingerprint_across_source_commits() -> N
     assert len(client.issue_comments[issue_number]) == 1
 
 
+def test_capability_lifecycle_records_each_state_transition_once() -> None:
+    client = FakeIssueClient()
+    profile = IssuePublicationProfile(
+        target_repository="ImranAdan/infra-fleet-advisor-public",
+        primary_label="intent-capability-gap",
+        primary_label_color="ffffff",
+        primary_label_description="Advisor capability work",
+        identity_label_color="eeeeee",
+        identity_label_description="Stable intent identity",
+    )
+    base = _action("4" * 24)
+    reactivation_marker = (
+        f"<!-- infra-fleet-advisor-capability-reactivation: {base.fingerprint} -->"
+    )
+    active = replace(
+        base,
+        reactivation_marker=reactivation_marker,
+        reactivation_comment=f"{reactivation_marker}\n\nActionable again.",
+    )
+    resolved = replace(active, action="resolved", body="")
+
+    assert publish_issue_actions(
+        profile.target_repository, (active,), client, BOT, profile
+    ) == PublicationResult(created=1)
+    assert (
+        publish_issue_actions(
+            profile.target_repository, (resolved,), client, BOT, profile
+        ).resolution_comments
+        == 1
+    )
+    assert (
+        publish_issue_actions(
+            profile.target_repository, (active,), client, BOT, profile
+        ).reactivation_comments
+        == 1
+    )
+    assert (
+        publish_issue_actions(
+            profile.target_repository, (active,), client, BOT, profile
+        ).reactivation_comments
+        == 0
+    )
+    assert (
+        publish_issue_actions(
+            profile.target_repository, (resolved,), client, BOT, profile
+        ).resolution_comments
+        == 1
+    )
+    assert (
+        publish_issue_actions(
+            profile.target_repository, (resolved,), client, BOT, profile
+        ).resolution_comments
+        == 0
+    )
+
+    assert client.issues[1].state == "open"
+    assert [comment.body.splitlines()[0] for comment in client.issue_comments[1]] == [
+        resolved.resolution_marker,
+        reactivation_marker,
+        resolved.resolution_marker,
+    ]
+
+
+def test_reactivation_fails_closed_when_comment_history_is_incomplete() -> None:
+    client = FakeIssueClient()
+    action = _action("5" * 24)
+    reactivation_marker = "<!-- capability-reactivation -->"
+    action = replace(
+        action,
+        reactivation_marker=reactivation_marker,
+        reactivation_comment=f"{reactivation_marker}\n\nActionable again.",
+    )
+    issue_number = client.add_existing(action)
+    client.issue_comments[issue_number] = [RemoteComment(BOT, action.resolution_comment)]
+    client.incomplete_comments.add(issue_number)
+
+    with pytest.raises(IssuePublicationError, match="1 issue action"):
+        publish_issue_plan(_plan(action), client, BOT)
+
+    assert len(client.issue_comments[issue_number]) == 1
+
+
 def test_closed_issue_is_never_reopened_or_commented() -> None:
     client = FakeIssueClient()
     action = _action("4" * 24, action="resolved")

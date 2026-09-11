@@ -4,7 +4,7 @@ import re
 import shutil
 import subprocess
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 from urllib.parse import quote
 
 from infra_fleet_advisor.core.errors import IssuePublicationError
@@ -64,6 +64,7 @@ class PublicationResult:
     updated: int = 0
     labels_restored: int = 0
     resolution_comments: int = 0
+    reactivation_comments: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,6 +110,43 @@ class GitHubIssueClient(Protocol):
 def _body_has_exact_marker(body: str, marker: str) -> bool:
     normalized = body.replace("\r\n", "\n").replace("\r", "\n")
     return marker in normalized.split("\n")
+
+
+def _reactivation_metadata(action: IssueAction) -> tuple[str, str] | None:
+    marker = action.reactivation_marker
+    comment = action.reactivation_comment
+    if marker is None and comment is None:
+        return None
+    if (
+        marker is None
+        or comment is None
+        or marker == action.resolution_marker
+        or not _body_has_exact_marker(comment, marker)
+        or _body_has_exact_marker(comment, action.resolution_marker)
+    ):
+        raise IssuePublicationError("issue action has invalid reactivation metadata")
+    return marker, comment
+
+
+def _latest_lifecycle_state(
+    action: IssueAction,
+    comments: tuple[RemoteComment, ...],
+    app_bot_login: str,
+    reactivation_marker: str,
+) -> Literal["active", "resolved"] | None:
+    latest: Literal["active", "resolved"] | None = None
+    for comment in comments:
+        if comment.author.casefold() != app_bot_login.casefold():
+            continue
+        is_resolution = _body_has_exact_marker(comment.body, action.resolution_marker)
+        is_reactivation = _body_has_exact_marker(comment.body, reactivation_marker)
+        if is_resolution and is_reactivation:
+            raise IssuePublicationError("issue comment has conflicting lifecycle markers")
+        if is_resolution:
+            latest = "resolved"
+        elif is_reactivation:
+            latest = "active"
+    return latest
 
 
 def _find_existing_issue(
@@ -179,6 +217,7 @@ def _publish_one(
     app_bot_login: str,
     profile: IssuePublicationProfile,
 ) -> PublicationResult:
+    reactivation = _reactivation_metadata(action)
     issue, found_by_body = _find_existing_issue(action, client, app_bot_login)
     labels_restored = 0
     expected_labels = frozenset((profile.primary_label, action.fingerprint_label))
@@ -189,16 +228,38 @@ def _publish_one(
 
     if action.action == "active":
         if issue is not None:
+            reactivation_comment: str | None = None
+            if issue.state == "open" and reactivation is not None:
+                comments = client.comments(issue.number)
+                if not comments.complete:
+                    raise IssuePublicationError(
+                        "issue comments exceed the safe lifecycle deduplication bound"
+                    )
+                if (
+                    _latest_lifecycle_state(
+                        action,
+                        comments.comments,
+                        app_bot_login,
+                        reactivation[0],
+                    )
+                    == "resolved"
+                ):
+                    reactivation_comment = reactivation[1]
             updated = 0
             if action.content_marker is not None and not _body_has_exact_marker(
                 issue.body, action.content_marker
             ):
                 client.update_issue(issue.number, action.title, action.body)
                 updated = 1
+            reactivation_comments = 0
+            if reactivation_comment is not None:
+                client.add_comment(issue.number, reactivation_comment)
+                reactivation_comments = 1
             return PublicationResult(
                 existing=1,
                 updated=updated,
                 labels_restored=labels_restored,
+                reactivation_comments=reactivation_comments,
             )
         _ensure_issue_labels(client, action.fingerprint_label, profile)
         client.create_issue(
@@ -217,11 +278,26 @@ def _publish_one(
         )
 
     comments = client.comments(issue.number)
-    already_commented = any(
-        comment.author.casefold() == app_bot_login.casefold()
-        and _body_has_exact_marker(comment.body, action.resolution_marker)
-        for comment in comments.comments
-    )
+    if reactivation is None:
+        already_commented = any(
+            comment.author.casefold() == app_bot_login.casefold()
+            and _body_has_exact_marker(comment.body, action.resolution_marker)
+            for comment in comments.comments
+        )
+    else:
+        if not comments.complete:
+            raise IssuePublicationError(
+                "issue comments exceed the safe lifecycle deduplication bound"
+            )
+        already_commented = (
+            _latest_lifecycle_state(
+                action,
+                comments.comments,
+                app_bot_login,
+                reactivation[0],
+            )
+            == "resolved"
+        )
     if already_commented:
         return PublicationResult(existing=1, labels_restored=labels_restored)
     if not comments.complete:
@@ -263,6 +339,7 @@ def publish_issue_actions(
             updated=total.updated + result.updated,
             labels_restored=total.labels_restored + result.labels_restored,
             resolution_comments=total.resolution_comments + result.resolution_comments,
+            reactivation_comments=(total.reactivation_comments + result.reactivation_comments),
         )
     if failures:
         raise IssuePublicationError(f"{failures} issue action(s) could not be safely published")

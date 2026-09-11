@@ -219,7 +219,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"published {result.created} capability issue(s), found "
                 f"{result.existing} existing, updated {result.updated}, restored "
                 f"{result.labels_restored} label set(s), and added "
-                f"{result.resolution_comments} resolution note(s)"
+                f"{result.resolution_comments} resolution note(s) and "
+                f"{result.reactivation_comments} reactivation note(s)"
             )
             return EXIT_OK
         except PolicyError as exc:

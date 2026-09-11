@@ -303,8 +303,10 @@ Capability issue bodies contain bounded, inert intent text, the closed
 evaluation reason, and a definition of done. They explicitly state that an
 unverified proposition is not evidence of fleet divergence. When a later
 ratified report evaluates the proposition as satisfied or divergent, the
-publisher may add one deduplicated resolution note but may not close, reopen, or
-otherwise change issue state.
+publisher adds one resolution note for that transition. If a later report makes
+the gap actionable again, it adds one reactivation note. Complete bounded
+bot-authored lifecycle history makes repeated runs in the same state no-ops;
+the publisher may not close, reopen, or otherwise change issue state.
 
 Agents may propose the missing collector and check implementation through a
 normal advisor pull request with deterministic tests. Natural-language intent

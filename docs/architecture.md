@@ -174,7 +174,9 @@ allows current ratified intent to replace stale bot-authored issue text. The
 issue describes advisor work and cannot cross the fleet issue
 publisher because it contains no recommendation fingerprint or evidence-backed
 divergence. Later supported evaluations receive an idempotent resolution note;
-issue state remains human-owned.
+if a later report makes the same gap actionable again, the complete bounded
+bot-authored lifecycle history permits one reactivation note. Repeated reports
+in the same state are no-ops, and issue state remains human-owned.
 
 Capability issues may drive agent-authored implementation pull requests, but
 those changes enter through the normal advisor review and CI boundary. Intent
