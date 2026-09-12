@@ -1,10 +1,10 @@
 # Infra Fleet Advisor report
 
-- Source: `infra-fleet-public` @ `65857138c50f3ab24bb8f58834c8ca3afe84a929`
+- Source: `infra-fleet-public` @ `0ba8688ef002d310fdad0493085da2b0bc1ecf78`
 - Advisor version: `0.1.0` · Policy version: `1.0`
-- Model: `stub-synthesizer-v1` · Run started: `2026-09-10T19:27:01.332000+00:00`
+- Model: `stub-synthesizer-v1` · Run started: `2026-09-12T08:40:58.137104+00:00`
 - Intent catalog: `intent-md-v1:5f008a8b1cfb9677c8dccf0240293c04dd351869ff55bbdb12430a750e2386c5`
-- Lifecycle: 1 new, 1 unchanged, 1 resolved, 0 suppressed (2 rejected)
+- Lifecycle: 1 new, 1 unchanged, 2 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
 
@@ -17,7 +17,7 @@
 - `divergent` `infra_fleet_public_reliability/R-001` — Deployments retain enough healthy capacity during rollout. Temporary capacity
   cost is acceptable when it prevents user-visible interruption.
   - Category: `reliability` · Priority: `high` · Check: `deployment_rollout_capacity` · Reason: `evidence_conflicts_with_intent`
-  - Evidence: `kubernetes_deployment_collector:21df164d364775d0`, `kubernetes_deployment_collector:3fb87f240e478035`
+  - Evidence: `kubernetes_deployment_collector:21df164d364775d0`
 - `declared_unverified` `infra_fleet_public_security/S-001` — GitHub Actions uses short-lived OIDC credentials; long-lived AWS access keys are not allowed.
   
   Evidence: \[OIDC design\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/GITHUB-OIDC-SETUP.md\#L1-L6)
@@ -114,6 +114,20 @@ A Terraform-managed IAM policy statement allows a wildcard action (e.g. service:
 ### #2 [new] Deployment rollout can reduce healthy capacity
 
 - Category: `reliability` · Priority: `high` · Confidence: 0.95
+- Fingerprint: `fp_46603884b783f80f4cadc58d`
+- Evidence: `kubernetes_deployment_collector:21df164d364775d0`
+
+A declared Kubernetes Deployment can make existing healthy capacity unavailable before replacement capacity is ready.
+
+**Impact:** A routine rollout can interrupt service or reduce the workload below its declared replica capacity.
+
+**Suggested change:** Use RollingUpdate with an effective maxUnavailable of 0 and a positive maxSurge, and define a readiness probe for every application container.
+
+**Trade-offs:** Zero-unavailable rollouts temporarily consume surge capacity and may require extra cluster headroom.
+
+### [resolved] Deployment rollout can reduce healthy capacity
+
+- Category: `reliability` · Priority: `high` · Confidence: 0.95
 - Fingerprint: `fp_aaa9b490f08e5576be4b13a8`
 - Evidence: `kubernetes_deployment_collector:21df164d364775d0`, `kubernetes_deployment_collector:3fb87f240e478035`
 
@@ -138,9 +152,3 @@ A Terraform-managed IAM policy statement allows a wildcard action (e.g. service:
 **Suggested change:** Scope the action list to the specific API calls required, and constrain Resource to the specific ARNs the role needs instead of *.
 
 **Trade-offs:** Narrowing permissions may require iterating as new resource types are added, and risks under-provisioning if scoped too tightly.
-
-
-## Rejected candidates
-
-- `deployment_rollout_capacity_loss` (`reliability`) — not_a_compiled_intent_divergence
-- `deployment_rollout_capacity_loss` (`reliability`) — not_a_compiled_intent_divergence
