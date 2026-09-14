@@ -23,7 +23,7 @@ env:
 jobs:
   propose:
     name: Propose accepted trade-offs
-    if: vars.FLEET_ISSUES_ENABLED == 'true'
+    if: vars.FLEET_FEEDBACK_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

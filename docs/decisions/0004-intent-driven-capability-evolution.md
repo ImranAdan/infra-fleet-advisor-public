@@ -1,6 +1,6 @@
 # PDR 0004: Intent-driven capability evolution
 
-- Status: accepted
+- Status: superseded by [PDR 0006](0006-report-approval-and-fleet-work.md) on 2026-09-14
 - Date: 2026-09-10
 
 ## Context

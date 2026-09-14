@@ -32,8 +32,9 @@ change infrastructure.
   precedence over generic best practices.
 - **Unknown is explicit:** a declared proposition without complete deterministic
   coverage is unverified, never assumed satisfied.
-- **Unknown becomes work:** ratified evaluation gaps produce deduplicated
-  advisor-side capability work without being misrepresented as fleet defects.
+- **Report approval decides fleet work:** a reviewed, merged report PR is the
+  decision record for eligible fleet issues. Unverified intent remains visible
+  in the report and does not automatically generate advisor tickets.
 - **Deterministic boundaries:** code owns source verification, schema
   validation, limits, lifecycle state, and publication eligibility.
 - **AI as an untrusted analyst:** a model may synthesize evidence but cannot
@@ -217,17 +218,22 @@ security regression. See PDR 0002.
 
 ### FR13: Fleet issue publication
 
-Merging an advisory report may publish each active, validated recommendation as
-an issue in `infra-fleet-public`. The publisher revalidates the merged report
+Merging a reviewed report-only PR publishes eligible recommendations as issues
+in `infra-fleet-public` when the issues-only integration is configured. The PR
+is the decision record and is linked from every new issue. Closing an unmerged
+PR or pushing a report directly does not authorize publication. The publisher revalidates the merged report
 against the current closed policy before acquiring a cross-repository token.
 Recommendations that are suppressed, carry an owner-accepted trade-off, cite
 invalid evidence, or have a mismatched fingerprint are ineligible. The number
 of active issue actions must not exceed the policy recommendation limit.
+Recommendations whose relevant collector did not complete are deferred rather
+than creating new work from historical or incomplete evidence.
 
-Fleet issue publication and feedback are optional and disabled until the owner
-sets `FLEET_ISSUES_ENABLED=true` after configuring the issues-only App.
-Capability and fleet issue publication wait for a merged report under current
-policy and intent. They must not regenerate a report to bypass ratification.
+Fleet publication uses `FLEET_ISSUES_ENABLED=true` and the issues-only App.
+Feedback is a separate opt-in through `FLEET_FEEDBACK_ENABLED=true`. Publication
+consumes the exact approved merge commit and waits for matching current policy
+and intent. Retries specify the report PR, require its report to remain the
+current merged baseline, and must not regenerate an unapproved report.
 
 Issue creation is idempotent per recommendation fingerprint. A partial failure
 must be safely retryable without duplicating the issues already created, and a
@@ -303,34 +309,22 @@ report and its material signature. Fleet issue publication reloads the catalog,
 requires the digest to match, and attaches the originating intent document and
 proposition identity to each action.
 
-### FR16: Intent-driven capability evolution
+### FR16: Coverage without an automatic advisor backlog
 
-A merged advisory report produces a second, bounded plan for propositions that
-remain `declared_unverified`. All unverified reasons except a category
-deliberately disabled by policy are actionable evaluation gaps. They create
-deduplicated issues in the advisor repository, never in the fleet repository.
+Every proposition remains recorded as satisfied, divergent or unverified.
+Unsupported checks and incomplete collection remain explicit in the report.
+They do not automatically create advisor or fleet issues. Advisor development
+is chosen manually from the coverage summary; novel prose never installs or
+executes a check.
 
-The planner reloads the current intent catalog and policy, requires their digest
-and version to match the report, and validates that the report contains exactly
-one structurally consistent evaluation for every current proposition. An issue
-identity derives only from the stable intent document and proposition IDs, so
-retries and wording changes do not create duplicate capability work.
-When the ratified statement or gap reason changes, a separate content signature
-allows the publisher to update only the matching bot-authored issue body.
+The earlier capability-ticket behavior in PDR 0004 is superseded by PDR 0006.
+The historical tickets are linked in `docs/COVERAGE-REVIEW.md`. The optional
+offline `capability-plan` diagnostic does not publish anything.
 
-Capability issue bodies contain bounded, inert intent text, the closed
-evaluation reason, and a definition of done. They explicitly state that an
-unverified proposition is not evidence of fleet divergence. When a later
-ratified report evaluates the proposition as satisfied or divergent, the
-publisher adds one resolution note for that transition. If a later report makes
-the gap actionable again, it adds one reactivation note. Complete bounded
-bot-authored lifecycle history makes repeated runs in the same state no-ops;
-the publisher may not close, reopen, or otherwise change issue state.
-
-Agents may propose the missing collector and check implementation through a
-normal advisor pull request with deterministic tests. Natural-language intent
-cannot itself execute or install code, select arbitrary tools, or bypass the
-trusted registry, and no generated implementation is merged automatically.
+After issue publication, the maintainer selects valuable fleet issues and asks
+an agent working in the fleet to propose PR fixes. Issue creation does not start
+an agent, alter fleet code, merge a fix or close an issue. A later report checks
+the resulting repository state, and issue resolution remains human-owned.
 
 ## Non-functional requirements
 
@@ -398,9 +392,9 @@ cluster, or wall-clock timing.
     omits it.
 12. Fleet issue work identifies its originating intent document and proposition,
     and publication fails if the merged report and current catalog differ.
-13. A merged report turns each actionable unverified proposition into at most
-    one advisor capability issue, while no unverified proposition is published
-    to the fleet as a divergence.
+13. A reviewed report-only PR is the issue-creation decision record. Every new
+    fleet issue links to it; unverified propositions remain report coverage, and
+    no automatic advisor capability issue is created.
 
 ## Success measures
 
@@ -426,7 +420,7 @@ During the initial pilot:
 - A plugin marketplace, dynamic imports, arbitrary shell execution, or remote
   tool installation selected by configuration.
 - Executing natural-language intent or dynamically loading checks from intent
-  text. Agents may propose new collector and registry code from capability work,
+  text. Agents may propose deliberately selected collector and registry changes,
   but it requires normal review, deterministic tests, and human approval.
 - Claims of complete coverage or universal optimality.
 

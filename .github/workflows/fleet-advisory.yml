@@ -225,11 +225,13 @@ jobs:
             echo "Review of [\`${sha:0:7}\`](https://github.com/${TARGET_REPO}/commit/${sha})" \
                  "in \`${TARGET_REPO}\`, produced by the \`fleet-advisory\` workflow."
             echo
-            echo "Every recommendation below cites evidence collected deterministically from"
-            echo "that commit. Synthesized output citing evidence that was never collected,"
-            echo "or naming a concern outside the policy taxonomy, was rejected before this"
-            echo "report was written. The report header records which synthesizer produced"
-            echo "it — \`stub\` runs make no model call at all."
+            echo "This report PR is the decision record for fleet issue creation. Merging it"
+            echo "approves eligible recommendations for the separate fleet publisher."
+            echo "The owner then selects valuable fleet issues for an agent to propose fixes."
+            echo
+            echo "Unsupported positions remain in report coverage and do not create advisor"
+            echo "tickets. Historical recommendations with incomplete current collection are"
+            echo "deferred. The report records its evidence, coverage and synthesizer."
             echo
             echo "---"
             echo

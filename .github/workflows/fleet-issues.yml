@@ -1,17 +1,22 @@
 name: Publish fleet advisory issues
 
-# Turns a merged, revalidated report into deduplicated issues in the fleet.
-# This workflow can write issues and comments, but its GitHub App token has no
-# contents or pull-request permission. It never changes fleet code or issue
-# state, and it never reads issue prose back into analysis or policy.
+# The merged report PR is the decision record. Only trusted default-branch
+# code runs; PR text and report contents are bounded, revalidated data.
 on:
-  push:
+  pull_request_target:
+    types: [closed]
     branches: [main]
     paths: [reports/report.json]
   workflow_dispatch:
+    inputs:
+      report_pr:
+        description: Merged report PR number to retry
+        required: true
+        type: string
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: fleet-issue-publication
@@ -22,16 +27,17 @@ env:
 jobs:
   publish:
     name: Publish accepted recommendations
-    if: vars.FLEET_ISSUES_ENABLED == 'true'
+    if: >-
+      vars.FLEET_ISSUES_ENABLED == 'true' &&
+      (github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      # Always consume the merged report and policy from the default branch,
-      # including for manual retries dispatched from another ref.
-      - name: Check out the advisor
+      - name: Check out trusted advisor code and current policy
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Python
@@ -47,31 +53,69 @@ jobs:
       - name: Install locked dependencies
         run: make setup
 
-      - name: Wait for a report under current policy and intent
+      - name: Verify the merged report PR
+        id: approval
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT_PR: ${{ github.event.pull_request.number || inputs.report_pr }}
+        run: |
+          if [[ ! "$REPORT_PR" =~ ^[1-9][0-9]{0,9}$ ]]; then
+            echo '::error::A positive merged report PR number is required.'
+            exit 1
+          fi
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/${REPORT_PR}" \
+            > "$RUNNER_TEMP/report-pr.json"
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/${REPORT_PR}/files?per_page=3" \
+            > "$RUNNER_TEMP/report-pr-files.json"
+          uv run --frozen infra-fleet-advisor report-approval \
+            --pull-request "$RUNNER_TEMP/report-pr.json" \
+            --files "$RUNNER_TEMP/report-pr-files.json" \
+            --number "$REPORT_PR" --output "$RUNNER_TEMP/report-approval.json"
+          sha="$(jq -er '.merge_commit_sha' "$RUNNER_TEMP/report-approval.json")"
+          printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Materialize the approved report
+        id: snapshot
+        env:
+          REPORT_MERGE_SHA: ${{ steps.approval.outputs.sha }}
+        run: |
+          git merge-base --is-ancestor "$REPORT_MERGE_SHA" HEAD
+          mkdir -p "$RUNNER_TEMP/approved-report"
+          git show "${REPORT_MERGE_SHA}:reports/report.json" \
+            > "$RUNNER_TEMP/approved-report/report.json"
+          if ! cmp -s reports/report.json "$RUNNER_TEMP/approved-report/report.json"; then
+            echo 'current=false' >> "$GITHUB_OUTPUT"
+            echo 'This report PR has been superseded by a newer merged report; nothing published.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo 'current=true' >> "$GITHUB_OUTPUT"
+
+      - name: Wait for matching policy and intent
         id: readiness
+        if: steps.snapshot.outputs.current == 'true'
         run: |
           status="$(uv run --frozen infra-fleet-advisor report-readiness \
-            --report reports/report.json --policy policy.yaml --intent-dir intent)"
-          ready="$(jq -r '.ready' <<< "$status")"
+            --report "$RUNNER_TEMP/approved-report/report.json" \
+            --policy policy.yaml --intent-dir intent)"
+          ready="$(jq -er '.ready | tostring' <<< "$status")"
           echo "ready=$ready" >> "$GITHUB_OUTPUT"
           if [ "$ready" != 'true' ]; then
-            echo 'Waiting for a current advisory report to be merged.' >> "$GITHUB_STEP_SUMMARY"
+            echo 'Waiting for a report approved under current policy and intent.' >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      # Revalidates source identity, policy version, fingerprints, evidence,
-      # suppression, accepted trade-offs, secret safety, and output bounds.
-      # GitHub receives only this deterministic plan, never the raw report.
-      - name: Build the issue plan
+      - name: Build the approved issue plan
         id: plan
         if: steps.readiness.outputs.ready == 'true'
         run: |
-          uv run infra-fleet-advisor issue-plan \
-            --report reports/report.json \
-            --policy policy.yaml \
-            --intent-dir intent \
+          uv run --frozen infra-fleet-advisor issue-plan \
+            --report "$RUNNER_TEMP/approved-report/report.json" \
+            --policy policy.yaml --intent-dir intent \
+            --approval "$RUNNER_TEMP/report-approval.json" \
             --output "$RUNNER_TEMP/fleet-issue-plan.json"
           count="$(jq -er '.actions | length' "$RUNNER_TEMP/fleet-issue-plan.json")"
           echo "count=$count" >> "$GITHUB_OUTPUT"
+          jq -r '"Decision record: https://github.com/ImranAdan/infra-fleet-advisor-public/pull/\(.approval.number)", "Eligible actions: \(.actions | length)", "Deferred for incomplete collection: \(.deferred_count)"' \
+            "$RUNNER_TEMP/fleet-issue-plan.json" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify issue publisher credentials
         if: steps.readiness.outputs.ready == 'true' && steps.plan.outputs.count != '0'
@@ -87,8 +131,6 @@ jobs:
             exit 1
           fi
 
-      # The installation is scoped to infra-fleet-public and the generated
-      # token requests only issues:write. It cannot read or modify fleet code.
       - name: Create issues-only fleet token
         if: steps.readiness.outputs.ready == 'true' && steps.plan.outputs.count != '0'
         id: app-token
@@ -100,14 +142,14 @@ jobs:
           repositories: infra-fleet-public
           permission-issues: write
 
-      - name: Create or update issue records
+      - name: Create or update approved fleet records
         if: steps.readiness.outputs.ready == 'true' && steps.plan.outputs.count != '0'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           APP_BOT_LOGIN: ${{ steps.app-token.outputs.app-slug }}[bot]
         run: |
-          uv run infra-fleet-advisor publish-issues \
-            --report reports/report.json \
-            --policy policy.yaml \
-            --intent-dir intent \
+          uv run --frozen infra-fleet-advisor publish-issues \
+            --report "$RUNNER_TEMP/approved-report/report.json" \
+            --policy policy.yaml --intent-dir intent \
+            --approval "$RUNNER_TEMP/report-approval.json" \
             --app-bot-login "$APP_BOT_LOGIN"

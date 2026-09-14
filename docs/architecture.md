@@ -13,12 +13,8 @@ Intent catalog → static check registry ─────────────
 Verified fleet snapshot → collectors → evidence set ─┼→ evaluations
                                                       │       │
 Advisor policy ───────────────────────────────────────┘       ├→ satisfied
-                                                              ├→ unverified ─→ capability plan
-                                                              │                    │ merged report
-                                                              │                    ↓
-                                                              │              advisor issue
-                                                              │                    │ agent + human PR
-                                                              │                    └→ trusted capability
+                                                              ├→ unverified
+                                                              │    coverage in report; no issue
                                                               └→ divergent
                                                                      │
                                       required candidate ← analyst wording
@@ -74,11 +70,12 @@ recommendation semantics.
 
 Local review defaults to the deterministic stub; a real model is explicitly
 selected. `report-readiness` checks merged-report source identity and compares
-policy version and intent digest before capability and fleet issue publication.
+policy version and intent digest before fleet issue publication.
 Missing or stale reports cause those workflows to wait without making a new
 baseline. Malformed provenance fails. Readiness is only an ordering gate: the
 existing publication plan validators still own evidence and eligibility checks.
-Fleet issue publication and feedback require `FLEET_ISSUES_ENABLED=true`.
+Fleet publication requires `FLEET_ISSUES_ENABLED=true`; optional feedback is
+independently enabled through `FLEET_FEEDBACK_ENABLED=true`.
 Remediation reuses issue-plan validation before selecting active, eligible
 fingerprints and needs a write token only when proposing a fleet PR.
 An optional advisor-only GitHub App delivers report PRs so their events trigger
@@ -194,25 +191,19 @@ consumes only that plan. It uses an installation token limited to
 changes issue state. Resolution means “no longer detected” and produces an
 idempotent note for human review, not automatic closure.
 
-Intent capability publication is a parallel, advisor-local boundary after
-report merge. Deterministic code validates report provenance and a complete
-one-to-one correspondence between the current catalog and its recorded
-evaluations. Every unverified reason except `category_not_enabled_by_policy`
-becomes a stable action keyed by intent document and proposition identity. A
-same-repository token with `issues: write` reconciles exact labels and body
-markers. Stable identity deduplicates the issue while a separate content marker
-allows current ratified intent to replace stale bot-authored issue text. The
-issue describes advisor work and cannot cross the fleet issue
-publisher because it contains no recommendation fingerprint or evidence-backed
-divergence. Later supported evaluations receive an idempotent resolution note;
-if a later report makes the same gap actionable again, the complete bounded
-bot-authored lifecycle history permits one reactivation note. Repeated reports
-in the same state are no-ops, and issue state remains human-owned.
+The merged report-only PR is the fleet issue-creation decision record. A
+bounded GitHub API record proves the PR merged into advisor main and changed
+only the report JSON and Markdown. Trusted default-branch code materializes
+that merge's report and verifies it remains the current merged baseline before
+validating against current policy and intent. Every issue links to the PR and
+approved report commit. Retries use the same PR and deduplicate per fingerprint.
+Incomplete relevant collection defers issue and resolution actions rather than
+promoting historical carry-forwards into fresh fix requests.
 
-Capability issues may drive agent-authored implementation pull requests, but
-those changes enter through the normal advisor review and CI boundary. Intent
-text is never executed, dynamically imported, or treated as proof. This creates
-a self-evolving work queue without making the model or configuration trusted.
+Unverified propositions remain in report coverage. There is no automatic
+advisor issue publisher or agent dispatcher. The maintainer selects valuable
+fleet issues and instructs a fleet agent to propose reviewed fixes. The earlier
+generated advisor tickets are retained as a linked coverage snapshot.
 
 Fleet decision feedback is a third deterministic boundary. The GitHub adapter
 projects fleet issues into number, state, author, and label sets; title, body,
@@ -250,8 +241,10 @@ replacement remains protected by an exact lease.
 10. Compute stable fingerprints and compare with the prior report.
 11. Apply deterministic output limits and ordering rules.
 12. Write equivalent JSON and Markdown reports.
-13. After report merge, reconcile unverified evaluations into advisor capability
-    issues and verified divergences into fleet issues through separate plans.
+13. Verify the merged report PR decision record, materialize its approved report
+    and publish eligible fleet issues. Keep unverified positions in coverage.
+14. A maintainer selects fleet issues for an agent; proposed fixes go through
+    fleet review and CI, then a subsequent advisor report evaluates the result.
 
 ## Initial implementation shape
 

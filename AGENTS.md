@@ -30,6 +30,13 @@ repository and only to propose the report it just produced. The fleet remains
 read-only: it is cloned, analyzed, and left untouched. Delivering a report is
 not remediation, and nothing in that path may grow into writing to the fleet.
 
+Under PDR 0006 the reviewed, merged report-only PR is the fleet issue-creation
+decision record. The publisher verifies that approval and links every new fleet
+issue to it. Unverified intent remains report coverage; do not automatically
+create advisor capability tickets. The maintainer selects valuable fleet issues
+and asks an agent working in the fleet to propose fixes. Issue creation does not
+start an agent or grant authority to merge, deploy, or close issues.
+
 ## Scope and execution discipline
 
 Treat the user's time, attention, and token budget as constrained resources.
