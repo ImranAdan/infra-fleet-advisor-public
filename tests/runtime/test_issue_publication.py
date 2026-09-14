@@ -15,6 +15,7 @@ from infra_fleet_advisor.runtime.issue_publication import (
     FLEET_REPOSITORY,
     build_issue_plan,
 )
+from infra_fleet_advisor.runtime.report_approval import ReportApproval
 from infra_fleet_advisor.runtime.report_writer import write_report
 from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
     CONCERN_TRIVY_IGNORE_UNFIXED,
@@ -139,6 +140,71 @@ def test_intent_backed_issue_names_the_declared_proposition(tmp_path: Path) -> N
     assert action.intent_proposition_id == "T-001"
     assert r"Intent: test\_security\_intent/T-001" in action.body
     assert "Declared position: Trivy does not ignore unfixed" in action.body
+
+
+@pytest.mark.parametrize("status", ["new", "unchanged", "resolved"])
+def test_issue_action_links_to_the_report_pr_decision_record(tmp_path: Path, status: str) -> None:
+    approval = ReportApproval(27, "b" * 40)
+    report = _write_report(tmp_path, recommendation=_recommendation(status=status))
+    plan = build_issue_plan(report, POLICY, approval=approval)
+    assert plan.approval == approval
+    action = plan.actions[0]
+    text = action.resolution_comment if status == "resolved" else action.body
+    assert f"[Advisor report PR #27]({approval.url})" in text
+    if status != "resolved":
+        assert f"Approved report commit: `{'b' * 40}`" in text
+
+
+@pytest.mark.parametrize("coverage_status", ["partial", "failed", "missing"])
+@pytest.mark.parametrize("status", ["new", "unchanged", "resolved"])
+def test_incomplete_current_collection_defers_fleet_work(
+    tmp_path: Path, coverage_status: str, status: str
+) -> None:
+    report = _write_report(tmp_path, recommendation=_recommendation(status=status))
+    raw = json.loads(report.read_text())
+    if coverage_status == "missing":
+        raw["coverage"] = []
+    else:
+        raw["coverage"][0]["status"] = coverage_status
+        raw["coverage"][0]["error_summary"] = "Unable to evaluate all relevant files"
+    report.write_text(json.dumps(raw))
+    plan = build_issue_plan(report, POLICY)
+    assert plan.actions == ()
+    assert plan.deferred_count == 1
+
+
+def test_unrelated_incomplete_collection_does_not_block_a_verified_finding(tmp_path: Path) -> None:
+    report = _write_report(tmp_path)
+    raw = json.loads(report.read_text())
+    raw["coverage"].append(
+        {
+            "collector_id": "terraform_iam_collector",
+            "status": "partial",
+            "evidence_count": 0,
+            "error_summary": "Unsupported IAM expression",
+        }
+    )
+    report.write_text(json.dumps(raw))
+    plan = build_issue_plan(report, POLICY)
+    assert len(plan.actions) == 1
+    assert plan.deferred_count == 0
+
+
+@pytest.mark.parametrize("mutation", ["bad_status", "duplicate", "missing_field", "bad_count"])
+def test_malformed_coverage_cannot_authorize_fleet_work(tmp_path: Path, mutation: str) -> None:
+    report = _write_report(tmp_path)
+    raw = json.loads(report.read_text())
+    if mutation == "bad_status":
+        raw["coverage"][0]["status"] = "healthy"
+    elif mutation == "duplicate":
+        raw["coverage"].append(raw["coverage"][0])
+    elif mutation == "missing_field":
+        del raw["coverage"][0]["status"]
+    else:
+        raw["coverage"][0]["evidence_count"] = True
+    report.write_text(json.dumps(raw))
+    with pytest.raises(PolicyError, match="coverage is malformed"):
+        build_issue_plan(report, POLICY)
 
 
 def test_issue_plan_rejects_a_different_current_intent_catalog(tmp_path: Path) -> None:

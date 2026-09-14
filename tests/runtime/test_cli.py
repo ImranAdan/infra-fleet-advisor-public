@@ -420,85 +420,21 @@ def test_capability_plan_command_writes_gap_and_resolution_actions(
     assert "cannot write capability plan: FileExistsError" in capsys.readouterr().err
 
 
-def test_publish_capability_gaps_binds_validated_plan_to_advisor(
-    git_checkout, tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    repo, sha = git_checkout("trivy_ignore_unfixed_bad.yml")
-    output_dir = tmp_path / "out"
-    assert main(_argv(repo, sha, output_dir)) == EXIT_OK
-    capsys.readouterr()
-    captured: dict[str, object] = {}
-
-    def fake_client(repository: str) -> object:
-        captured["repository"] = repository
-        return object()
-
-    def fake_publish(plan, client: object, workflow_bot_login: str) -> PublicationResult:
-        captured["plan"] = plan
-        captured["client"] = client
-        captured["workflow_bot_login"] = workflow_bot_login
-        return PublicationResult(created=2, reactivation_comments=1)
-
-    monkeypatch.setattr(cli_module, "GhCliIssueClient", fake_client)
-    monkeypatch.setattr(cli_module, "publish_capability_plan", fake_publish)
-
-    assert (
-        main(
-            [
-                "publish-capability-gaps",
-                "--report",
-                str(output_dir / "report.json"),
-                "--policy",
-                str(POLICY),
-                "--intent-dir",
-                str(INTENTS),
-                "--repository",
-                "ImranAdan/infra-fleet-advisor-public",
-                "--workflow-bot-login",
-                "github-actions[bot]",
-            ]
-        )
-        == EXIT_OK
-    )
-
-    assert captured["repository"] == "ImranAdan/infra-fleet-advisor-public"
-    assert captured["workflow_bot_login"] == "github-actions[bot]"
-    output = capsys.readouterr().out
-    assert "published 2 capability issue(s)" in output
-    assert "1 reactivation note(s)" in output
-
-
-def test_publish_capability_gaps_rejects_another_repository_before_access(
-    git_checkout, tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    repo, sha = git_checkout("trivy_ignore_unfixed_bad.yml")
-    output_dir = tmp_path / "out"
-    assert main(_argv(repo, sha, output_dir)) == EXIT_OK
-    capsys.readouterr()
+def test_advisor_issue_publication_is_not_a_supported_command(monkeypatch) -> None:
     monkeypatch.setattr(
         cli_module,
         "GhCliIssueClient",
         lambda _repository: pytest.fail("GitHub must not be accessed"),
     )
+    with pytest.raises(SystemExit) as error:
+        main(["publish-capability-gaps"])
+    assert error.value.code == 2
 
-    exit_code = main(
-        [
-            "publish-capability-gaps",
-            "--report",
-            str(output_dir / "report.json"),
-            "--policy",
-            str(POLICY),
-            "--intent-dir",
-            str(INTENTS),
-            "--repository",
-            "someone/else",
-            "--workflow-bot-login",
-            "github-actions[bot]",
-        ]
-    )
 
-    assert exit_code == EXIT_POLICY_ERROR
-    assert "unexpected repository" in capsys.readouterr().err
+def _approval_file(tmp_path: Path) -> Path:
+    approval = tmp_path / "approval.json"
+    approval.write_text(json.dumps({"number": 27, "merge_commit_sha": "a" * 40}))
+    return approval
 
 
 def test_publish_issues_command_binds_validated_plan_to_adapter(
@@ -535,6 +471,8 @@ def test_publish_issues_command_binds_validated_plan_to_adapter(
                 str(INTENTS),
                 "--app-bot-login",
                 "advisor[bot]",
+                "--approval",
+                str(_approval_file(tmp_path)),
             ]
         )
         == EXIT_OK
@@ -542,6 +480,9 @@ def test_publish_issues_command_binds_validated_plan_to_adapter(
 
     assert captured["repository"] == "ImranAdan/infra-fleet-public"
     assert captured["app_bot_login"] == "advisor[bot]"
+    plan = captured["plan"]
+    assert plan.approval.number == 27
+    assert "Advisor report PR #27" in plan.actions[0].body
     assert "published 1 issue(s)" in capsys.readouterr().out
 
 
@@ -561,11 +502,67 @@ def test_publish_issues_reports_revalidation_as_a_policy_error(tmp_path: Path, c
                 str(INTENTS),
                 "--app-bot-login",
                 "advisor[bot]",
+                "--approval",
+                str(_approval_file(tmp_path)),
             ]
         )
         == EXIT_POLICY_ERROR
     )
     assert "policy error: cannot read report provenance" in capsys.readouterr().err
+
+
+def test_publish_issues_requires_a_decision_record_before_access(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "GhCliIssueClient",
+        lambda _repository: pytest.fail("GitHub must not be accessed"),
+    )
+    with pytest.raises(SystemExit) as error:
+        main(
+            [
+                "publish-issues",
+                "--report",
+                "report.json",
+                "--policy",
+                str(POLICY),
+                "--intent-dir",
+                str(INTENTS),
+                "--app-bot-login",
+                "advisor[bot]",
+            ]
+        )
+    assert error.value.code == 2
+
+
+def test_publish_issues_rejects_an_invalid_decision_record_before_access(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    approval = tmp_path / "approval.json"
+    approval.write_text(json.dumps({"number": 0, "merge_commit_sha": "a" * 40}))
+    monkeypatch.setattr(
+        cli_module,
+        "GhCliIssueClient",
+        lambda _repository: pytest.fail("GitHub must not be accessed"),
+    )
+    assert (
+        main(
+            [
+                "publish-issues",
+                "--report",
+                "report.json",
+                "--policy",
+                str(POLICY),
+                "--intent-dir",
+                str(INTENTS),
+                "--app-bot-login",
+                "advisor[bot]",
+                "--approval",
+                str(approval),
+            ]
+        )
+        == EXIT_POLICY_ERROR
+    )
+    assert "positive PR number" in capsys.readouterr().err
 
 
 def test_feedback_plan_command_reads_only_typed_issue_metadata(

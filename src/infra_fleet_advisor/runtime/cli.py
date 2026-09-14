@@ -9,7 +9,6 @@ from infra_fleet_advisor.core.errors import AdvisorError, PolicyError, Provenanc
 from infra_fleet_advisor.provenance.source_verification import verify_snapshot
 from infra_fleet_advisor.runtime.capability_publication import (
     build_capability_plan,
-    publish_capability_plan,
     write_capability_plan,
 )
 from infra_fleet_advisor.runtime.clock import SystemClock
@@ -32,6 +31,11 @@ from infra_fleet_advisor.runtime.issue_publication import (
     FLEET_REPOSITORY,
     build_issue_plan,
     write_issue_plan,
+)
+from infra_fleet_advisor.runtime.report_approval import (
+    read_report_approval,
+    verify_report_approval,
+    write_report_approval,
 )
 from infra_fleet_advisor.runtime.report_readiness import check_report_readiness
 from infra_fleet_advisor.runtime.report_signature import (
@@ -113,6 +117,15 @@ def _build_parser() -> argparse.ArgumentParser:
     issues.add_argument("--policy", required=True, type=Path)
     issues.add_argument("--intent-dir", required=True, type=Path)
     issues.add_argument("--output", required=True, type=Path)
+    issues.add_argument("--approval", type=Path)
+
+    approval = sub.add_parser(
+        "report-approval", help="Verify the merged report PR used as the issue decision record"
+    )
+    approval.add_argument("--pull-request", required=True, type=Path)
+    approval.add_argument("--files", required=True, type=Path)
+    approval.add_argument("--number", required=True, type=int)
+    approval.add_argument("--output", required=True, type=Path)
 
     publish_issues = sub.add_parser(
         "publish-issues",
@@ -122,6 +135,7 @@ def _build_parser() -> argparse.ArgumentParser:
     publish_issues.add_argument("--policy", required=True, type=Path)
     publish_issues.add_argument("--intent-dir", required=True, type=Path)
     publish_issues.add_argument("--app-bot-login", required=True)
+    publish_issues.add_argument("--approval", required=True, type=Path)
 
     capabilities = sub.add_parser(
         "capability-plan",
@@ -131,16 +145,6 @@ def _build_parser() -> argparse.ArgumentParser:
     capabilities.add_argument("--policy", required=True, type=Path)
     capabilities.add_argument("--intent-dir", required=True, type=Path)
     capabilities.add_argument("--output", required=True, type=Path)
-
-    publish_capabilities = sub.add_parser(
-        "publish-capability-gaps",
-        help="Publish revalidated intent evaluation gaps in the advisor repository",
-    )
-    publish_capabilities.add_argument("--report", required=True, type=Path)
-    publish_capabilities.add_argument("--policy", required=True, type=Path)
-    publish_capabilities.add_argument("--intent-dir", required=True, type=Path)
-    publish_capabilities.add_argument("--repository", required=True)
-    publish_capabilities.add_argument("--workflow-bot-login", required=True)
 
     feedback = sub.add_parser(
         "feedback-plan",
@@ -232,29 +236,20 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"policy error: {exc}", file=sys.stderr)
             return EXIT_POLICY_ERROR
 
-    if args.command == "publish-capability-gaps":
+    if args.command == "report-approval":
         try:
-            capability_plan = build_capability_plan(args.report, args.policy, args.intent_dir)
-            if args.repository != capability_plan.target_repository:
-                raise PolicyError("capability publisher is running in an unexpected repository")
-            result = publish_capability_plan(
-                capability_plan,
-                GhCliIssueClient(capability_plan.target_repository),
-                args.workflow_bot_login,
-            )
-            print(
-                f"published {result.created} capability issue(s), found "
-                f"{result.existing} existing, updated {result.updated}, restored "
-                f"{result.labels_restored} label set(s), and added "
-                f"{result.resolution_comments} resolution note(s) and "
-                f"{result.reactivation_comments} reactivation note(s)"
-            )
+            report_approval = verify_report_approval(args.pull_request, args.files, args.number)
+            write_report_approval(report_approval, args.output)
+            print(json.dumps(asdict(report_approval), sort_keys=True))
             return EXIT_OK
         except PolicyError as exc:
             print(f"policy error: {exc}", file=sys.stderr)
             return EXIT_POLICY_ERROR
-        except AdvisorError as exc:
-            print(f"pipeline error: {exc}", file=sys.stderr)
+        except OSError as exc:
+            print(
+                f"pipeline error: cannot write report approval: {type(exc).__name__}",
+                file=sys.stderr,
+            )
             return EXIT_PIPELINE_ERROR
 
     if args.command == "capability-plan":
@@ -338,7 +333,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "publish-issues":
         try:
-            issue_plan = build_issue_plan(args.report, args.policy, args.intent_dir)
+            issue_plan = build_issue_plan(
+                args.report,
+                args.policy,
+                args.intent_dir,
+                approval=read_report_approval(args.approval),
+            )
             result = publish_issue_plan(
                 issue_plan,
                 GhCliIssueClient(issue_plan.target_repository),
@@ -347,7 +347,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(
                 f"published {result.created} issue(s), found {result.existing} existing, "
                 f"restored {result.labels_restored} label set(s), and added "
-                f"{result.resolution_comments} resolution note(s)"
+                f"{result.resolution_comments} resolution note(s); "
+                f"deferred {issue_plan.deferred_count} recommendation(s) with incomplete coverage"
             )
             return EXIT_OK
         except PolicyError as exc:
@@ -359,9 +360,17 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "issue-plan":
         try:
-            issue_plan = build_issue_plan(args.report, args.policy, args.intent_dir)
+            issue_plan = build_issue_plan(
+                args.report,
+                args.policy,
+                args.intent_dir,
+                approval=read_report_approval(args.approval) if args.approval else None,
+            )
             write_issue_plan(issue_plan, args.output)
-            print(f"wrote issue plan with {len(issue_plan.actions)} action(s)")
+            print(
+                f"wrote issue plan with {len(issue_plan.actions)} action(s); "
+                f"deferred {issue_plan.deferred_count} recommendation(s) with incomplete coverage"
+            )
             return EXIT_OK
         except PolicyError as exc:
             print(f"policy error: {exc}", file=sys.stderr)

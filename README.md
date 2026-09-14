@@ -30,7 +30,7 @@ repository files. The fleet checkout must be clean, including untracked files.
 For another location, use `make review FLEET_CHECKOUT=/path/to/infra-fleet-public`.
 Local output is ignored by Git and does not replace the committed, ratified
 `reports/report.json` baseline. See [setup and integration](docs/setup.md) for
-report approval, optional publishing, and troubleshooting.
+report approval, fleet publication, and troubleshooting.
 
 ## Product promise
 
@@ -69,8 +69,11 @@ Reviewing the fleet is read-only. Separately, a manually dispatched workflow may
 one — for the narrow set of concerns fixable without judgement. See
 [PDR 0002](docs/decisions/0002-mechanical-remediation-of-the-fleet.md).
 
-After an advisory report is merged, a separate issues-only workflow can publish
-each active recommendation to the fleet as a deduplicated issue. It never
+The report PR is the decision record. After it is reviewed and merged, a
+separate issues-only workflow publishes eligible recommendations as deduplicated
+issues in the fleet, each linked to that PR. A maintainer chooses valuable
+issues and asks an agent working in the fleet to propose fixes. Unsupported
+intent stays in the report rather than automatically creating advisor tickets. It never
 changes issue state; when evidence disappears it adds a note and leaves closure
 to a maintainer. See
 [PDR 0001](docs/decisions/0001-advisory-delivery-and-feedback-loop.md).
@@ -86,7 +89,7 @@ compile registered propositions into deterministic evaluations
                   ↓
 divergent ──→ required recommendation ──→ validate/fingerprint/report
 satisfied ──→ recorded evaluation
-unverified ─→ explicit coverage gap ──→ advisor capability issue after approval
+unverified ─→ explicit coverage gap in the report; no issue
 ```
 
 Every recommendation must identify concrete evidence, expected impact,
@@ -162,24 +165,18 @@ The catalog digest is part of report provenance and material signatures. Issue
 publication reloads the current catalog, requires the digest to match the merged
 report, and names the source intent document and proposition in each issue.
 
-### Evolving unsupported intent
+### Unsupported intent and the work queue
 
-A proposition that cannot yet be evaluated does not dead-end in the report.
-After that report is reviewed and merged,
-`.github/workflows/intent-capabilities.yml` turns each actionable
-`declared_unverified` evaluation into one deduplicated issue in this advisor
-repository. A policy-disabled category is the exception: it is a deliberate
-scope choice rather than missing capability.
+Unsupported positions remain in the report's intent evaluation and collector
+coverage sections. They do not create issues in either repository. Advisor
+development is selected deliberately rather than generated for every unknown.
+The earlier generated tickets are preserved in the
+[coverage review](docs/COVERAGE-REVIEW.md).
 
-These issues are implementation work for the advisor, not findings against the
-fleet. They contain the inert declared position, the reason verification could
-not complete, and the tested collector/check contract needed for completion. An
-agent may propose that implementation through a normal pull request, but a
-human still reviews and merges it. The next advisory run can then prove
-satisfaction or deliver a concrete divergence to the fleet. Intent text never
-becomes executable code or selects arbitrary tools. Resolution and reactivation
-notes record later capability-state transitions once each while leaving issue
-state under human control.
+The work queue lives in `infra-fleet-public`. Each eligible issue comes from a
+reviewed report PR and includes evidence, impact, a suggested change and the
+decision-record link. Selecting issues for an agent, reviewing its proposed
+fleet PRs and deciding issue closure remain maintainer actions.
 
 ### As a GitHub Actions workflow
 
@@ -232,12 +229,23 @@ outstanding finding resolved.
 
 ### Publishing accepted recommendations as fleet issues
 
-When `FLEET_ISSUES_ENABLED=true`, `.github/workflows/fleet-issues.yml` runs when a merged commit changes
-`reports/report.json`, and can also be manually retried. Before any external
-write it reloads the report under the current policy and intent catalog, then
-validates source identity, policy and intent versions, fingerprints, evidence
-support, paths, secret safety, suppression, accepted trade-offs, and hard output
-limits.
+When `FLEET_ISSUES_ENABLED=true`, `.github/workflows/fleet-issues.yml` runs after
+a report-only PR is merged into advisor `main`. Closing an unmerged PR, merging
+advisor implementation code, or directly pushing a report does not authorize
+issue creation. The workflow verifies the PR and materializes its exact merged
+report using trusted default-branch code. A superseded report cannot be replayed.
+It reloads the current policy and catalog and validates provenance,
+fingerprints, evidence, paths, suppression, accepted trade-offs and hard limits.
+Recommendations whose relevant collector is incomplete are deferred, including
+historical carry-forwards; uncertainty does not become a fresh fix request.
+
+For a retry, select **Actions → Publish fleet advisory issues → Run workflow**
+and supply the merged report PR number, or run:
+
+```bash
+gh workflow run fleet-issues.yml \
+  --repo ImranAdan/infra-fleet-advisor-public -f report_pr=<merged-report-pr>
+```
 
 Configure a GitHub App installed only on `infra-fleet-public`, with repository
 `Issues: Read and write` and no contents or pull-request permission. Store its
@@ -249,9 +257,9 @@ and fails with the missing secret names; it never falls back to a personal token
 or a broader credential.
 
 Set the repository Actions variable `FLEET_ISSUES_ENABLED` to `true` only after
-configuring those App secrets. Fleet issue publication and scheduled feedback
-are skipped by default. Existing installations must set this variable to keep
-these optional integrations enabled. Publication waits if the merged report
+configuring those App secrets. This enables the fleet handoff after report
+approval. Optional decision feedback has its own `FLEET_FEEDBACK_ENABLED=true`
+setting and remains disabled unless separately selected. Publication waits if the merged report
 uses an older policy or intent catalog; it resumes after a current report is
 merged and still performs the complete validation before writing.
 
@@ -349,8 +357,8 @@ divergence delivery, validation, lifecycle tracking, and deduplicated fleet
 issue publication. The initial security, reliability, and cost catalogs contain
 seventeen declared positions; three have registered checks and the remainder
 are explicitly reported as unverified rather than silently assumed true. The
-cost catalog deliberately has no registered checks yet, exercising the path
-from new free-text intent to explicit advisor capability work.
+cost catalog currently has no registered checks; those positions remain in
+report coverage until deliberately selected implementation enables evaluation.
 
 Terraform IAM review supports bounded JSON/HCL policy literals and quoted keys.
 Referenced or dynamic policies remain explicit partial coverage; analysis never
@@ -375,7 +383,7 @@ feedback into human-reviewed policy are implemented.
 - [PDR 0001: Advisory delivery and the fleet feedback loop](docs/decisions/0001-advisory-delivery-and-feedback-loop.md)
 - [PDR 0002: Mechanical remediation of the fleet](docs/decisions/0002-mechanical-remediation-of-the-fleet.md)
 - [PDR 0003: Intent compilation and guaranteed divergence delivery](docs/decisions/0003-intent-compilation-and-divergence-delivery.md)
-- [PDR 0004: Intent-driven capability evolution](docs/decisions/0004-intent-driven-capability-evolution.md)
+- [PDR 0006: Report approval and fleet work](docs/decisions/0006-report-approval-and-fleet-work.md)
 - [Repository guidance](AGENTS.md)
 
 ## License

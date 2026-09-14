@@ -31,9 +31,8 @@ experimentation; automation consumes only the report merged in advisor `main`.
 | Local `make review` | Available | Clean fleet checkout | Local report only |
 | Fleet advisory workflow | Automatic deterministic reviews; manual default is `stub` | Actions allowed to create PRs; optional report delivery App below | Proposes a report in the advisor |
 | Manual `anthropic` review | Explicit opt-in | `ANTHROPIC_API_KEY` | One bounded model invocation for wording |
-| Intent capability publication | After a current report is merged | Advisor `GITHUB_TOKEN` with `issues: write` | Advisor implementation issues |
 | Fleet issue publication | Disabled | `FLEET_ISSUES_ENABLED=true`, `FLEET_ISSUES_APP_CLIENT_ID`, `FLEET_ISSUES_APP_PRIVATE_KEY` | Deduplicated fleet issues |
-| Fleet decision feedback | Disabled | Same opt-in and App credentials; token downscoped to `issues: read` | Proposes policy in the advisor |
+| Fleet decision feedback | Disabled | `FLEET_FEEDBACK_ENABLED=true` and the issues App credentials; token downscoped to `issues: read` | Proposes policy in the advisor |
 | Remediation dry run | Manual; `dry_run=true` | Current ratified report and public fleet read | Patch preview only |
 | Remediation proposal | Manual; `dry_run=false` | Above plus `FLEET_TOKEN` with fleet contents and PR write | Proposes a fleet PR |
 
@@ -42,8 +41,9 @@ only on the fleet. Its short-lived issue token is restricted again by the
 workflow. The separate remediation credential must never be used for analysis,
 issue publication, or feedback. No path merges a fleet proposal or touches AWS.
 
-An existing issues/feedback installation must set `FLEET_ISSUES_ENABLED=true`
-when adopting the explicit opt-in. Leaving it unset skips those integrations.
+Set `FLEET_ISSUES_ENABLED=true` to enable the approved-report fleet handoff.
+Optional decision feedback has a separate `FLEET_FEEDBACK_ENABLED=true` opt-in.
+Enabling fleet issue publication does not enable feedback or start a fixing agent.
 An enabled publisher with missing credentials fails with the missing names.
 
 ## Approval and report freshness
@@ -52,8 +52,15 @@ The advisory workflow proposes `reports/report.json` and `reports/report.md` on
 `advisory/latest`. Review and merge that proposal to advance the baseline.
 Closing it without merging declines that exact material report state.
 
-Intent changes often merge before a report reflects them. Capability and fleet
-issue publication now wait for matching policy version and intent digest. They
+The report-only PR is the decision record for fleet issue creation. The
+publisher verifies the merged PR and links every issue to it. Retry with its PR
+number through the workflow `report_pr` input; a superseded report cannot replay.
+Recommendations with incomplete relevant collection are deferred. Unverified
+positions stay in report coverage, not an automatically generated advisor
+backlog. See [PDR 0006](decisions/0006-report-approval-and-fleet-work.md).
+
+Intent changes often merge before a report reflects them. Fleet publication
+waits for matching policy version and intent digest. They
 never regenerate an unapproved report inside the publication workflow. A
 missing report also waits; malformed provenance or the wrong fleet identity
 fails. A current report still passes the existing full publication validation.
@@ -89,7 +96,8 @@ still use `GITHUB_TOKEN` and retain this check-trigger limitation.
 | `policy_changed` or `intent_changed` readiness | Wait for a report under the current versions to be merged. |
 | `report_missing` readiness | Run the advisory report path and ratify its first report. |
 | No API key | Use the default `stub`; `anthropic` requires explicit configuration. |
-| Fleet issue/feedback job skipped | Optional integration is disabled until `FLEET_ISSUES_ENABLED=true`. |
+| Fleet issue job skipped | Configure the issues App and `FLEET_ISSUES_ENABLED=true`; automatic publication requires a merged report PR. |
+| Feedback job skipped | Optional feedback requires its separate `FLEET_FEEDBACK_ENABLED=true` setting. |
 | No mechanically fixable findings | Expected when no ratified active concern has a registered patcher; only `trivy_ignore_unfixed` is patchable today. |
 
 ## What a successful review proves

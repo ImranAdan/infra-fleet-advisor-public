@@ -13,6 +13,7 @@ from infra_fleet_advisor.core.contracts import ConcernRule, compute_fingerprint
 from infra_fleet_advisor.core.errors import PolicyError
 from infra_fleet_advisor.core.evidence import Evidence
 from infra_fleet_advisor.core.validation import contains_secret, is_prior_recommendation_valid
+from infra_fleet_advisor.runtime.report_approval import ReportApproval
 from infra_fleet_advisor.runtime.report_writer import (
     load_prior_report,
     read_report_metadata,
@@ -54,6 +55,8 @@ class IssuePlan:
     target_repository: str
     source_commit_sha: str
     actions: tuple[IssueAction, ...]
+    approval: ReportApproval | None = None
+    deferred_count: int = 0
 
 
 def _safe_text(value: str) -> str:
@@ -136,6 +139,7 @@ def _active_issue_body(
     intent_document_id: str | None,
     intent_proposition_id: str | None,
     intent_statement: str | None,
+    approval: ReportApproval | None,
 ) -> str:
     source_url = f"https://github.com/{FLEET_REPOSITORY}/commit/{source_sha}"
     evidence_text = "\n".join(_evidence_markdown(item, source_sha) for item in evidence)
@@ -159,6 +163,14 @@ def _active_issue_body(
             "recommendation; closing or changing this issue remains a human decision.",
             "",
             f"- Source: [{source_sha[:7]}]({source_url})",
+            *(
+                (
+                    f"- Decision record: [Advisor report PR #{approval.number}]({approval.url})",
+                    f"- Approved report commit: `{approval.merge_commit_sha}`",
+                )
+                if approval is not None
+                else ()
+            ),
             f"- Category: {_safe_text(category)}",
             f"- Fingerprint: {_safe_text(fingerprint)}",
             f"- Confidence: {confidence:.2f} — {_safe_text(confidence_explanation)}",
@@ -187,7 +199,9 @@ def _active_issue_body(
     return body
 
 
-def _resolution_text(fingerprint: str, source_sha: str) -> tuple[str, str]:
+def _resolution_text(
+    fingerprint: str, source_sha: str, approval: ReportApproval | None
+) -> tuple[str, str]:
     marker = f"<!-- infra-fleet-advisor-resolution: {fingerprint} -->"
     source_url = f"https://github.com/{FLEET_REPOSITORY}/commit/{source_sha}"
     comment = "\n".join(
@@ -197,13 +211,51 @@ def _resolution_text(fingerprint: str, source_sha: str) -> tuple[str, str]:
             f"The advisor no longer detected this evidence at [{source_sha[:7]}]({source_url}).",
             "This does not prove the underlying risk is gone, so the issue has not been",
             "closed or otherwise changed. A maintainer should make that decision.",
+            *(
+                (f"Decision record: [Advisor report PR #{approval.number}]({approval.url}).",)
+                if approval is not None
+                else ()
+            ),
         )
     )
     return marker, comment
 
 
+def _complete_collectors(report_path: Path) -> frozenset[str]:
+    try:
+        coverage = json.loads(report_path.read_text(encoding="utf-8"))["coverage"]
+        if not isinstance(coverage, list):
+            raise TypeError
+        seen: set[str] = set()
+        complete: set[str] = set()
+        for item in coverage:
+            if (
+                not isinstance(item, dict)
+                or set(item) != {"collector_id", "status", "evidence_count", "error_summary"}
+                or not isinstance(item["collector_id"], str)
+                or item["collector_id"] in seen
+                or not isinstance(item["status"], str)
+                or item["status"] not in {"ok", "partial", "failed"}
+                or type(item["evidence_count"]) is not int
+                or item["evidence_count"] < 0
+                or not (item["error_summary"] is None or isinstance(item["error_summary"], str))
+                or (item["status"] == "ok" and item["error_summary"] is not None)
+            ):
+                raise TypeError
+            seen.add(item["collector_id"])
+            if item["status"] == "ok":
+                complete.add(item["collector_id"])
+        return frozenset(complete)
+    except (KeyError, TypeError, OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise PolicyError("published report collector coverage is malformed") from exc
+
+
 def build_issue_plan(
-    report_path: Path, policy_path: Path, intent_dir: Path | None = None
+    report_path: Path,
+    policy_path: Path,
+    intent_dir: Path | None = None,
+    *,
+    approval: ReportApproval | None = None,
 ) -> IssuePlan:
     """Revalidate a merged report and derive bounded, inert GitHub issue actions."""
     metadata = read_report_metadata(report_path)
@@ -228,9 +280,11 @@ def build_issue_plan(
     report = load_prior_report(report_path)
     if report is None:
         raise PolicyError("no published report to turn into issues")
+    complete_collectors = _complete_collectors(report_path)
 
     actions: list[IssueAction] = []
     active_action_count = 0
+    deferred_count = 0
     seen_fingerprints: set[str] = set()
     for recommendation in report.recommendations:
         if recommendation.fingerprint in seen_fingerprints:
@@ -263,10 +317,13 @@ def build_issue_plan(
         )
         if any(not _evidence_is_secret_safe(item) for item in cited_evidence):
             raise PolicyError("published evidence contains a secret-like value")
+        if concern_rules[recommendation.concern_key].collector_id not in complete_collectors:
+            deferred_count += 1
+            continue
 
         label, fingerprint_marker = _fingerprint_parts(recommendation.fingerprint)
         resolution_marker, resolution_comment = _resolution_text(
-            recommendation.fingerprint, metadata.source_commit_sha
+            recommendation.fingerprint, metadata.source_commit_sha, approval
         )
         action: Literal["active", "resolved"] = (
             "resolved" if recommendation.status == "resolved" else "active"
@@ -301,6 +358,7 @@ def build_issue_plan(
                     active_intent.proposition_id if active_intent is not None else None
                 ),
                 intent_statement=(active_intent.statement if active_intent is not None else None),
+                approval=approval,
             )
         )
         actions.append(
@@ -330,6 +388,8 @@ def build_issue_plan(
         target_repository=FLEET_REPOSITORY,
         source_commit_sha=metadata.source_commit_sha,
         actions=tuple(actions),
+        approval=approval,
+        deferred_count=deferred_count,
     )
 
 
