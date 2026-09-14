@@ -131,8 +131,18 @@ jobs:
             exit 1
           fi
 
-      - name: Create issues-only fleet token
+      - name: Recheck live main before acquiring the write token
+        id: freshness
         if: steps.readiness.outputs.ready == 'true' && steps.plan.outputs.count != '0'
+        run: |
+          current="$(bash scripts/check-approved-report-current.sh "$RUNNER_TEMP/approved-report/report.json")"
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          if [ "$current" != 'true' ]; then
+            echo 'Report or validation inputs changed during preparation; nothing published.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Create issues-only fleet token
+        if: steps.freshness.outputs.current == 'true'
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
@@ -143,11 +153,16 @@ jobs:
           permission-issues: write
 
       - name: Create or update approved fleet records
-        if: steps.readiness.outputs.ready == 'true' && steps.plan.outputs.count != '0'
+        if: steps.freshness.outputs.current == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           APP_BOT_LOGIN: ${{ steps.app-token.outputs.app-slug }}[bot]
         run: |
+          current="$(bash scripts/check-approved-report-current.sh "$RUNNER_TEMP/approved-report/report.json")"
+          if [ "$current" != 'true' ]; then
+            echo 'Report or validation inputs changed before issue publication; nothing published.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           uv run --frozen infra-fleet-advisor publish-issues \
             --report "$RUNNER_TEMP/approved-report/report.json" \
             --policy policy.yaml --intent-dir intent \
