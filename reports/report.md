@@ -1,8 +1,8 @@
 # Infra Fleet Advisor report
 
-- Source: `infra-fleet-public` @ `125db526885067d7fd97418ce96bd1421fdcbe03`
+- Source: `infra-fleet-public` @ `6ac506c60eda239e37ef9d88ddf012f87689ee14`
 - Advisor version: `0.1.0` · Policy version: `1.0`
-- Model: `stub-synthesizer-v1` · Run started: `2026-09-14T14:47:47.623719+00:00`
+- Model: `stub-synthesizer-v1` · Run started: `2026-09-14T14:48:55.361443+00:00`
 - Intent catalog: `intent-md-v1:c96ca2c1d8d301a0b94986f1c3ed6b9a41e0ee36166cf5e2b0fc5ab289010a30`
 - Lifecycle: 1 new, 2 unchanged, 1 resolved, 0 suppressed (0 rejected)
 
