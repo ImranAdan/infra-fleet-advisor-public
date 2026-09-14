@@ -276,7 +276,7 @@
       "status": "declared_unverified"
     }
   ],
-  "new_count": 1,
+  "new_count": 0,
   "provenance": {
     "advisor_version": "0.1.0",
     "collector_versions": {
@@ -287,8 +287,8 @@
     "intent_digest": "intent-md-v1:c96ca2c1d8d301a0b94986f1c3ed6b9a41e0ee36166cf5e2b0fc5ab289010a30",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.0",
-    "run_started_at": "2026-09-14T14:48:55.361443+00:00",
-    "source_commit_sha": "6ac506c60eda239e37ef9d88ddf012f87689ee14",
+    "run_started_at": "2026-09-14T20:25:35.223381+00:00",
+    "source_commit_sha": "34f7f5a505d2f3614c3dd20a1c3128939bf8e255",
     "source_label": "infra-fleet-public"
   },
   "recommendations": [
@@ -346,7 +346,7 @@
       "priority": "high",
       "rank": 3,
       "rank_rationale": "priority=high, category_weight=5, confidence=0.95",
-      "status": "new",
+      "status": "unchanged",
       "suggested_change": "Use RollingUpdate with an effective maxUnavailable of 0 and a positive maxSurge, and define a readiness probe for every application container.",
       "summary": "A declared Kubernetes Deployment can make existing healthy capacity unavailable before replacement capacity is ready.",
       "title": "Deployment rollout can reduce healthy capacity",
@@ -378,5 +378,5 @@
   "rejected_count": 0,
   "resolved_count": 1,
   "suppressed_count": 0,
-  "unchanged_count": 2
+  "unchanged_count": 3
 }
