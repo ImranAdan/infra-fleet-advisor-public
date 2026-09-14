@@ -7,12 +7,25 @@ recommendations for human review.
 
 ## How it works
 
-1. Run the advisor to propose a report PR in this repository.
-2. Review and merge the report to approve eligible fleet issue creation.
-3. A separate workflow creates deduplicated issues in `infra-fleet-public`,
-   linked to the approving report PR.
-4. Choose valuable fleet issues and ask an agent in the fleet to propose fixes.
-5. Review those fleet PRs, then run the advisor again.
+```mermaid
+flowchart TD
+    subgraph Advisor[Advisor repository]
+        I[Owner intent and policy] --> E[Evaluate registered checks]
+        S[Verified fleet Git commit] --> C[Deterministic collectors]
+        C --> E
+        E --> W[Recommendation wording: stub or optional model]
+        W --> V[Validate evidence, limits and lifecycle]
+        V --> R[Report PR: JSON and Markdown]
+    end
+    R --> A{Reviewer decision}
+    A -->|Decline| N[No issue publication]
+    A -->|Merge| P[Separate approval and eligibility checks]
+    P -->|Eligible findings| F[Deduplicated fleet issues linked to report PR]
+    F --> H[Owner selects valuable work]
+    H --> X[Fleet agent proposes fix PR]
+    X --> T[Fleet review and CI]
+    T -. Next review .-> S
+```
 
 The report PR is the decision record. Issue creation does not start a fixing
 agent. Unsupported intent and incomplete collection remain visible in the
