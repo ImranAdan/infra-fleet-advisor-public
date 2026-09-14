@@ -352,6 +352,10 @@ are explicitly reported as unverified rather than silently assumed true. The
 cost catalog deliberately has no registered checks yet, exercising the path
 from new free-text intent to explicit advisor capability work.
 
+Terraform IAM review supports bounded JSON/HCL policy literals and quoted keys.
+Referenced or dynamic policies remain explicit partial coverage; analysis never
+fetches a policy URL or executes Terraform to fill that gap.
+
 The Anthropic synthesizer is implemented and unit-tested against recorded
 responses, but **has never been run against the live API**. Every report produced
 so far used `--synthesizer stub`, so the findings are real — the collectors are

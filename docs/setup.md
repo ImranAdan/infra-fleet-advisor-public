@@ -110,6 +110,10 @@ generic application rollout rule.
 Terraform's downloaded `.terraform` module files are excluded from analysis
 unless deliberately tracked. Workflow and Terraform collectors filter policy
 exclusions and untracked paths before applying the source-file budget. The IAM
-parser currently handles literal `jsonencode` policy objects; policies using
-local condition references or quoted HCL condition keys can remain unparseable
-and produce partial coverage. This is a gap to implement, not a clean IAM result.
+parser handles bounded literal `jsonencode` policy objects, including quoted
+HCL condition keys. Local references, interpolated strings, externally supplied
+policies, and unsupported policy shapes produce partial coverage. In particular,
+the fleet's load balancer controller references an HTTP policy response that the
+advisor does not fetch. That missing policy remains a coverage gap even when
+other policies produce concrete findings. The wildcard check does not evaluate
+effective permissions after conditions and denies.

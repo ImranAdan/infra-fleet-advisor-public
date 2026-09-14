@@ -132,8 +132,13 @@ inputs cannot prove satisfaction.
 Workflow and Terraform source-file budgets apply after policy exclusions and
 tracked-path filtering. Downloaded `.terraform` files are local tool state and
 are ignored unless explicitly tracked, so initialized checkouts retain the same
-available source budget. IAM expressions beyond the bounded literal parser's
-supported forms remain explicit partial coverage.
+available source budget. The IAM parser accepts bounded JSON/HCL literals,
+including quoted condition keys, and distinguishes comments from string values
+and heredoc examples. Duplicate keys, malformed statements, string templates,
+referenced policy documents, and other dynamic expressions make coverage
+partial. It never executes Terraform, resolves local references, or fetches a
+policy URL. The wildcard check detects explicit Allow/Action/Resource grants;
+it does not establish the effective permissions after conditions and denies.
 
 ### Intent compilation
 
