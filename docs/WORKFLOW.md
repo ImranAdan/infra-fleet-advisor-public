@@ -1,5 +1,7 @@
 # Report approval to fleet work
 
+[Documentation index](README.md)
+
 The report PR is the issue-creation decision record. The owner chooses which
 resulting fleet issues are valuable enough for an agent to implement.
 
@@ -35,7 +37,7 @@ runs the implemented checks; it does not invent missing checks.
 Inspect evidence, impact, suggested changes, trade-offs and coverage. Obtain
 required Quality checks; a default-token bot run may need maintainer approval
 or a reviewed maintainer push. Optional advisor-only App delivery is described
-in [setup](setup.md). Merge the report-only PR to approve eligible issue creation,
+in the [report guide](reports.md). Merge the report-only PR to approve eligible issue creation,
 or close it to decline that material report. Implementation PRs are separate.
 
 The configured fleet publisher verifies the merged PR and exact approved report,
@@ -66,5 +68,6 @@ gh workflow run fleet-issues.yml \
 
 The publisher deduplicates each issue action. The approved report must still be
 the current merged baseline under current policy and intent. A superseded or
-declined report cannot be used for a retry. See [setup](setup.md) for the
-issues-only App configuration and separate optional feedback setting.
+declined report cannot be used for a retry. See
+[fleet publication](fleet-publication.md) for the issues-only App configuration
+and [feedback](feedback.md) for the separate optional integration.

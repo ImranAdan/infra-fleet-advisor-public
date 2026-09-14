@@ -112,5 +112,5 @@ The optional advisor-only report delivery App addresses quality-check triggering
 while retaining earlier decline decisions. Its real GitHub event path remains
 unverified locally, and the default token and feedback policy PRs retain the
 limitation. Other adoption gaps include the three-check coverage limit and the
-rollout rule's treatment of generated Flux controllers. See [setup](setup.md)
+rollout rule's treatment of generated Flux controllers. See [coverage](status.md)
 for operational limits.
