@@ -26,6 +26,11 @@ backlog instead of delivering this workflow. It is not the requested product.
    merge commit's report using trusted default-branch advisor code. It checks
    that this remains the current merged report and matches current policy and
    intent before the existing full eligibility validation.
+   It re-fetches live main immediately before acquiring the issues-write token
+   and again before publication. A report, policy, intent or validation-code
+   change during preparation pauses the write rather than using the initial
+   checkout as proof of current approval. This is a freshness check, not a
+   repository merge lock.
 3. Every new fleet issue links to the approving report PR and approved report
    commit. It contains repository evidence, expected impact, suggested change,
    trade-offs and confidence. Merge approves publication of eligible findings;

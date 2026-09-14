@@ -1,0 +1,62 @@
+# Implemented scope and coverage
+
+[Documentation index](README.md)
+
+## Supported product
+
+The `fleet_repository_review` scenario reviews only
+`ImranAdan/infra-fleet-public`. It verifies a complete Git snapshot, loads bounded
+policy and Markdown intent, collects typed evidence, evaluates registered checks
+and produces ranked recommendations in JSON and Markdown. Lifecycle comparison
+tracks new, unchanged, resolved and suppressed findings against a prior report.
+
+Recommendations require concrete repository evidence, expected impact,
+suggested change, trade-offs and confidence. The report PR is the fleet
+issue-creation decision record. See the [workflow](WORKFLOW.md) and
+[publication guide](fleet-publication.md).
+
+## Collector coverage
+
+| Collector | Supported evidence | Limitations |
+|---|---|---|
+| GitHub Actions | Tracked workflow settings, including Trivy scanning configuration | Repository configuration only; exclusions and malformed or truncated input can leave coverage incomplete |
+| Terraform IAM | Bounded literal JSON and HCL policy objects, including quoted condition keys | References, interpolation and unsupported shapes remain partial; no policy URL fetch or Terraform execution |
+| Kubernetes Deployments | Tracked raw `apps/v1` Deployment manifests under `k8s/` | Does not render Helm or inspect a live cluster; missing, malformed, duplicate or truncated evidence remains unverified |
+
+The initial security, reliability and cost catalogs contain seventeen positions.
+Three have registered checks. Unsupported positions and incomplete evaluation
+remain explicit report coverage; the cost catalog has no registered checks.
+They do not automatically create issues in either repository. The
+[coverage review](COVERAGE-REVIEW.md) preserves the retired generated backlog.
+
+Untracked Terraform downloads, including `.terraform` module files, are not
+evidence. Workflow and IAM collectors apply policy exclusions and tracked-path
+filtering before source-file limits. The IAM wildcard check does not establish
+effective permissions after conditions and denies. For example, an HTTP-loaded
+load balancer controller policy remains a gap because the advisor does not
+fetch it.
+
+The rollout collector also sees Flux's generated `source-controller`, whose
+upstream Deployment uses `Recreate`. Evaluate the intent's workload scope and
+accepted availability trade-off before acting. A generic application rollout
+rule does not justify mechanically rewriting an upstream controller manifest.
+
+## Model support
+
+`stub` is the default and runs the deterministic checks with templated wording.
+The optional Anthropic synthesizer is implemented and tested against recorded
+responses. Live model API validation is not part of the current baseline.
+Deterministic checks and validation control which recommendations appear;
+model-backed wording cannot invent findings or omit required divergences.
+
+## What a report proves
+
+A report captures repository desired state at one commit. It does not establish
+that a private deployment matches that revision or that live infrastructure is
+healthy. Incomplete relevant collection is deferred during fleet publication;
+absence of evidence does not establish that the fleet is healthy.
+
+The advisor does not deploy, merge fleet fixes or inspect AWS and Kubernetes.
+The normal fix path is a maintainer-selected fleet agent. Optional
+[mechanical remediation](remediation.md) and [decision feedback](feedback.md)
+remain separate workflows.
