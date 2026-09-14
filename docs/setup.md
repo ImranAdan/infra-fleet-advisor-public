@@ -17,8 +17,8 @@ HEAD SHA, verifies a clean checkout, and writes JSON and Markdown under
 
 Supply `FLEET_CHECKOUT` and `REVIEW_OUTPUT` to Make to change these locations.
 The output must stay outside the fleet checkout, including through symlinks.
-The initial install needs internet access. Review does not need a model API,
-cloud access, Docker, or a GitHub token.
+The initial install needs internet access. Review then evaluates local
+repository files through the deterministic stub and registered collectors.
 
 For lifecycle comparison, run the CLI with explicit inputs and
 `--prior-report /path/to/previous/report.json`. A local prior report is for
