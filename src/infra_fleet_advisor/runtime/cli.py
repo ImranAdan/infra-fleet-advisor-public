@@ -7,8 +7,18 @@ from pathlib import Path
 
 from infra_fleet_advisor.core.errors import AdvisorError, PolicyError, ProvenanceError
 from infra_fleet_advisor.provenance.source_verification import verify_snapshot
+from infra_fleet_advisor.runtime.capability_publication import (
+    build_capability_plan,
+    publish_capability_plan,
+    write_capability_plan,
+)
 from infra_fleet_advisor.runtime.clock import SystemClock
-from infra_fleet_advisor.runtime.composition import SYNTHESIZERS, RunInputs, compose_and_run
+from infra_fleet_advisor.runtime.composition import (
+    DEFAULT_SYNTHESIZER,
+    SYNTHESIZERS,
+    RunInputs,
+    compose_and_run,
+)
 from infra_fleet_advisor.runtime.fleet_feedback import (
     MAX_FEEDBACK_PR_HISTORY,
     build_feedback_plan,
@@ -23,6 +33,7 @@ from infra_fleet_advisor.runtime.issue_publication import (
     build_issue_plan,
     write_issue_plan,
 )
+from infra_fleet_advisor.runtime.report_readiness import check_report_readiness
 from infra_fleet_advisor.runtime.report_signature import (
     compute_report_signature,
     decide_publication,
@@ -57,13 +68,15 @@ def _build_parser() -> argparse.ArgumentParser:
     review.add_argument("--output-dir", required=True, type=Path)
     review.add_argument("--prior-report", type=Path, default=None)
     review.add_argument("--source-label", default="infra-fleet-public")
-    review.add_argument("--synthesizer", choices=SYNTHESIZERS, default=SYNTHESIZERS[0])
+    review.add_argument("--synthesizer", choices=SYNTHESIZERS, default=DEFAULT_SYNTHESIZER)
 
     remediate = sub.add_parser(
         "remediate", help="Apply mechanical fixes a published report already justifies"
     )
     remediate.add_argument("--checkout", required=True, type=Path)
     remediate.add_argument("--report", required=True, type=Path)
+    remediate.add_argument("--policy", required=True, type=Path)
+    remediate.add_argument("--intent-dir", required=True, type=Path)
     remediate.add_argument(
         "--dry-run", action="store_true", help="Report what would change without writing"
     )
@@ -72,6 +85,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "report-signature", help="Compute the material publication signature of a report"
     )
     signature.add_argument("--report", required=True, type=Path)
+
+    readiness = sub.add_parser(
+        "report-readiness", help="Check whether a merged report uses current policy and intent"
+    )
+    readiness.add_argument("--report", required=True, type=Path)
+    readiness.add_argument("--policy", required=True, type=Path)
+    readiness.add_argument("--intent-dir", required=True, type=Path)
 
     publication = sub.add_parser(
         "publication-decision",
@@ -84,6 +104,7 @@ def _build_parser() -> argparse.ArgumentParser:
     decline_source.add_argument("--closed-pr-history", type=Path, default=None)
     publication.add_argument("--repository")
     publication.add_argument("--branch")
+    publication.add_argument("--workflow-bot-login", default="github-actions[bot]")
 
     issues = sub.add_parser(
         "issue-plan", help="Revalidate a merged report and write bounded fleet issue actions"
@@ -101,6 +122,25 @@ def _build_parser() -> argparse.ArgumentParser:
     publish_issues.add_argument("--policy", required=True, type=Path)
     publish_issues.add_argument("--intent-dir", required=True, type=Path)
     publish_issues.add_argument("--app-bot-login", required=True)
+
+    capabilities = sub.add_parser(
+        "capability-plan",
+        help="Revalidate a merged report and write bounded advisor capability actions",
+    )
+    capabilities.add_argument("--report", required=True, type=Path)
+    capabilities.add_argument("--policy", required=True, type=Path)
+    capabilities.add_argument("--intent-dir", required=True, type=Path)
+    capabilities.add_argument("--output", required=True, type=Path)
+
+    publish_capabilities = sub.add_parser(
+        "publish-capability-gaps",
+        help="Publish revalidated intent evaluation gaps in the advisor repository",
+    )
+    publish_capabilities.add_argument("--report", required=True, type=Path)
+    publish_capabilities.add_argument("--policy", required=True, type=Path)
+    publish_capabilities.add_argument("--intent-dir", required=True, type=Path)
+    publish_capabilities.add_argument("--repository", required=True)
+    publish_capabilities.add_argument("--workflow-bot-login", required=True)
 
     feedback = sub.add_parser(
         "feedback-plan",
@@ -139,6 +179,8 @@ def _remediate(args: argparse.Namespace) -> int:
     """Applies only what a published report already justified. The report is the
     authority on both which concerns are actionable and which files they touch —
     nothing is discovered by scanning the fleet here."""
+    plan = build_issue_plan(args.report, args.policy, args.intent_dir)
+    eligible = {action.fingerprint for action in plan.actions if action.action == "active"}
     prior = load_prior_report(args.report)
     if prior is None:
         print("no report to act on", file=sys.stderr)
@@ -154,7 +196,7 @@ def _remediate(args: argparse.Namespace) -> int:
         # A suppressed concern is one the owner deliberately excluded; a
         # resolved one is already fixed, and an accepted trade-off is a choice
         # to live with the finding. None justifies touching the fleet.
-        if rec.status not in ("new", "unchanged") or rec.owner_accepted_trade_off:
+        if rec.fingerprint not in eligible:
             continue
         patches = build_patches(
             checkout_root=args.checkout,
@@ -180,6 +222,60 @@ def _remediate(args: argparse.Namespace) -> int:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
+
+    if args.command == "report-readiness":
+        try:
+            readiness = check_report_readiness(args.report, args.policy, args.intent_dir)
+            print(json.dumps(asdict(readiness), sort_keys=True))
+            return EXIT_OK
+        except PolicyError as exc:
+            print(f"policy error: {exc}", file=sys.stderr)
+            return EXIT_POLICY_ERROR
+
+    if args.command == "publish-capability-gaps":
+        try:
+            capability_plan = build_capability_plan(args.report, args.policy, args.intent_dir)
+            if args.repository != capability_plan.target_repository:
+                raise PolicyError("capability publisher is running in an unexpected repository")
+            result = publish_capability_plan(
+                capability_plan,
+                GhCliIssueClient(capability_plan.target_repository),
+                args.workflow_bot_login,
+            )
+            print(
+                f"published {result.created} capability issue(s), found "
+                f"{result.existing} existing, updated {result.updated}, restored "
+                f"{result.labels_restored} label set(s), and added "
+                f"{result.resolution_comments} resolution note(s) and "
+                f"{result.reactivation_comments} reactivation note(s)"
+            )
+            return EXIT_OK
+        except PolicyError as exc:
+            print(f"policy error: {exc}", file=sys.stderr)
+            return EXIT_POLICY_ERROR
+        except AdvisorError as exc:
+            print(f"pipeline error: {exc}", file=sys.stderr)
+            return EXIT_PIPELINE_ERROR
+
+    if args.command == "capability-plan":
+        try:
+            capability_plan = build_capability_plan(args.report, args.policy, args.intent_dir)
+            write_capability_plan(capability_plan, args.output)
+            active = sum(action.action == "active" for action in capability_plan.actions)
+            print(
+                f"wrote capability plan with {active} active gap(s) and "
+                f"{len(capability_plan.actions) - active} resolution action(s)"
+            )
+            return EXIT_OK
+        except PolicyError as exc:
+            print(f"policy error: {exc}", file=sys.stderr)
+            return EXIT_POLICY_ERROR
+        except OSError as exc:
+            print(
+                f"pipeline error: cannot write capability plan: {type(exc).__name__}",
+                file=sys.stderr,
+            )
+            return EXIT_PIPELINE_ERROR
 
     if args.command == "feedback-publication-decision":
         try:
@@ -285,9 +381,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                     args.closed_pr_history,
                     repository=args.repository,
                     branch=args.branch,
+                    workflow_bot_login=args.workflow_bot_login,
                 )
             else:
-                if args.repository is not None or args.branch is not None:
+                if (
+                    args.repository is not None
+                    or args.branch is not None
+                    or args.workflow_bot_login != "github-actions[bot]"
+                ):
                     raise PolicyError("--repository and --branch require --closed-pr-history")
                 declined_body = (
                     read_declined_pr_body(args.latest_declined_pr_body)

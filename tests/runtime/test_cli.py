@@ -40,7 +40,6 @@ def _argv(repo: Path, sha: str, output_dir: Path, prior: Path | None = None) -> 
         str(INTENTS),
         "--output-dir",
         str(output_dir),
-        # Keeps the suite hermetic: the CLI now defaults to the real model.
         "--synthesizer",
         "stub",
     ]
@@ -61,6 +60,41 @@ def test_full_run_produces_schema_valid_reports_without_cloud_creds(
     payload = json.loads((output_dir / "report.json").read_text(encoding="utf-8"))
     assert payload["new_count"] == 1
     assert (output_dir / "report.md").exists()
+
+
+def test_review_defaults_to_offline_synthesis(git_checkout, tmp_path: Path, monkeypatch) -> None:
+    repo, sha = git_checkout("trivy_ignore_unfixed_bad.yml")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    argv = _argv(repo, sha, tmp_path / "out")
+    del argv[-2:]
+    assert main(argv) == EXIT_OK
+    report = json.loads((tmp_path / "out" / "report.json").read_text())
+    assert report["provenance"]["model_identifier"] == "stub-synthesizer-v1"
+
+
+def test_report_readiness_command_waits_for_current_intent(
+    git_checkout, tmp_path: Path, capsys
+) -> None:
+    repo, sha = git_checkout("trivy_ignore_unfixed_bad.yml")
+    output_dir = tmp_path / "out"
+    assert main(_argv(repo, sha, output_dir)) == EXIT_OK
+    capsys.readouterr()
+    argv = [
+        "report-readiness",
+        "--report",
+        str(output_dir / "report.json"),
+        "--policy",
+        str(POLICY),
+        "--intent-dir",
+        str(INTENTS),
+    ]
+    assert main(argv) == EXIT_OK
+    assert json.loads(capsys.readouterr().out) == {"ready": True, "reason": "current"}
+    payload = json.loads((output_dir / "report.json").read_text())
+    payload["provenance"]["intent_digest"] = "previous-catalog"
+    (output_dir / "report.json").write_text(json.dumps(payload))
+    assert main(argv) == EXIT_OK
+    assert json.loads(capsys.readouterr().out) == {"ready": False, "reason": "intent_changed"}
 
 
 def test_sha_mismatch_exits_with_provenance_error(git_checkout, tmp_path: Path) -> None:
@@ -240,7 +274,7 @@ def test_publication_decision_command_rejects_missing_decline_body_without_path_
     assert str(missing) not in error
 
 
-def test_remediation_skips_an_owner_accepted_trade_off(
+def test_remediation_rejects_a_forged_owner_accepted_trade_off(
     git_checkout, tmp_path: Path, capsys
 ) -> None:
     repo, sha = git_checkout("trivy_ignore_unfixed_bad.yml")
@@ -259,15 +293,73 @@ def test_remediation_skips_an_owner_accepted_trade_off(
                 str(repo),
                 "--report",
                 str(output_dir / "report.json"),
+                "--policy",
+                str(POLICY),
+                "--intent-dir",
+                str(INTENTS),
             ]
         )
-        == EXIT_OK
+        == EXIT_POLICY_ERROR
     )
 
-    assert "no mechanically fixable findings" in capsys.readouterr().out
+    assert "trade-off does not match" in capsys.readouterr().err
     assert "ignore-unfixed" in (
         repo / ".github" / "workflows" / "trivy_ignore_unfixed_bad.yml"
     ).read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("dry_run", [True, False])
+def test_remediation_validates_before_preview_or_write(
+    git_checkout, tmp_path: Path, dry_run: bool
+) -> None:
+    repo, sha = git_checkout("trivy_ignore_unfixed_bad.yml")
+    output_dir = tmp_path / "out"
+    assert main(_argv(repo, sha, output_dir)) == EXIT_OK
+    argv = [
+        "remediate",
+        "--checkout",
+        str(repo),
+        "--report",
+        str(output_dir / "report.json"),
+        "--policy",
+        str(POLICY),
+        "--intent-dir",
+        str(INTENTS),
+    ]
+    if dry_run:
+        argv.append("--dry-run")
+    assert main(argv) == EXIT_OK
+    workflow = repo / ".github/workflows/trivy_ignore_unfixed_bad.yml"
+    assert ("ignore-unfixed" in workflow.read_text()) is dry_run
+
+
+def test_remediation_rejects_tampered_fingerprint_before_writing(
+    git_checkout, tmp_path: Path
+) -> None:
+    repo, sha = git_checkout("trivy_ignore_unfixed_bad.yml")
+    output_dir = tmp_path / "out"
+    assert main(_argv(repo, sha, output_dir)) == EXIT_OK
+    path = output_dir / "report.json"
+    payload = json.loads(path.read_text())
+    payload["recommendations"][0]["fingerprint"] = "fp_" + "0" * 24
+    path.write_text(json.dumps(payload))
+    assert (
+        main(
+            [
+                "remediate",
+                "--checkout",
+                str(repo),
+                "--report",
+                str(path),
+                "--policy",
+                str(POLICY),
+                "--intent-dir",
+                str(INTENTS),
+            ]
+        )
+        == EXIT_POLICY_ERROR
+    )
+    assert "ignore-unfixed" in (repo / ".github/workflows/trivy_ignore_unfixed_bad.yml").read_text()
 
 
 def test_issue_plan_command_writes_validated_actions_without_overwriting(
@@ -297,6 +389,116 @@ def test_issue_plan_command_writes_validated_actions_without_overwriting(
 
     assert main(argv) == EXIT_PIPELINE_ERROR
     assert "cannot write issue plan: FileExistsError" in capsys.readouterr().err
+
+
+def test_capability_plan_command_writes_gap_and_resolution_actions(
+    git_checkout, tmp_path: Path, capsys
+) -> None:
+    repo, sha = git_checkout("trivy_ignore_unfixed_bad.yml")
+    output_dir = tmp_path / "out"
+    assert main(_argv(repo, sha, output_dir)) == EXIT_OK
+    capsys.readouterr()
+    plan_path = tmp_path / "capabilities" / "plan.json"
+    argv = [
+        "capability-plan",
+        "--report",
+        str(output_dir / "report.json"),
+        "--policy",
+        str(POLICY),
+        "--intent-dir",
+        str(INTENTS),
+        "--output",
+        str(plan_path),
+    ]
+
+    assert main(argv) == EXIT_OK
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    assert {action["action"] for action in plan["actions"]} == {"active", "resolved"}
+    assert plan["target_repository"] == "ImranAdan/infra-fleet-advisor-public"
+
+    assert main(argv) == EXIT_PIPELINE_ERROR
+    assert "cannot write capability plan: FileExistsError" in capsys.readouterr().err
+
+
+def test_publish_capability_gaps_binds_validated_plan_to_advisor(
+    git_checkout, tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, sha = git_checkout("trivy_ignore_unfixed_bad.yml")
+    output_dir = tmp_path / "out"
+    assert main(_argv(repo, sha, output_dir)) == EXIT_OK
+    capsys.readouterr()
+    captured: dict[str, object] = {}
+
+    def fake_client(repository: str) -> object:
+        captured["repository"] = repository
+        return object()
+
+    def fake_publish(plan, client: object, workflow_bot_login: str) -> PublicationResult:
+        captured["plan"] = plan
+        captured["client"] = client
+        captured["workflow_bot_login"] = workflow_bot_login
+        return PublicationResult(created=2, reactivation_comments=1)
+
+    monkeypatch.setattr(cli_module, "GhCliIssueClient", fake_client)
+    monkeypatch.setattr(cli_module, "publish_capability_plan", fake_publish)
+
+    assert (
+        main(
+            [
+                "publish-capability-gaps",
+                "--report",
+                str(output_dir / "report.json"),
+                "--policy",
+                str(POLICY),
+                "--intent-dir",
+                str(INTENTS),
+                "--repository",
+                "ImranAdan/infra-fleet-advisor-public",
+                "--workflow-bot-login",
+                "github-actions[bot]",
+            ]
+        )
+        == EXIT_OK
+    )
+
+    assert captured["repository"] == "ImranAdan/infra-fleet-advisor-public"
+    assert captured["workflow_bot_login"] == "github-actions[bot]"
+    output = capsys.readouterr().out
+    assert "published 2 capability issue(s)" in output
+    assert "1 reactivation note(s)" in output
+
+
+def test_publish_capability_gaps_rejects_another_repository_before_access(
+    git_checkout, tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, sha = git_checkout("trivy_ignore_unfixed_bad.yml")
+    output_dir = tmp_path / "out"
+    assert main(_argv(repo, sha, output_dir)) == EXIT_OK
+    capsys.readouterr()
+    monkeypatch.setattr(
+        cli_module,
+        "GhCliIssueClient",
+        lambda _repository: pytest.fail("GitHub must not be accessed"),
+    )
+
+    exit_code = main(
+        [
+            "publish-capability-gaps",
+            "--report",
+            str(output_dir / "report.json"),
+            "--policy",
+            str(POLICY),
+            "--intent-dir",
+            str(INTENTS),
+            "--repository",
+            "someone/else",
+            "--workflow-bot-login",
+            "github-actions[bot]",
+        ]
+    )
+
+    assert exit_code == EXIT_POLICY_ERROR
+    assert "unexpected repository" in capsys.readouterr().err
 
 
 def test_publish_issues_command_binds_validated_plan_to_adapter(

@@ -13,7 +13,12 @@ Intent catalog → static check registry ─────────────
 Verified fleet snapshot → collectors → evidence set ─┼→ evaluations
                                                       │       │
 Advisor policy ───────────────────────────────────────┘       ├→ satisfied
-                                                              ├→ unverified
+                                                              ├→ unverified ─→ capability plan
+                                                              │                    │ merged report
+                                                              │                    ↓
+                                                              │              advisor issue
+                                                              │                    │ agent + human PR
+                                                              │                    └→ trusted capability
                                                               └→ divergent
                                                                      │
                                       required candidate ← analyst wording
@@ -67,6 +72,21 @@ explicit scenario provider, and external publication plans for one invocation.
 It owns CLI composition, safe output handling, and GitHub adapter inputs but not
 recommendation semantics.
 
+Local review defaults to the deterministic stub; a real model is explicitly
+selected. `report-readiness` checks merged-report source identity and compares
+policy version and intent digest before capability and fleet issue publication.
+Missing or stale reports cause those workflows to wait without making a new
+baseline. Malformed provenance fails. Readiness is only an ordering gate: the
+existing publication plan validators still own evidence and eligibility checks.
+Fleet issue publication and feedback require `FLEET_ISSUES_ENABLED=true`.
+Remediation reuses issue-plan validation before selecting active, eligible
+fingerprints and needs a write token only when proposing a fleet PR.
+An optional advisor-only GitHub App delivers report PRs so their events trigger
+normal quality checks. Its identity is derived from the token-minting action,
+never report or PR prose. Bounded decline history recognizes that configured
+bot and the original GitHub Actions bot. The fallback requires no App but cannot
+trigger ordinary PR quality checks.
+
 ## Supporting adapters
 
 Repository parsers, subprocess-backed scanners, Git verification, model
@@ -108,6 +128,17 @@ resolves RollingUpdate percentage fenceposts against desired replicas, records
 readiness-probe coverage, and emits one typed capacity fact per unambiguous
 `apps/v1` Deployment. Malformed, excluded, untracked, duplicate, or truncated
 inputs cannot prove satisfaction.
+
+Workflow and Terraform source-file budgets apply after policy exclusions and
+tracked-path filtering. Downloaded `.terraform` files are local tool state and
+are ignored unless explicitly tracked, so initialized checkouts retain the same
+available source budget. The IAM parser accepts bounded JSON/HCL literals,
+including quoted condition keys, and distinguishes comments from string values
+and heredoc examples. Duplicate keys, malformed statements, string templates,
+referenced policy documents, and other dynamic expressions make coverage
+partial. It never executes Terraform, resolves local references, or fetches a
+policy URL. The wildcard check detects explicit Allow/Action/Resource grants;
+it does not establish the effective permissions after conditions and denies.
 
 ### Intent compilation
 
@@ -158,6 +189,26 @@ consumes only that plan. It uses an installation token limited to
 changes issue state. Resolution means “no longer detected” and produces an
 idempotent note for human review, not automatic closure.
 
+Intent capability publication is a parallel, advisor-local boundary after
+report merge. Deterministic code validates report provenance and a complete
+one-to-one correspondence between the current catalog and its recorded
+evaluations. Every unverified reason except `category_not_enabled_by_policy`
+becomes a stable action keyed by intent document and proposition identity. A
+same-repository token with `issues: write` reconciles exact labels and body
+markers. Stable identity deduplicates the issue while a separate content marker
+allows current ratified intent to replace stale bot-authored issue text. The
+issue describes advisor work and cannot cross the fleet issue
+publisher because it contains no recommendation fingerprint or evidence-backed
+divergence. Later supported evaluations receive an idempotent resolution note;
+if a later report makes the same gap actionable again, the complete bounded
+bot-authored lifecycle history permits one reactivation note. Repeated reports
+in the same state are no-ops, and issue state remains human-owned.
+
+Capability issues may drive agent-authored implementation pull requests, but
+those changes enter through the normal advisor review and CI boundary. Intent
+text is never executed, dynamically imported, or treated as proof. This creates
+a self-evolving work queue without making the model or configuration trusted.
+
 Fleet decision feedback is a third deterministic boundary. The GitHub adapter
 projects fleet issues into number, state, author, and label sets; title, body,
 and comments are discarded at the boundary. Trusted code accepts only closed,
@@ -194,6 +245,8 @@ replacement remains protected by an exact lease.
 10. Compute stable fingerprints and compare with the prior report.
 11. Apply deterministic output limits and ordering rules.
 12. Write equivalent JSON and Markdown reports.
+13. After report merge, reconcile unverified evaluations into advisor capability
+    issues and verified divergences into fleet issues through separate plans.
 
 ## Initial implementation shape
 

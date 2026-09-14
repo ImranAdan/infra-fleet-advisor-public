@@ -206,6 +206,18 @@ def test_unmapped_and_unknown_checks_are_explicitly_unverified() -> None:
     assert unknown.evaluations[0].reason == "check_not_registered"
 
 
+def test_disabled_category_takes_precedence_over_missing_capability() -> None:
+    compilation = compile_intents(
+        _catalog(None, category="cost"),
+        enabled_categories=frozenset({"security"}),
+        evidence=(),
+        coverage=(),
+    )
+
+    assert compilation.evaluations[0].status == "declared_unverified"
+    assert compilation.evaluations[0].reason == "category_not_enabled_by_policy"
+
+
 def test_registered_check_cannot_be_relabelled_to_another_category() -> None:
     with pytest.raises(PolicyError, match="category does not match"):
         compile_intents(

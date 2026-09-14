@@ -1,3 +1,8 @@
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
+
 from infra_fleet_advisor.core.limits import ExecutionLimits
 from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
     terraform_iam_collector as tf_collector,
@@ -210,3 +215,206 @@ def test_tracked_paths_none_skips_the_check(git_checkout) -> None:
     repo, _sha = git_checkout(terraform_files=("wildcard_iam_policy.tf",))
     result = tf_collector.collect(repo, LIMITS, tracked_paths=None)
     assert result.coverage.status == "ok"
+
+
+def test_downloaded_modules_do_not_displace_verified_policy(git_checkout) -> None:
+    repo, _sha = git_checkout(terraform_files=("wildcard_iam_policy.tf",))
+    source = repo / "infrastructure/permanent/wildcard_iam_policy.tf"
+    cache = repo / "infrastructure/permanent/.terraform/modules/downloaded"
+    cache.mkdir(parents=True)
+    for number in range(60):
+        (cache / f"module-{number}.tf").write_text(source.read_text())
+    result = tf_collector.collect(
+        repo,
+        replace(LIMITS, max_workflow_files=1),
+        tracked_paths=frozenset({source.relative_to(repo).as_posix()}),
+    )
+    assert len(result.evidence) == 1
+    assert result.coverage.status == "ok"
+    assert result.coverage.error_summary is None
+
+
+def test_ineligible_terraform_files_do_not_consume_the_budget(git_checkout) -> None:
+    repo, _sha = git_checkout(terraform_files=("wildcard_iam_policy.tf",))
+    source = repo / "infrastructure/permanent/wildcard_iam_policy.tf"
+    excluded = source.with_name("aaa-excluded.tf")
+    untracked = source.with_name("bbb-untracked.tf")
+    excluded.write_text(source.read_text())
+    untracked.write_text(source.read_text())
+    result = tf_collector.collect(
+        repo,
+        replace(LIMITS, max_workflow_files=1),
+        excluded_paths=frozenset({excluded.relative_to(repo).as_posix()}),
+        tracked_paths=frozenset(
+            {
+                source.relative_to(repo).as_posix(),
+                excluded.relative_to(repo).as_posix(),
+            }
+        ),
+    )
+    assert len(result.evidence) == 1
+    assert result.coverage.status == "partial"
+    assert "not part of the verified commit" in (result.coverage.error_summary or "")
+    assert "omitted" not in (result.coverage.error_summary or "")
+
+
+def _collect_text(tmp_path: Path, text: str) -> tf_collector.CollectorResult:
+    source = tmp_path / "infrastructure/permanent/policy.tf"
+    source.parent.mkdir(parents=True)
+    source.write_text(text, encoding="utf-8")
+    return tf_collector.collect(tmp_path, LIMITS)
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "data.http.controller_policy.response_body",
+        "data.aws_iam_policy_document.controller.json",
+        "local.policy",
+        'file("policy.json")',
+        "jsonencode(local.policy)",
+        'jsonencode({ Statement = [] }) + "extra"',
+        'jsonencode({ Statement = [] })\n+ "extra"',
+    ],
+)
+def test_referenced_or_dynamic_policies_report_incomplete_coverage(tmp_path, expression) -> None:
+    result = _collect_text(
+        tmp_path, f'resource "aws_iam_policy" "controller" {{\n policy = {expression}\n}}'
+    )
+    assert result.evidence == ()
+    assert result.coverage.status == "partial"
+    assert "unparseable" in (result.coverage.error_summary or "")
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "null",
+        '"not a statement"',
+        '{ Effect = ["Allow"], Action = "eks:*", Resource = "*" }',
+        '{ Effect = "Allow", Action = null, Resource = "*" }',
+        '{ Effect = "Allow", Action = [], Resource = "*" }',
+        '{ Effect = "Allow", Action = "eks:*", Resource = {} }',
+        '{ Effect = "Allow", Action = "eks:*", Resource = "" }',
+        '{ Effect = "Allow", NotAction = "eks:Describe*", Resource = "*" }',
+    ],
+)
+def test_unsupported_statement_shapes_fail_closed_without_crashing(tmp_path, statement) -> None:
+    result = _collect_text(
+        tmp_path,
+        'resource "aws_iam_policy" "controller" {\n'
+        f" policy = jsonencode({{ Statement = [{statement}] }})\n}}",
+    )
+    assert result.evidence == ()
+    assert result.coverage.status == "partial"
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        '{ "Statement" = [{ "Effect" = "Allow", "Action" = "eks:*", "Resource" = "*" }] }',
+        '{ "Statement": [{ "Effect": "Allow", "Action": ["eks:*"], "Resource": "*" }] }',
+        """{
+          Statement = [{
+            Effect = "Allow"
+            Action = ["eks:*",]
+            Resource = "*"
+            Condition = { StringEquals = { "aws:RequestedRegion" = "eu-west-2" } }
+          },]
+        }""",
+    ],
+)
+def test_quoted_hcl_keys_and_json_literals_are_supported(tmp_path, policy) -> None:
+    result = _collect_text(
+        tmp_path, f'resource "aws_iam_policy" "controller" {{\n policy = jsonencode({policy})\n}}'
+    )
+    assert result.coverage.status == "ok"
+    assert len(result.evidence) == 1
+    assert result.evidence[0].fact["wildcard_actions"] == "eks:*"
+
+
+def test_comment_and_delimiter_text_in_strings_does_not_hide_a_grant(tmp_path) -> None:
+    result = _collect_text(
+        tmp_path,
+        """resource "aws_iam_policy" "controller" {
+          description = "https://example.invalid/# /* } ) { literal */"
+          policy = jsonencode({
+            # } ) resource "aws_iam_policy" "fake" {
+            Statement = [{
+              Sid = "https://example.invalid/# /* } ) { literal */"
+              Effect = "Allow" // } )
+              Action = "eks:*" /* } ) */
+              Resource = "*"
+            }]
+          })
+        }""",
+    )
+    assert result.coverage.status == "ok"
+    assert len(result.evidence) == 1
+
+
+@pytest.mark.parametrize("prefix", ["#", "//"])
+def test_line_commented_resource_is_not_active_configuration(tmp_path, prefix) -> None:
+    result = _collect_text(
+        tmp_path,
+        f'{prefix} resource "aws_iam_policy" "retired" {{\n'
+        f'{prefix} policy = jsonencode({{ Statement = [{{ Effect = "Allow",'
+        ' Action = "eks:*", Resource = "*" }] })\n'
+        f"{prefix} }}\n",
+    )
+    assert result.evidence == ()
+    assert result.coverage.status == "ok"
+
+
+def test_resource_and_policy_examples_in_heredocs_are_inert(tmp_path) -> None:
+    result = _collect_text(
+        tmp_path,
+        """locals {
+          documentation = <<-EXAMPLE
+            resource "aws_iam_policy" "example" {
+              policy = jsonencode({ Statement = [{
+                Effect = "Allow", Action = "eks:*", Resource = "*"
+              }] })
+            }
+          EXAMPLE
+        }
+        """,
+    )
+    assert result.evidence == ()
+    assert result.coverage.status == "ok"
+
+
+def test_nested_policy_attribute_cannot_replace_the_resource_policy(tmp_path) -> None:
+    result = _collect_text(
+        tmp_path,
+        """resource "aws_iam_policy" "controller" {
+          policy = local.actual_policy
+          tags = {
+            policy = jsonencode({ Statement = [{
+              Effect = "Allow", Action = "eks:*", Resource = "*"
+            }] })
+          }
+        }""",
+    )
+    assert result.evidence == ()
+    assert result.coverage.status == "partial"
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        '{ Statement = [{ Effect = "Allow", Action = "${var.action}", Resource = "*" }] }',
+        '{ Statement = [{ Effect = "Allow", Action = "eks:*", Resource = "*" }], Statement = [] }',
+        "{ Statement = [] }",
+        '{ Statement = [{ Effect = "Allow", Action = "eks:*", Resource = "*" }],'
+        " Condition = local.region_only }",
+        '{ Statement = [{ Effect = "Allow", Action = "eks:*", Resource = "*" }],'
+        " Metadata = " + "[" * 70 + "0" + "]" * 70 + " }",
+    ],
+)
+def test_ambiguous_dynamic_and_deep_literals_are_incomplete(tmp_path, policy) -> None:
+    result = _collect_text(
+        tmp_path, f'resource "aws_iam_policy" "controller" {{\n policy = jsonencode({policy})\n}}'
+    )
+    assert result.evidence == ()
+    assert result.coverage.status == "partial"

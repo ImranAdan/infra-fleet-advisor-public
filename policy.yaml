@@ -11,12 +11,13 @@ max_recommendations: 10
 max_wall_seconds: 300
 max_model_calls: 1
 
-enabled_categories: [security, reliability]
+enabled_categories: [security, reliability, cost]
 
 # Higher wins when ranking two findings of the same priority.
 category_priority:
   security: 10
   reliability: 5
+  cost: 5
 
 # Concerns the owner has consciously accepted. These still appear in the report,
 # annotated with the rationale, rather than being hidden.

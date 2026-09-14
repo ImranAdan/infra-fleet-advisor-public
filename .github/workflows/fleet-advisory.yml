@@ -23,7 +23,7 @@ on:
         description: anthropic (real model, needs ANTHROPIC_API_KEY) or stub (offline)
         type: choice
         options: [anthropic, stub]
-        default: anthropic
+        default: stub
 
 permissions:
   contents: write
@@ -39,6 +39,9 @@ env:
 jobs:
   advise:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HAS_REPORT_APP: ${{ secrets.ADVISOR_REPORT_APP_CLIENT_ID != '' && secrets.ADVISOR_REPORT_APP_PRIVATE_KEY != '' }}
     steps:
       # Pinned to the default branch, not the dispatch ref: the prior report
       # and the policy must come from merged state. Dispatching from a feature
@@ -46,13 +49,13 @@ jobs:
       # persist-credentials is off on both checkouts so no token is left in
       # .git/config while repository code runs; the push authenticates itself.
       - name: Check out the advisor
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
       - name: Check out the fleet under review
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: ${{ env.TARGET_REPO }}
           ref: ${{ inputs.target_ref || 'main' }}
@@ -63,7 +66,7 @@ jobs:
         id: target
         run: echo "sha=$(git -C target rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.11"
 
@@ -75,6 +78,31 @@ jobs:
         run: |
           pip install "uv==0.9.14"
           uv sync --frozen --no-dev
+
+      # App-authored PRs trigger ordinary pull_request quality checks. The
+      # token is scoped to this advisor repo and is never passed to collectors.
+      - name: Verify optional report delivery credentials
+        env:
+          REPORT_APP_ID: ${{ secrets.ADVISOR_REPORT_APP_CLIENT_ID }}
+          REPORT_APP_KEY: ${{ secrets.ADVISOR_REPORT_APP_PRIVATE_KEY }}
+        run: |
+          if { [ -n "$REPORT_APP_ID" ] && [ -z "$REPORT_APP_KEY" ]; } || \
+             { [ -z "$REPORT_APP_ID" ] && [ -n "$REPORT_APP_KEY" ]; }; then
+            echo '::error::Report delivery needs both ADVISOR_REPORT_APP_CLIENT_ID and ADVISOR_REPORT_APP_PRIVATE_KEY, or neither.'
+            exit 1
+          fi
+
+      - name: Create advisor report delivery token
+        id: report-app
+        if: env.HAS_REPORT_APP == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.ADVISOR_REPORT_APP_CLIENT_ID }}
+          private-key: ${{ secrets.ADVISOR_REPORT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
 
       # Fails the job on any synthesis or provenance error rather than writing
       # an empty report: a report with no findings is indistinguishable from
@@ -139,6 +167,8 @@ jobs:
       # always non-empty and would raise a pull request on every invocation.
       - name: Decide whether the findings changed
         id: publish
+        env:
+          REPORT_BOT_LOGIN: ${{ steps.report-app.outputs.app-slug && format('{0}[bot]', steps.report-app.outputs.app-slug) || 'github-actions[bot]' }}
         run: |
           if [ ! -f "$RUNNER_TEMP/advisory-pr-history.json" ]; then
             echo "The closed advisory history was not read." >&2
@@ -150,6 +180,7 @@ jobs:
             --closed-pr-history "$RUNNER_TEMP/advisory-pr-history.json"
             --repository "$GITHUB_REPOSITORY"
             --branch "$BRANCH"
+            --workflow-bot-login "$REPORT_BOT_LOGIN"
           )
           if [ -f reports/report.json ]; then
             decision_args+=(--prior-report reports/report.json)
@@ -208,7 +239,7 @@ jobs:
       - name: Open or update the advisory pull request
         if: steps.publish.outputs.changed == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.report-app.outputs.token || github.token }}
         run: |
           sha="${{ steps.target.outputs.sha }}"
           git config user.name "github-actions[bot]"
@@ -218,6 +249,9 @@ jobs:
           git commit -m "chore(advisory): report for ${TARGET_REPO}@${sha:0:7}"
           # The checkouts persist no credentials, so authenticate this push
           # explicitly. GITHUB_TOKEN is masked in logs.
+          if [ "$HAS_REPORT_APP" != 'true' ]; then
+            echo 'Report delivery uses GITHUB_TOKEN; automatic PR quality checks need the optional advisor report App.' >> "$GITHUB_STEP_SUMMARY"
+          fi
           git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
             "HEAD:refs/heads/$BRANCH"
 

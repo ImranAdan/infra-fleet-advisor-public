@@ -328,6 +328,49 @@ def test_latest_workflow_merge_supersedes_an_older_decline(tmp_path: Path) -> No
     )
 
 
+@pytest.mark.parametrize(
+    ("author", "merged", "expected"),
+    [
+        ("report-delivery[bot]", False, "current decision"),
+        ("report-delivery[bot]", True, ""),
+        ("github-actions[bot]", False, "current decision"),
+        ("unconfigured-app[bot]", False, "earlier decision"),
+        ("maintainer", False, "earlier decision"),
+    ],
+)
+def test_app_delivery_preserves_only_trusted_publisher_history(
+    tmp_path: Path, author: str, merged: bool, expected: str
+) -> None:
+    history = tmp_path / "pulls.json"
+    history.write_text(
+        json.dumps(
+            [
+                _closed_pull_request(12, author=author, merged=merged, body="current decision"),
+                _closed_pull_request(11, body="earlier decision"),
+            ]
+        )
+    )
+    assert (
+        read_latest_declined_pr_body(
+            history,
+            repository="ImranAdan/infra-fleet-advisor-public",
+            branch="advisory/latest",
+            workflow_bot_login="report-delivery[bot]",
+        )
+        == expected
+    )
+
+
+def test_human_identity_cannot_be_configured_as_report_publisher(tmp_path: Path) -> None:
+    with pytest.raises(PolicyError, match="bot identity"):
+        read_latest_declined_pr_body(
+            tmp_path / "pulls.json",
+            repository="ImranAdan/infra-fleet-advisor-public",
+            branch="advisory/latest",
+            workflow_bot_login="maintainer",
+        )
+
+
 def test_advisory_pull_request_history_is_bounded_and_source_checked(tmp_path: Path) -> None:
     history = tmp_path / "pulls.json"
     history.write_text(

@@ -195,7 +195,11 @@ def compile_intents(
         definition = (
             INTENT_CHECKS.get(proposition.check_key) if proposition.check_key is not None else None
         )
-        if proposition.check_key is None:
+        if proposition.category not in enabled_categories:
+            status = "declared_unverified"
+            reason = "category_not_enabled_by_policy"
+            evidence_ids = ()
+        elif proposition.check_key is None:
             status = "declared_unverified"
             reason = "check_not_declared"
             evidence_ids = ()
@@ -205,10 +209,6 @@ def compile_intents(
             evidence_ids = ()
         elif proposition.category != definition.rule.category:
             raise PolicyError("intent check category does not match its trusted registry entry")
-        elif proposition.category not in enabled_categories:
-            status = "declared_unverified"
-            reason = "category_not_enabled_by_policy"
-            evidence_ids = ()
         else:
             rule = rules_by_check[proposition.check_key]
             evaluation_priority = rule.priority

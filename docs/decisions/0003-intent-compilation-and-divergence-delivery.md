@@ -79,8 +79,10 @@ repository-wide proposition as `declared_unverified`, not `satisfied`.
 
 - Additional categories and checks enter the same repository-review scenario
   only when a deterministic evidence surface exists.
-- Generating check implementations from natural-language intent is out of
-  scope; it would turn untrusted configuration into control flow.
+- Generating or executing check implementations directly from natural-language
+  intent is out of scope; it would turn untrusted configuration into control
+  flow. PDR 0004 adds advisor-side capability issues and reviewed agent
+  proposals without relaxing that boundary.
 - End-to-end agent implementation of fleet issues belongs in the fleet
   repository. This advisor's contract ends at a human-ratified issue or a
   narrowly mechanical proposed pull request; it never merges fleet changes.

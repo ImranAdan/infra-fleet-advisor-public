@@ -19,16 +19,19 @@ _RESOURCE_HEADER = re.compile(
     r'resource\s+"(aws_iam_policy|aws_iam_role_policy)"\s+"([A-Za-z0-9_-]+)"\s*\{'
 )
 _POLICY_CALL = re.compile(r"(?<!\w)policy\s*=\s*jsonencode\s*\(")
+_POLICY_ATTRIBUTE = re.compile(r"(?<![\w.])policy\s*=")
 _WILDCARD_ACTION = re.compile(r"^([a-zA-Z0-9_-]+:)?\*$")
-_BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
-_LINE_COMMENT = re.compile(r"(#|//).*$", re.MULTILINE)
-_TRAILING_COMMA = re.compile(r",(\s*[\]}])")
-_BARE_KEY = re.compile(r'(?<!")\b([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)')
-# HCL object attributes are newline-separated with no comma (`Key = value`,
-# one per line); JSON requires one. Insert a comma after a value ends
-# (`"`, `]`, `}`, or a digit) when the next non-blank line starts a new key
-# or object, but only if a comma/brace/bracket isn't already there.
-_MISSING_COMMA = re.compile(r'([\]}"0-9])(\s*\n\s*)(?=["{])')
+_NON_CODE = re.compile(
+    r'"(?:\\.|[^"\\])*"|/\*.*?(?:\*/|\Z)|#[^\n]*|//[^\n]*'
+    r"|<<-?(?P<marker>[A-Za-z_][A-Za-z0-9_]*)[ \t]*\r?\n"
+    r".*?^[ \t]*(?P=marker)[ \t]*\r?$",
+    re.DOTALL | re.MULTILINE,
+)
+_TOKEN = re.compile(
+    r'"(?:\\.|[^"\\])*"|-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?'
+    r"|[A-Za-z_][A-Za-z0-9_]*|[{}\[\],:=]"
+)
+_MAX_LITERAL_DEPTH = 64
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,14 +44,31 @@ class _UnbalancedError(ValueError):
     pass
 
 
+def _mask_non_code(text: str, *, strings: bool = True) -> str:
+    """Keep offsets and newlines while hiding comments and optionally strings."""
+    return _NON_CODE.sub(
+        lambda match: (
+            match.group()
+            if not strings and match.group().startswith('"')
+            else re.sub(r"[^\n]", " ", match.group())
+        ),
+        text,
+    )
+
+
 def _extract_balanced(text: str, open_at: int, open_char: str, close_char: str) -> tuple[str, int]:
     """From `open_at` (pointing at `open_char`), return the substring up to
     and including the matching `close_char`, and the index just past it."""
     depth = 0
-    for i in range(open_at, len(text)):
-        if text[i] == open_char:
+    code = _mask_non_code(text)
+    if "<<" in code:
+        raise _UnbalancedError("unterminated Terraform heredoc")
+    for i in range(open_at, len(code)):
+        if code[i] == open_char:
             depth += 1
-        elif text[i] == close_char:
+            if depth > _MAX_LITERAL_DEPTH:
+                raise _UnbalancedError("Terraform literal nesting limit exceeded")
+        elif code[i] == close_char:
             depth -= 1
             if depth == 0:
                 return text[open_at : i + 1], i + 1
@@ -61,12 +81,14 @@ def _iter_resource_blocks(text: str) -> tuple[list[tuple[str, str, str]], int]:
     count of resource headers whose braces never balanced (a real parse
     failure — worth surfacing, not silently dropping).
 
-    Strips `/* ... */` block comments first — otherwise a retired resource
-    left inside one would still be recognized as active configuration."""
-    text = _BLOCK_COMMENT.sub("", text)
+    Comments and quoted text cannot introduce resource declarations."""
+    text = _mask_non_code(text, strings=False)
+    code = _mask_non_code(text)
     blocks = []
     unbalanced = 0
     for m in _RESOURCE_HEADER.finditer(text):
+        if code[m.start() : m.start() + len("resource")] != "resource":
+            continue
         brace_at = m.end() - 1  # the header regex consumes the opening `{`
         try:
             body, _ = _extract_balanced(text, brace_at, "{", "}")
@@ -77,42 +99,113 @@ def _iter_resource_blocks(text: str) -> tuple[list[tuple[str, str, str]], int]:
     return blocks, unbalanced
 
 
+class _LiteralParser:
+    """Parse bounded JSON/HCL literals without evaluating Terraform expressions."""
+
+    def __init__(self, text: str) -> None:
+        self.tokens: list[tuple[str, bool]] = []
+        previous_end = 0
+        for match in _TOKEN.finditer(text):
+            gap = text[previous_end : match.start()]
+            if gap.strip():
+                raise ValueError("unsupported Terraform expression")
+            self.tokens.append((match.group(), "\n" in gap))
+            previous_end = match.end()
+        if text[previous_end:].strip():
+            raise ValueError("unsupported Terraform expression")
+        self.index = 0
+
+    def _peek(self) -> str:
+        return self.tokens[self.index][0] if self.index < len(self.tokens) else ""
+
+    def _take(self) -> str:
+        token = self._peek()
+        if not token:
+            raise ValueError("incomplete Terraform literal")
+        self.index += 1
+        return token
+
+    def value(self, depth: int = 0) -> Any:
+        if depth >= _MAX_LITERAL_DEPTH:
+            raise ValueError("Terraform literal nesting limit exceeded")
+        literal = self._take()
+        if literal == "{":
+            result: dict[str, Any] = {}
+            while self._peek() != "}":
+                key = self._take()
+                separator = self._take()
+                quoted = key.startswith('"')
+                if not quoted and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+                    raise ValueError("invalid Terraform object key")
+                if separator not in {"=", ":"} or (separator == ":" and not quoted):
+                    raise ValueError("invalid Terraform object separator")
+                key = json.loads(key) if quoted else key
+                if key in result:
+                    raise ValueError("duplicate Terraform object key")
+                result[key] = self.value(depth + 1)
+                if self._peek() == ",":
+                    self._take()
+                elif self._peek() != "}" and (
+                    separator == ":"
+                    or self.index >= len(self.tokens)
+                    or not self.tokens[self.index][1]
+                ):
+                    raise ValueError("missing Terraform object separator")
+            self._take()
+            return result
+        if literal == "[":
+            values: list[Any] = []
+            while self._peek() != "]":
+                values.append(self.value(depth + 1))
+                if self._peek() == ",":
+                    self._take()
+                elif self._peek() != "]":
+                    raise ValueError("missing Terraform list separator")
+            self._take()
+            return values
+        if literal.startswith('"'):
+            if re.search(r"(?<!\$)\$\{|(?<!%)%\{", literal):
+                raise ValueError("Terraform string template is not a literal")
+            return json.loads(literal).replace("$${", "${").replace("%%{", "%{")
+        if literal in {"true", "false", "null"} or re.fullmatch(r"-?[0-9].*", literal):
+            return json.loads(literal)
+        raise ValueError("unsupported Terraform expression")
+
+
 def _extract_policy_json(block_body: str) -> tuple[dict[str, Any] | None, bool]:
     """Finds `policy = jsonencode({...})` inside a resource block body and
-    parses the {...} as JSON, after normalizing HCL object-literal syntax
-    (bare keys, `=` instead of `:`, trailing commas, comments) to valid JSON.
+    parses bounded JSON/HCL literals, including quoted keys and comments.
 
-    Returns (parsed_dict_or_None, failed). `failed` is True only when a
-    `policy = jsonencode(` call was found but couldn't be turned into valid
-    JSON (unbalanced braces, or content this collector's literal-only
-    normalizer can't handle, e.g. HCL interpolation) — a resource with no
-    such attribute at all (e.g. one referencing a separate policy document)
-    isn't a failure, just out of this collector's scope.
+    Returns (parsed_dict_or_None, failed). Missing attributes, non-literal
+    expressions, and malformed literals are incomplete coverage. Referenced
+    policy documents are never fetched or executed.
     """
-    call = _POLICY_CALL.search(block_body)
+    code = _mask_non_code(block_body)
+    assignments = [
+        match
+        for match in _POLICY_ATTRIBUTE.finditer(code)
+        if code[: match.start()].count("{") - code[: match.start()].count("}") == 1
+    ]
+    if len(assignments) != 1:
+        return None, True
+    call = _POLICY_CALL.match(code, assignments[0].start())
     if call is None:
-        return None, False
+        return None, True
     paren_at = call.end() - 1
     try:
         _, after_paren = _extract_balanced(block_body, paren_at, "(", ")")
     except _UnbalancedError:
         return None, True
+    suffix = _mask_non_code(block_body[after_paren:], strings=False)
+    if not re.match(r"^[ \t\r]*(?:\n\s*)*(?:\}|[A-Za-z_][A-Za-z0-9_]*\s*=)", suffix):
+        return None, True
     call_args = block_body[call.end() : after_paren - 1]
-    brace_at = call_args.find("{")
-    if brace_at == -1:
-        return None, True
     try:
-        json_ish, _ = _extract_balanced(call_args, brace_at, "{", "}")
-    except _UnbalancedError:
-        return None, True
-
-    normalized = _LINE_COMMENT.sub("", json_ish)
-    normalized = _BARE_KEY.sub(r'"\1":', normalized)
-    normalized = _MISSING_COMMA.sub(r"\1,\2", normalized)
-    normalized = _TRAILING_COMMA.sub(r"\1", normalized)
-    try:
-        parsed = json.loads(normalized)
-    except json.JSONDecodeError:
+        parser = _LiteralParser(_mask_non_code(call_args, strings=False))
+        parsed = parser.value()
+        if parser.index != len(parser.tokens):
+            return None, True
+    except ValueError:
         return None, True
     return (parsed, False) if isinstance(parsed, dict) else (None, True)
 
@@ -142,12 +235,18 @@ def _build_resource_evidence(
     statements = policy.get("Statement")
     if isinstance(statements, dict):
         statements = [statements]  # AWS allows a single Statement object, not just a list
-    if not isinstance(statements, list):
-        return None, False
+    if not isinstance(statements, list) or not statements:
+        return None, True
 
     offending: list[str] = []
     matching_statement_count = 0
     for statement in statements:
+        if not isinstance(statement, dict) or statement.get("Effect") not in ("Allow", "Deny"):
+            return None, True
+        for field in ("Action", "Resource"):
+            values = _as_list(statement.get(field))
+            if not values or any(not isinstance(value, str) or not value for value in values):
+                return None, True
         wildcards = _statement_is_wildcard_grant(statement)
         if wildcards:
             matching_statement_count += 1
@@ -216,22 +315,36 @@ def collect(
             ),
         )
 
-    all_files = sorted(infra_dir.rglob("*.tf"))
-    files = all_files[: limits.max_workflow_files]
-    truncated_count = len(all_files) - len(files)
+    # Downloaded modules are local tool state, not fleet desired state. Keep a
+    # deliberately tracked cache path visible, but ignore ordinary .terraform
+    # files before applying the bounded source-file budget.
+    all_files = sorted(
+        path
+        for path in infra_dir.rglob("*.tf")
+        if ".terraform" not in path.relative_to(infra_dir).parts
+        or (
+            tracked_paths is not None
+            and path.relative_to(checkout_root).as_posix() in tracked_paths
+        )
+    )
+    eligible_files: list[Path] = []
+    excluded_count = 0
+    untracked_count = 0
+    for path in all_files:
+        rel_path = path.relative_to(checkout_root).as_posix()
+        if _is_excluded(rel_path, excluded_paths):
+            excluded_count += 1
+        elif tracked_paths is not None and rel_path not in tracked_paths:
+            untracked_count += 1
+        else:
+            eligible_files.append(path)
+    files = eligible_files[: limits.max_workflow_files]
+    truncated_count = len(eligible_files) - len(files)
 
     evidence: list[Evidence] = []
     failures = 0
-    excluded_count = 0
-    untracked_count = 0
     for path in files:
         rel_path = str(path.relative_to(checkout_root))
-        if _is_excluded(rel_path, excluded_paths):
-            excluded_count += 1
-            continue
-        if tracked_paths is not None and rel_path not in tracked_paths:
-            untracked_count += 1
-            continue
         try:
             if path.is_symlink():
                 # A tracked symlink can point at an ignored/untracked file

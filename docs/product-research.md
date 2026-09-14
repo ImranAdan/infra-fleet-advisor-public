@@ -87,3 +87,27 @@ be re-evaluated from a verified source snapshot before appearing in a report.
 9. A proposition outside deterministic collector coverage must remain visible
    as declared but unverified; the advisor must not infer a check from prose or
    treat missing evidence as compliance.
+10. A ratified unverified proposition should become deduplicated implementation
+    work in the advisor repository. This lets intent drive capability evolution
+    without presenting missing coverage as a fleet defect.
+
+## Adoption evidence from the September 2026 review
+
+The local CLI previously defaulted to model synthesis, so its first run needed
+an API key despite the deterministic pipeline being available. Local review
+now defaults to `stub`, and `make review` binds the bundled policy and intent to
+a clean fleet checkout without changing the ratified baseline. Dependency
+installation and execution use the lockfile without updating it.
+
+The capability runtime and expanded catalog could merge before the next report,
+making publication fail on a stale intent digest. Publication now waits for
+matching merged versions. Optional fleet publication and feedback are explicit
+opt-ins, and a remediation dry run no longer needs a fleet write token.
+
+These fixes improve first-run behavior without expanding the supported target.
+The optional advisor-only report delivery App addresses quality-check triggering
+while retaining earlier decline decisions. Its real GitHub event path remains
+unverified locally, and the default token and feedback policy PRs retain the
+limitation. Other adoption gaps include the three-check coverage limit and the
+rollout rule's treatment of generated Flux controllers. See [setup](setup.md)
+for operational limits.

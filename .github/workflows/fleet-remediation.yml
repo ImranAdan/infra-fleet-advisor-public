@@ -49,16 +49,14 @@ jobs:
           fi
           echo "sha=$(jq -r '.provenance.source_commit_sha' reports/report.json)" >> "$GITHUB_OUTPUT"
 
-      # FLEET_TOKEN is a GitHub App installation token or PAT with contents and
-      # pull-requests write on the fleet. GITHUB_TOKEN cannot reach another
-      # repository. This is the only workflow that holds it.
+      # Public source read uses this job's token. FLEET_TOKEN is needed only
+      # after validated patches exist and the maintainer requested a proposal.
       - name: Check out the fleet at that commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: ${{ env.TARGET_REPO }}
           ref: ${{ steps.report.outputs.sha }}
           path: target
-          token: ${{ secrets.FLEET_TOKEN }}
           persist-credentials: false
 
       - name: Set up Python
@@ -82,12 +80,23 @@ jobs:
           uv run infra-fleet-advisor remediate \
             --checkout target \
             --report reports/report.json \
+            --policy policy.yaml --intent-dir intent \
             ${{ inputs.dry_run && '--dry-run' || '' }} | tee "${RUNNER_TEMP}/remediation.txt"
 
           if git -C target diff --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify proposal credentials
+        if: steps.patch.outputs.changed == 'true' && !inputs.dry_run
+        env:
+          PROPOSAL_TOKEN: ${{ secrets.FLEET_TOKEN }}
+        run: |
+          if [ -z "$PROPOSAL_TOKEN" ]; then
+            echo '::error::A fleet proposal needs the FLEET_TOKEN secret.'
+            exit 1
           fi
 
       - name: Open the fleet pull request

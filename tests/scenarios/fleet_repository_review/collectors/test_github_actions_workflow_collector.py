@@ -1,5 +1,7 @@
 """Tests for the GitHub Actions workflow evidence collector."""
 
+from dataclasses import replace
+
 import pytest
 
 from infra_fleet_advisor.core.limits import ExecutionLimits
@@ -172,3 +174,40 @@ def test_tracked_paths_none_skips_the_check(git_checkout) -> None:
     repo, _sha = git_checkout("trivy_ignore_unfixed_bad.yml")
     result = gha_collector.collect(repo, LIMITS, tracked_paths=None)
     assert result.coverage.status == "ok"
+
+
+def test_ineligible_workflows_do_not_consume_the_budget(git_checkout) -> None:
+    repo, _sha = git_checkout("trivy_ignore_unfixed_bad.yml")
+    source = repo / ".github/workflows/trivy_ignore_unfixed_bad.yml"
+    excluded = source.with_name("aaa-excluded.yml")
+    untracked = source.with_name("bbb-untracked.yml")
+    excluded.write_text(source.read_text())
+    untracked.write_text(source.read_text())
+    result = gha_collector.collect(
+        repo,
+        replace(LIMITS, max_workflow_files=1),
+        excluded_paths=frozenset({excluded.relative_to(repo).as_posix()}),
+        tracked_paths=frozenset(
+            {
+                source.relative_to(repo).as_posix(),
+                excluded.relative_to(repo).as_posix(),
+            }
+        ),
+    )
+    assert any(item.kind == EVIDENCE_KIND_TRIVY_GATE for item in result.evidence)
+    assert result.coverage.status == "partial"
+    assert "not part of the verified commit" in (result.coverage.error_summary or "")
+    assert "omitted" not in (result.coverage.error_summary or "")
+
+
+def test_tracked_symlink_cannot_read_ignored_workflow_content(git_checkout) -> None:
+    repo, _sha = git_checkout("trivy_ignore_unfixed_bad.yml")
+    source = repo / ".github/workflows/trivy_ignore_unfixed_bad.yml"
+    ignored = repo / "ignored-workflow.yml"
+    source.rename(ignored)
+    source.symlink_to(ignored)
+    result = gha_collector.collect(
+        repo, LIMITS, tracked_paths=frozenset({source.relative_to(repo).as_posix()})
+    )
+    assert result.evidence == ()
+    assert result.coverage.status == "partial"
