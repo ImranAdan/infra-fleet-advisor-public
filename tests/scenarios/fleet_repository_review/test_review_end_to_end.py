@@ -2,11 +2,15 @@ import subprocess
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from infra_fleet_advisor.config.intents import load_intent_catalog
 from infra_fleet_advisor.config.loader import load_policy
 from infra_fleet_advisor.core.lifecycle import PriorRecommendation, PriorReport
 from infra_fleet_advisor.core.limits import ExecutionLimits
 from infra_fleet_advisor.provenance.source_verification import verify_snapshot
+from infra_fleet_advisor.runtime.issue_publication import build_issue_plan
+from infra_fleet_advisor.runtime.report_writer import load_prior_report, write_report
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import TAXONOMY
 from infra_fleet_advisor.scenarios.fleet_repository_review.review import run_review
 from infra_fleet_advisor.scenarios.fleet_repository_review.synthesis import (
@@ -220,6 +224,54 @@ def test_third_run_marks_removed_finding_resolved(git_checkout) -> None:
     assert second.recommendations[0].status == "resolved"
     assert second.resolved_count == 1
     assert all(c.status == "ok" for c in second.coverage)
+
+
+@pytest.mark.parametrize("fixed", [True, False])
+def test_same_evidence_identity_keeps_the_right_facts_for_publication(
+    git_checkout, tmp_path: Path, fixed: bool
+) -> None:
+    repo, sha = git_checkout("trivy_ignore_unfixed_bad.yml")
+    first = _run(repo, sha)
+    baseline, _ = write_report(first, tmp_path / "baseline")
+    prior = load_prior_report(baseline)
+    assert prior is not None
+
+    workflow = repo / ".github/workflows/trivy_ignore_unfixed_bad.yml"
+    original = workflow.read_text(encoding="utf-8")
+    changed = (
+        original.replace('ignore-unfixed: "true"', 'ignore-unfixed: "false"')
+        if fixed
+        else original.replace("@0.24.0", "@0.25.0")
+    )
+    workflow.write_text(changed, encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)  # noqa: S603,S607
+    subprocess.run(  # noqa: S603
+        ["git", "commit", "-q", "-m", "fix: update scan policy"],  # noqa: S607
+        cwd=repo,
+        check=True,
+    )
+    changed_sha = subprocess.run(  # noqa: S603
+        ["git", "rev-parse", "HEAD"],  # noqa: S607
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    second = _run(repo, changed_sha, prior=prior)
+    published, _ = write_report(second, tmp_path / "published")
+    plan = build_issue_plan(published, POLICY_PATH)
+
+    assert second.evidence[0].evidence_id == first.evidence[0].evidence_id
+    assert len(plan.actions) == 1
+    if fixed:
+        assert plan.actions[0].action == "resolved"
+        assert second.evidence[0].fact["ignore_unfixed"] is True
+        assert "@0.24.0" in second.evidence[0].excerpt
+    else:
+        assert plan.actions[0].action == "active"
+        assert second.recommendations[0].status == "unchanged"
+        assert "@0.25.0" in second.evidence[0].excerpt
 
 
 def test_registered_collectors_contribute_to_one_report(git_checkout) -> None:

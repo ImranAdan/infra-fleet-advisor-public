@@ -92,10 +92,17 @@ def assemble_report(
 
     # Persist a redacted evidence table keyed by ID so the JSON report can
     # resolve each recommendation's evidence_ids without re-running
-    # collectors — merging this run's evidence with whatever the prior
-    # report carried, so carried-forward "resolved" entries stay verifiable.
-    merged_evidence: dict[str, Evidence] = dict(prior.evidence_by_id) if prior else {}
-    merged_evidence.update(evidence_by_id)
+    # collectors. Stable evidence identity does not mean facts stay unchanged:
+    # historical-only citations must retain the proof that supported the old
+    # recommendation. Freshly validated recommendations always use current facts.
+    current_cited_ids = {eid for rec in validated.accepted for eid in rec.evidence_ids}
+    merged_evidence: dict[str, Evidence] = dict(evidence_by_id)
+    if prior:
+        merged_evidence.update(
+            (eid, item)
+            for eid, item in prior.evidence_by_id.items()
+            if eid not in current_cited_ids
+        )
     cited_ids = {eid for rec in ranked for eid in rec.evidence_ids}
     report_evidence = tuple(
         merged_evidence[eid] for eid in sorted(cited_ids) if eid in merged_evidence

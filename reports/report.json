@@ -8,8 +8,8 @@
     },
     {
       "collector_id": "terraform_iam_collector",
-      "error_summary": "2 unreadable/unparseable Terraform resource(s) or file(s)",
-      "evidence_count": 1,
+      "error_summary": "4 unreadable/unparseable Terraform resource(s) or file(s)",
+      "evidence_count": 0,
       "status": "partial"
     },
     {
@@ -43,15 +43,15 @@
       "collector_id": "kubernetes_deployment_collector",
       "collector_version": "1.0.0",
       "evidence_id": "kubernetes_deployment_collector:3fb87f240e478035",
-      "excerpt": "Deployment observability/pushgateway: replicas=1, strategy=RollingUpdate, maxUnavailable=0, maxSurge=1",
+      "excerpt": "Deployment observability/pushgateway: replicas=1, strategy=RollingUpdate, maxUnavailable=25%, maxSurge=25%",
       "fact": {
-        "all_containers_have_readiness_probe": true,
+        "all_containers_have_readiness_probe": false,
         "effective_max_surge": 1,
         "effective_max_unavailable": 0,
-        "max_surge": "1",
-        "max_unavailable": "0",
+        "max_surge": "25%",
+        "max_unavailable": "25%",
         "replicas": 1,
-        "retains_healthy_capacity": true,
+        "retains_healthy_capacity": false,
         "strategy_type": "RollingUpdate"
       },
       "kind": "k8s_deployment_rollout_capacity",
@@ -60,7 +60,7 @@
     },
     {
       "collector_id": "terraform_iam_collector",
-      "collector_version": "1.3.0",
+      "collector_version": "1.1.0",
       "evidence_id": "terraform_iam_collector:00dfe82f2366c9e7",
       "excerpt": "wildcard actions on Resource=\"*\": eks:*, ec2:*, autoscaling:*, ssm:*, ecr:*",
       "fact": {
@@ -224,14 +224,12 @@
       "category": "security",
       "check_key": "persistent_iam_avoids_wildcards",
       "document_id": "infra_fleet_public_security",
-      "evidence_ids": [
-        "terraform_iam_collector:00dfe82f2366c9e7"
-      ],
+      "evidence_ids": [],
       "priority": "critical",
       "proposition_id": "S-007",
-      "reason": "evidence_conflicts_with_intent",
+      "reason": "collector_incomplete",
       "statement": "Wildcard IAM permissions are not acceptable for a production or persistent environment.\n\nEvidence: [deferred least-privilege concern](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md#L247-L252)\n\nCaveat: `infrastructure/permanent/github-oidc.tf` \u2014 the current persistent\nstack \u2014 grants `eks:*`, `ec2:*`, `autoscaling:*`, `ssm:*`, and `ecr:*` on `*`\ntoday. A `Yes` on this proposition is a gate to remediate that role, not a\nstatement that the persistent stack already complies.",
-      "status": "divergent"
+      "status": "declared_unverified"
     },
     {
       "category": "security",
@@ -289,8 +287,8 @@
     "intent_digest": "intent-md-v1:c96ca2c1d8d301a0b94986f1c3ed6b9a41e0ee36166cf5e2b0fc5ab289010a30",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.0",
-    "run_started_at": "2026-09-14T14:34:20.990892+00:00",
-    "source_commit_sha": "be4bab6779e0bb1b5ca7bf1a20732c87b090e176",
+    "run_started_at": "2026-09-14T14:47:47.623719+00:00",
+    "source_commit_sha": "125db526885067d7fd97418ce96bd1421fdcbe03",
     "source_label": "infra-fleet-public"
   },
   "recommendations": [

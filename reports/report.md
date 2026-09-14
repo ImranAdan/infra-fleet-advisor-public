@@ -1,15 +1,15 @@
 # Infra Fleet Advisor report
 
-- Source: `infra-fleet-public` @ `be4bab6779e0bb1b5ca7bf1a20732c87b090e176`
+- Source: `infra-fleet-public` @ `125db526885067d7fd97418ce96bd1421fdcbe03`
 - Advisor version: `0.1.0` · Policy version: `1.0`
-- Model: `stub-synthesizer-v1` · Run started: `2026-09-14T14:34:20.990892+00:00`
+- Model: `stub-synthesizer-v1` · Run started: `2026-09-14T14:47:47.623719+00:00`
 - Intent catalog: `intent-md-v1:c96ca2c1d8d301a0b94986f1c3ed6b9a41e0ee36166cf5e2b0fc5ab289010a30`
 - Lifecycle: 1 new, 2 unchanged, 1 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
 
 - `github_actions_workflow_collector`: ok (13 evidence)
-- `terraform_iam_collector`: partial (1 evidence) — 2 unreadable/unparseable Terraform resource(s) or file(s)
+- `terraform_iam_collector`: partial (0 evidence) — 4 unreadable/unparseable Terraform resource(s) or file(s)
 - `kubernetes_deployment_collector`: ok (7 evidence)
 
 ## Intent evaluation
@@ -72,7 +72,7 @@
   
   Evidence: \[staging access decision\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/EKS-ACCESS.md\#L94-L116)
   - Category: `security` · Priority: `not_declared` · Check: `not_declared` · Reason: `check_not_declared`
-- `divergent` `infra_fleet_public_security/S-007` — Wildcard IAM permissions are not acceptable for a production or persistent environment.
+- `declared_unverified` `infra_fleet_public_security/S-007` — Wildcard IAM permissions are not acceptable for a production or persistent environment.
   
   Evidence: \[deferred least-privilege concern\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md\#L247-L252)
   
@@ -80,8 +80,7 @@
   stack — grants \`eks:\*\`, \`ec2:\*\`, \`autoscaling:\*\`, \`ssm:\*\`, and \`ecr:\*\` on \`\*\`
   today. A \`Yes\` on this proposition is a gate to remediate that role, not a
   statement that the persistent stack already complies.
-  - Category: `security` · Priority: `critical` · Check: `persistent_iam_avoids_wildcards` · Reason: `evidence_conflicts_with_intent`
-  - Evidence: `terraform_iam_collector:00dfe82f2366c9e7`
+  - Category: `security` · Priority: `critical` · Check: `persistent_iam_avoids_wildcards` · Reason: `collector_incomplete`
 - `declared_unverified` `infra_fleet_public_security/S-008` — CSRF protection is not required for the current API-first staging application.
   
   Evidence: \[documented CSRF decision\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md\#L231-L235)

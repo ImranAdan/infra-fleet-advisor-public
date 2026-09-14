@@ -140,6 +140,11 @@ partial. It never executes Terraform, resolves local references, or fetches a
 policy URL. The wildcard check detects explicit Allow/Action/Resource grants;
 it does not establish the effective permissions after conditions and denies.
 
+Historical-only recommendation citations retain their original evidence facts.
+Freshly validated recommendations use the current collection even when a
+stable evidence ID is also present in the prior report. This keeps resolution
+notes verifiable after a resource's desired state changes.
+
 ### Intent compilation
 
 Markdown intent bodies are untrusted declarative data. A check identifier resolves
