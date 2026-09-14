@@ -8,9 +8,9 @@
     },
     {
       "collector_id": "terraform_iam_collector",
-      "error_summary": null,
+      "error_summary": "2 unreadable/unparseable Terraform resource(s) or file(s)",
       "evidence_count": 1,
-      "status": "ok"
+      "status": "partial"
     },
     {
       "collector_id": "kubernetes_deployment_collector",
@@ -43,15 +43,15 @@
       "collector_id": "kubernetes_deployment_collector",
       "collector_version": "1.0.0",
       "evidence_id": "kubernetes_deployment_collector:3fb87f240e478035",
-      "excerpt": "Deployment observability/pushgateway: replicas=1, strategy=RollingUpdate, maxUnavailable=25%, maxSurge=25%",
+      "excerpt": "Deployment observability/pushgateway: replicas=1, strategy=RollingUpdate, maxUnavailable=0, maxSurge=1",
       "fact": {
-        "all_containers_have_readiness_probe": false,
+        "all_containers_have_readiness_probe": true,
         "effective_max_surge": 1,
         "effective_max_unavailable": 0,
-        "max_surge": "25%",
-        "max_unavailable": "25%",
+        "max_surge": "1",
+        "max_unavailable": "0",
         "replicas": 1,
-        "retains_healthy_capacity": false,
+        "retains_healthy_capacity": true,
         "strategy_type": "RollingUpdate"
       },
       "kind": "k8s_deployment_rollout_capacity",
@@ -60,7 +60,7 @@
     },
     {
       "collector_id": "terraform_iam_collector",
-      "collector_version": "1.1.0",
+      "collector_version": "1.3.0",
       "evidence_id": "terraform_iam_collector:00dfe82f2366c9e7",
       "excerpt": "wildcard actions on Resource=\"*\": eks:*, ec2:*, autoscaling:*, ssm:*, ecr:*",
       "fact": {
@@ -87,12 +87,66 @@
   ],
   "intent_evaluations": [
     {
+      "category": "cost",
+      "check_key": null,
+      "document_id": "infra_fleet_public_cost",
+      "evidence_ids": [],
+      "priority": "high",
+      "proposition_id": "C-001",
+      "reason": "check_not_declared",
+      "statement": "Staging application worker capacity scales to zero outside an owner-defined\nusage window. A delayed startup of up to 30 minutes is acceptable when it avoids\npaying for otherwise idle compute.",
+      "status": "declared_unverified"
+    },
+    {
+      "category": "cost",
+      "check_key": null,
+      "document_id": "infra_fleet_public_cost",
+      "evidence_ids": [],
+      "priority": "high",
+      "proposition_id": "C-002",
+      "reason": "check_not_declared",
+      "statement": "Every non-production EKS worker group declares demand-driven scaling with a zero\nminimum where its workloads permit it and an explicit bounded maximum. Any\nalways-on baseline must name the workload that requires it.",
+      "status": "declared_unverified"
+    },
+    {
+      "category": "cost",
+      "check_key": null,
+      "document_id": "infra_fleet_public_cost",
+      "evidence_ids": [],
+      "priority": "medium",
+      "proposition_id": "C-003",
+      "reason": "check_not_declared",
+      "statement": "Every staging CloudWatch log group managed by the fleet has an explicit\nretention period of no more than 30 days. Longer retention requires a documented\noperational or compliance reason.",
+      "status": "declared_unverified"
+    },
+    {
+      "category": "cost",
+      "check_key": null,
+      "document_id": "infra_fleet_public_cost",
+      "evidence_ids": [],
+      "priority": "medium",
+      "proposition_id": "C-004",
+      "reason": "check_not_declared",
+      "statement": "Every ECR repository managed by the fleet has a lifecycle policy that removes\nuntagged images and bounds the number or age of retained images. Images retained\nfor rollback or audit have an explicit exception.",
+      "status": "declared_unverified"
+    },
+    {
+      "category": "cost",
+      "check_key": null,
+      "document_id": "infra_fleet_public_cost",
+      "evidence_ids": [],
+      "priority": "medium",
+      "proposition_id": "C-005",
+      "reason": "check_not_declared",
+      "statement": "Terraform-managed AWS resources that support tagging declare consistent\nenvironment, service, and owner tags so billed usage can be attributed. Any\nresource that cannot carry these tags is reported as an explicit coverage gap.",
+      "status": "declared_unverified"
+    },
+    {
       "category": "reliability",
       "check_key": "deployment_rollout_capacity",
       "document_id": "infra_fleet_public_reliability",
       "evidence_ids": [
-        "kubernetes_deployment_collector:21df164d364775d0",
-        "kubernetes_deployment_collector:3fb87f240e478035"
+        "kubernetes_deployment_collector:21df164d364775d0"
       ],
       "priority": "high",
       "proposition_id": "R-001",
@@ -228,15 +282,15 @@
   "provenance": {
     "advisor_version": "0.1.0",
     "collector_versions": {
-      "github_actions_workflow_collector": "1.2.0",
+      "github_actions_workflow_collector": "1.3.0",
       "kubernetes_deployment_collector": "1.0.0",
-      "terraform_iam_collector": "1.1.0"
+      "terraform_iam_collector": "1.3.0"
     },
-    "intent_digest": "intent-md-v1:5f008a8b1cfb9677c8dccf0240293c04dd351869ff55bbdb12430a750e2386c5",
+    "intent_digest": "intent-md-v1:c96ca2c1d8d301a0b94986f1c3ed6b9a41e0ee36166cf5e2b0fc5ab289010a30",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.0",
-    "run_started_at": "2026-09-10T19:27:01.332000+00:00",
-    "source_commit_sha": "65857138c50f3ab24bb8f58834c8ca3afe84a929",
+    "run_started_at": "2026-09-14T14:34:20.990892+00:00",
+    "source_commit_sha": "be4bab6779e0bb1b5ca7bf1a20732c87b090e176",
     "source_label": "infra-fleet-public"
   },
   "recommendations": [
@@ -261,6 +315,46 @@
       "trade_offs": "Narrowing permissions may require iterating as new resource types are added, and risks under-provisioning if scoped too tightly."
     },
     {
+      "category": "security",
+      "concern_key": "wildcard_iam_permissions",
+      "confidence": 0.85,
+      "confidence_explanation": "Directly observed from the IAM policy's parsed statement.",
+      "evidence_ids": [
+        "terraform_iam_collector:f9516f33c203f5c8"
+      ],
+      "fingerprint": "fp_b3cb0f1396ed1d3f4d4518b4",
+      "impact": "Overly broad IAM grants expand the blast radius if the associated role's credentials are compromised, and make least-privilege review difficult.",
+      "owner_accepted_trade_off": null,
+      "priority": "critical",
+      "rank": 2,
+      "rank_rationale": "priority=critical, category_weight=10, confidence=0.85",
+      "status": "unchanged",
+      "suggested_change": "Scope the action list to the specific API calls required, and constrain Resource to the specific ARNs the role needs instead of *.",
+      "summary": "A Terraform-managed IAM policy statement allows a wildcard action (e.g. service:*) with Resource set to *.",
+      "title": "IAM policy grants a wildcard action on all resources",
+      "trade_offs": "Narrowing permissions may require iterating as new resource types are added, and risks under-provisioning if scoped too tightly."
+    },
+    {
+      "category": "reliability",
+      "concern_key": "deployment_rollout_capacity_loss",
+      "confidence": 0.95,
+      "confidence_explanation": "Calculated directly from the Deployment replicas, rollout fenceposts, and container readiness probes in repository desired state.",
+      "evidence_ids": [
+        "kubernetes_deployment_collector:21df164d364775d0"
+      ],
+      "fingerprint": "fp_46603884b783f80f4cadc58d",
+      "impact": "A routine rollout can interrupt service or reduce the workload below its declared replica capacity.",
+      "owner_accepted_trade_off": null,
+      "priority": "high",
+      "rank": 3,
+      "rank_rationale": "priority=high, category_weight=5, confidence=0.95",
+      "status": "new",
+      "suggested_change": "Use RollingUpdate with an effective maxUnavailable of 0 and a positive maxSurge, and define a readiness probe for every application container.",
+      "summary": "A declared Kubernetes Deployment can make existing healthy capacity unavailable before replacement capacity is ready.",
+      "title": "Deployment rollout can reduce healthy capacity",
+      "trade_offs": "Zero-unavailable rollouts temporarily consume surge capacity and may require extra cluster headroom."
+    },
+    {
       "category": "reliability",
       "concern_key": "deployment_rollout_capacity_loss",
       "confidence": 0.95,
@@ -273,49 +367,18 @@
       "impact": "A routine rollout can interrupt service or reduce the workload below its declared replica capacity.",
       "owner_accepted_trade_off": null,
       "priority": "high",
-      "rank": 2,
-      "rank_rationale": "priority=high, category_weight=5, confidence=0.95",
-      "status": "new",
+      "rank": null,
+      "rank_rationale": null,
+      "status": "resolved",
       "suggested_change": "Use RollingUpdate with an effective maxUnavailable of 0 and a positive maxSurge, and define a readiness probe for every application container.",
       "summary": "A declared Kubernetes Deployment can make existing healthy capacity unavailable before replacement capacity is ready.",
       "title": "Deployment rollout can reduce healthy capacity",
       "trade_offs": "Zero-unavailable rollouts temporarily consume surge capacity and may require extra cluster headroom."
-    },
-    {
-      "category": "security",
-      "concern_key": "wildcard_iam_permissions",
-      "confidence": 0.85,
-      "confidence_explanation": "Directly observed from the IAM policy's parsed statement.",
-      "evidence_ids": [
-        "terraform_iam_collector:f9516f33c203f5c8"
-      ],
-      "fingerprint": "fp_b3cb0f1396ed1d3f4d4518b4",
-      "impact": "Overly broad IAM grants expand the blast radius if the associated role's credentials are compromised, and make least-privilege review difficult.",
-      "owner_accepted_trade_off": null,
-      "priority": "critical",
-      "rank": null,
-      "rank_rationale": null,
-      "status": "resolved",
-      "suggested_change": "Scope the action list to the specific API calls required, and constrain Resource to the specific ARNs the role needs instead of *.",
-      "summary": "A Terraform-managed IAM policy statement allows a wildcard action (e.g. service:*) with Resource set to *.",
-      "title": "IAM policy grants a wildcard action on all resources",
-      "trade_offs": "Narrowing permissions may require iterating as new resource types are added, and risks under-provisioning if scoped too tightly."
     }
   ],
-  "rejected": [
-    {
-      "category": "reliability",
-      "concern_key": "deployment_rollout_capacity_loss",
-      "reason": "not_a_compiled_intent_divergence"
-    },
-    {
-      "category": "reliability",
-      "concern_key": "deployment_rollout_capacity_loss",
-      "reason": "not_a_compiled_intent_divergence"
-    }
-  ],
-  "rejected_count": 2,
+  "rejected": [],
+  "rejected_count": 0,
   "resolved_count": 1,
   "suppressed_count": 0,
-  "unchanged_count": 1
+  "unchanged_count": 2
 }
