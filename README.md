@@ -8,7 +8,7 @@ It compiles the owner's declared intent into deterministic checks over an
 immutable repository revision, then turns each evidenced divergence into
 reviewable work in the fleet.
 
-## Try a review without credentials
+## Run a local review
 
 Requires Git, Python 3.11+, `uv`, and Make. Keep the two checkouts alongside one
 another:
@@ -22,8 +22,8 @@ make review
 ```
 
 Open `review-output/report.md`. The command reviews the fleet checkout's current
-full commit SHA using the deterministic `stub` synthesizer. It needs no API key,
-AWS account, cluster, or GitHub write token, and leaves the fleet unchanged.
+full commit SHA using the deterministic `stub` synthesizer and leaves the fleet
+unchanged.
 Dependency installation requires network access; the review uses only local
 repository files. The fleet checkout must be clean, including untracked files.
 
@@ -51,7 +51,7 @@ The current version:
 - compile only explicitly registered checks, reporting every unsupported
   proposition as declared but unverified;
 - analyze a complete repository snapshot identified by a full Git commit SHA;
-- run without AWS or Kubernetes credentials;
+- evaluate versioned repository desired state;
 - reuse deterministic findings from repository-aware collectors;
 - use AI only to synthesize, connect, and explain captured evidence;
 - return at most a configured number of ranked recommendations;
@@ -337,7 +337,7 @@ filesystem scan. `tests/fixtures` is excluded from that scan: it holds
 deliberately insecure Terraform, because that is what the collectors are tested
 against.
 
-Tests are deterministic and offline — no network, cloud credentials, or cluster.
+Tests are deterministic and offline.
 The Anthropic synthesizer is exercised through recorded responses.
 
 ## Status
