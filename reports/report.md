@@ -1,23 +1,43 @@
 # Infra Fleet Advisor report
 
-- Source: `infra-fleet-public` @ `65857138c50f3ab24bb8f58834c8ca3afe84a929`
+- Source: `infra-fleet-public` @ `125db526885067d7fd97418ce96bd1421fdcbe03`
 - Advisor version: `0.1.0` · Policy version: `1.0`
-- Model: `stub-synthesizer-v1` · Run started: `2026-09-10T19:27:01.332000+00:00`
-- Intent catalog: `intent-md-v1:5f008a8b1cfb9677c8dccf0240293c04dd351869ff55bbdb12430a750e2386c5`
-- Lifecycle: 1 new, 1 unchanged, 1 resolved, 0 suppressed (2 rejected)
+- Model: `stub-synthesizer-v1` · Run started: `2026-09-14T14:47:47.623719+00:00`
+- Intent catalog: `intent-md-v1:c96ca2c1d8d301a0b94986f1c3ed6b9a41e0ee36166cf5e2b0fc5ab289010a30`
+- Lifecycle: 1 new, 2 unchanged, 1 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
 
 - `github_actions_workflow_collector`: ok (13 evidence)
-- `terraform_iam_collector`: ok (1 evidence)
+- `terraform_iam_collector`: partial (0 evidence) — 4 unreadable/unparseable Terraform resource(s) or file(s)
 - `kubernetes_deployment_collector`: ok (7 evidence)
 
 ## Intent evaluation
 
+- `declared_unverified` `infra_fleet_public_cost/C-001` — Staging application worker capacity scales to zero outside an owner-defined
+  usage window. A delayed startup of up to 30 minutes is acceptable when it avoids
+  paying for otherwise idle compute.
+  - Category: `cost` · Priority: `high` · Check: `not_declared` · Reason: `check_not_declared`
+- `declared_unverified` `infra_fleet_public_cost/C-002` — Every non-production EKS worker group declares demand-driven scaling with a zero
+  minimum where its workloads permit it and an explicit bounded maximum. Any
+  always-on baseline must name the workload that requires it.
+  - Category: `cost` · Priority: `high` · Check: `not_declared` · Reason: `check_not_declared`
+- `declared_unverified` `infra_fleet_public_cost/C-003` — Every staging CloudWatch log group managed by the fleet has an explicit
+  retention period of no more than 30 days. Longer retention requires a documented
+  operational or compliance reason.
+  - Category: `cost` · Priority: `medium` · Check: `not_declared` · Reason: `check_not_declared`
+- `declared_unverified` `infra_fleet_public_cost/C-004` — Every ECR repository managed by the fleet has a lifecycle policy that removes
+  untagged images and bounds the number or age of retained images. Images retained
+  for rollback or audit have an explicit exception.
+  - Category: `cost` · Priority: `medium` · Check: `not_declared` · Reason: `check_not_declared`
+- `declared_unverified` `infra_fleet_public_cost/C-005` — Terraform-managed AWS resources that support tagging declare consistent
+  environment, service, and owner tags so billed usage can be attributed. Any
+  resource that cannot carry these tags is reported as an explicit coverage gap.
+  - Category: `cost` · Priority: `medium` · Check: `not_declared` · Reason: `check_not_declared`
 - `divergent` `infra_fleet_public_reliability/R-001` — Deployments retain enough healthy capacity during rollout. Temporary capacity
   cost is acceptable when it prevents user-visible interruption.
   - Category: `reliability` · Priority: `high` · Check: `deployment_rollout_capacity` · Reason: `evidence_conflicts_with_intent`
-  - Evidence: `kubernetes_deployment_collector:21df164d364775d0`, `kubernetes_deployment_collector:3fb87f240e478035`
+  - Evidence: `kubernetes_deployment_collector:21df164d364775d0`
 - `declared_unverified` `infra_fleet_public_security/S-001` — GitHub Actions uses short-lived OIDC credentials; long-lived AWS access keys are not allowed.
   
   Evidence: \[OIDC design\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/GITHUB-OIDC-SETUP.md\#L1-L6)
@@ -52,7 +72,7 @@
   
   Evidence: \[staging access decision\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/EKS-ACCESS.md\#L94-L116)
   - Category: `security` · Priority: `not_declared` · Check: `not_declared` · Reason: `check_not_declared`
-- `divergent` `infra_fleet_public_security/S-007` — Wildcard IAM permissions are not acceptable for a production or persistent environment.
+- `declared_unverified` `infra_fleet_public_security/S-007` — Wildcard IAM permissions are not acceptable for a production or persistent environment.
   
   Evidence: \[deferred least-privilege concern\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md\#L247-L252)
   
@@ -60,8 +80,7 @@
   stack — grants \`eks:\*\`, \`ec2:\*\`, \`autoscaling:\*\`, \`ssm:\*\`, and \`ecr:\*\` on \`\*\`
   today. A \`Yes\` on this proposition is a gate to remediate that role, not a
   statement that the persistent stack already complies.
-  - Category: `security` · Priority: `critical` · Check: `persistent_iam_avoids_wildcards` · Reason: `evidence_conflicts_with_intent`
-  - Evidence: `terraform_iam_collector:00dfe82f2366c9e7`
+  - Category: `security` · Priority: `critical` · Check: `persistent_iam_avoids_wildcards` · Reason: `collector_incomplete`
 - `declared_unverified` `infra_fleet_public_security/S-008` — CSRF protection is not required for the current API-first staging application.
   
   Evidence: \[documented CSRF decision\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md\#L231-L235)
@@ -111,21 +130,7 @@ A Terraform-managed IAM policy statement allows a wildcard action (e.g. service:
 
 **Trade-offs:** Narrowing permissions may require iterating as new resource types are added, and risks under-provisioning if scoped too tightly.
 
-### #2 [new] Deployment rollout can reduce healthy capacity
-
-- Category: `reliability` · Priority: `high` · Confidence: 0.95
-- Fingerprint: `fp_aaa9b490f08e5576be4b13a8`
-- Evidence: `kubernetes_deployment_collector:21df164d364775d0`, `kubernetes_deployment_collector:3fb87f240e478035`
-
-A declared Kubernetes Deployment can make existing healthy capacity unavailable before replacement capacity is ready.
-
-**Impact:** A routine rollout can interrupt service or reduce the workload below its declared replica capacity.
-
-**Suggested change:** Use RollingUpdate with an effective maxUnavailable of 0 and a positive maxSurge, and define a readiness probe for every application container.
-
-**Trade-offs:** Zero-unavailable rollouts temporarily consume surge capacity and may require extra cluster headroom.
-
-### [resolved] IAM policy grants a wildcard action on all resources
+### #2 [unchanged] IAM policy grants a wildcard action on all resources
 
 - Category: `security` · Priority: `critical` · Confidence: 0.85
 - Fingerprint: `fp_b3cb0f1396ed1d3f4d4518b4`
@@ -139,8 +144,30 @@ A Terraform-managed IAM policy statement allows a wildcard action (e.g. service:
 
 **Trade-offs:** Narrowing permissions may require iterating as new resource types are added, and risks under-provisioning if scoped too tightly.
 
+### #3 [new] Deployment rollout can reduce healthy capacity
 
-## Rejected candidates
+- Category: `reliability` · Priority: `high` · Confidence: 0.95
+- Fingerprint: `fp_46603884b783f80f4cadc58d`
+- Evidence: `kubernetes_deployment_collector:21df164d364775d0`
 
-- `deployment_rollout_capacity_loss` (`reliability`) — not_a_compiled_intent_divergence
-- `deployment_rollout_capacity_loss` (`reliability`) — not_a_compiled_intent_divergence
+A declared Kubernetes Deployment can make existing healthy capacity unavailable before replacement capacity is ready.
+
+**Impact:** A routine rollout can interrupt service or reduce the workload below its declared replica capacity.
+
+**Suggested change:** Use RollingUpdate with an effective maxUnavailable of 0 and a positive maxSurge, and define a readiness probe for every application container.
+
+**Trade-offs:** Zero-unavailable rollouts temporarily consume surge capacity and may require extra cluster headroom.
+
+### [resolved] Deployment rollout can reduce healthy capacity
+
+- Category: `reliability` · Priority: `high` · Confidence: 0.95
+- Fingerprint: `fp_aaa9b490f08e5576be4b13a8`
+- Evidence: `kubernetes_deployment_collector:21df164d364775d0`, `kubernetes_deployment_collector:3fb87f240e478035`
+
+A declared Kubernetes Deployment can make existing healthy capacity unavailable before replacement capacity is ready.
+
+**Impact:** A routine rollout can interrupt service or reduce the workload below its declared replica capacity.
+
+**Suggested change:** Use RollingUpdate with an effective maxUnavailable of 0 and a positive maxSurge, and define a readiness probe for every application container.
+
+**Trade-offs:** Zero-unavailable rollouts temporarily consume surge capacity and may require extra cluster headroom.
