@@ -170,6 +170,15 @@ deterministic stub and make no model API call. A maintainer may manually dispatc
 the same workflow with model-backed synthesis. Every path preserves the report
 pull request as the human ratification gate.
 
+Local review and manual dispatch default to deterministic synthesis without an
+API credential. Model synthesis must be explicitly selected. A local review
+writes separate output and does not advance the committed report baseline.
+An optional advisor-only App may deliver reports using contents and PR write
+permissions to trigger the existing quality checks. The token must never reach
+collectors or fleet publication. Decline history must preserve the original
+workflow bot's decisions and recognize only the configured delivery bot in
+addition. The default token's quality-trigger limitation must remain explicit.
+
 The committed report is the baseline the next run compares against, so lifecycle
 advances only when an advisory pull request is merged. A run whose findings,
 cited evidence, collector coverage, and rejection reasons all match the committed
@@ -197,6 +206,11 @@ the merged report, so a human has accepted the finding before any patch exists.
 Remediation is manually dispatched, defaults to a dry run, and is the only path
 holding a fleet write credential.
 
+The dry run must work without a fleet write credential. Before deriving patches,
+remediation revalidates the merged report against current policy, intent,
+fingerprints, evidence, suppression, and accepted trade-offs using the same
+eligibility gate as issue publication.
+
 Concerns requiring judgement — scoping a wildcard IAM policy, for instance — must
 not be added to the patcher registry. A confident wrong answer there is a
 security regression. See PDR 0002.
@@ -209,6 +223,11 @@ against the current closed policy before acquiring a cross-repository token.
 Recommendations that are suppressed, carry an owner-accepted trade-off, cite
 invalid evidence, or have a mismatched fingerprint are ineligible. The number
 of active issue actions must not exceed the policy recommendation limit.
+
+Fleet issue publication and feedback are optional and disabled until the owner
+sets `FLEET_ISSUES_ENABLED=true` after configuring the issues-only App.
+Capability and fleet issue publication wait for a merged report under current
+policy and intent. They must not regenerate a report to bypass ratification.
 
 Issue creation is idempotent per recommendation fingerprint. A partial failure
 must be safely retryable without duplicating the issues already created, and a

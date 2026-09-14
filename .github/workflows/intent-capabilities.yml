@@ -46,8 +46,22 @@ jobs:
       - name: Install locked dependencies
         run: make setup
 
+      # Intent/runtime changes can merge before their new report is ratified.
+      # Never regenerate the report here: capability work needs merged evidence.
+      - name: Wait for a report under current policy and intent
+        id: readiness
+        run: |
+          status="$(uv run --frozen infra-fleet-advisor report-readiness \
+            --report reports/report.json --policy policy.yaml --intent-dir intent)"
+          ready="$(jq -r '.ready' <<< "$status")"
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+          if [ "$ready" != 'true' ]; then
+            echo 'Waiting for a current advisory report to be merged.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Build the capability plan
         id: plan
+        if: steps.readiness.outputs.ready == 'true'
         run: |
           uv run infra-fleet-advisor capability-plan \
             --report reports/report.json \
@@ -58,7 +72,7 @@ jobs:
           echo "count=$count" >> "$GITHUB_OUTPUT"
 
       - name: Create or update capability work
-        if: steps.plan.outputs.count != '0'
+        if: steps.readiness.outputs.ready == 'true' && steps.plan.outputs.count != '0'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

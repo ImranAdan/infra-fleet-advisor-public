@@ -8,6 +8,30 @@ It compiles the owner's declared intent into deterministic checks over an
 immutable repository revision, then turns each evidenced divergence into
 reviewable work in the fleet.
 
+## Try a review without credentials
+
+Requires Git, Python 3.11+, `uv`, and Make. Keep the two checkouts alongside one
+another:
+
+```bash
+git clone https://github.com/ImranAdan/infra-fleet-public.git
+git clone https://github.com/ImranAdan/infra-fleet-advisor-public.git
+cd infra-fleet-advisor-public
+make setup
+make review
+```
+
+Open `review-output/report.md`. The command reviews the fleet checkout's current
+full commit SHA using the deterministic `stub` synthesizer. It needs no API key,
+AWS account, cluster, or GitHub write token, and leaves the fleet unchanged.
+Dependency installation requires network access; the review uses only local
+repository files. The fleet checkout must be clean, including untracked files.
+
+For another location, use `make review FLEET_CHECKOUT=/path/to/infra-fleet-public`.
+Local output is ignored by Git and does not replace the committed, ratified
+`reports/report.json` baseline. See [setup and integration](docs/setup.md) for
+report approval, optional publishing, and troubleshooting.
+
 ## Product promise
 
 > Turn a fleet's declared intent into continuously verified state, and deliver
@@ -19,7 +43,7 @@ priorities and accepted trade-offs.
 
 ## MVP
 
-The first version will:
+The current version:
 
 - review only `infra-fleet-public`;
 - load bounded Markdown intent documents with a small structural contract and
@@ -70,12 +94,10 @@ trade-offs, and confidence. An analyst may improve the wording of a compiled
 divergence, but cannot omit it, reshape it into different work, or add work that
 no declared proposition and registered check produced.
 
-## Usage
+## Explicit inputs and optional model synthesis
 
 ```bash
-export ANTHROPIC_API_KEY=...   # required by the default --synthesizer anthropic
-
-uv run infra-fleet-advisor review \
+uv run --frozen infra-fleet-advisor review \
   --checkout ../infra-fleet-public \
   --sha <full-40-char-commit-sha> \
   --policy path/to/policy.yaml \
@@ -84,8 +106,10 @@ uv run infra-fleet-advisor review \
   --prior-report ./previous-run/report.json   # optional, enables lifecycle tracking
 ```
 
-`--synthesizer stub` swaps the model for a deterministic table-driven
-stand-in, which needs no API key and is what the test suite runs on.
+`stub` is the default and makes no model API call. To opt into model-backed
+wording, set `ANTHROPIC_API_KEY` in your environment and add
+`--synthesizer anthropic`. This makes a paid external API call; deterministic
+checks and evidence validation still determine which recommendations can appear.
 
 ### Declaring intent
 
@@ -168,6 +192,13 @@ workflow**) with either `stub` or `anthropic`. Only a manual `anthropic` run nee
 the `ANTHROPIC_API_KEY` repository secret. Changed output is proposed on the
 `advisory/latest` branch for human review.
 
+To trigger quality checks automatically on report PRs, configure the optional
+advisor-only delivery App with `ADVISOR_REPORT_APP_CLIENT_ID` and
+`ADVISOR_REPORT_APP_PRIVATE_KEY`. Without it, delivery uses `GITHUB_TOKEN`, whose
+PR events do not start ordinary PR checks. See [setup](docs/setup.md) for the
+narrow permissions and verification step. Earlier workflow decline decisions
+remain valid when switching to App delivery.
+
 The committed `reports/report.json` is the prior report the next run compares
 against, which is why it is tracked rather than ignored. Lifecycle therefore
 advances only when an advisory pull request is **merged** — an open, unmerged
@@ -201,7 +232,7 @@ outstanding finding resolved.
 
 ### Publishing accepted recommendations as fleet issues
 
-`.github/workflows/fleet-issues.yml` runs when a merged commit changes
+When `FLEET_ISSUES_ENABLED=true`, `.github/workflows/fleet-issues.yml` runs when a merged commit changes
 `reports/report.json`, and can also be manually retried. Before any external
 write it reloads the report under the current policy and intent catalog, then
 validates source identity, policy and intent versions, fingerprints, evidence
@@ -216,6 +247,13 @@ token is scoped again in the workflow to that one repository and
 `issues: write`. The publisher validates both secrets before requesting a token
 and fails with the missing secret names; it never falls back to a personal token
 or a broader credential.
+
+Set the repository Actions variable `FLEET_ISSUES_ENABLED` to `true` only after
+configuring those App secrets. Fleet issue publication and scheduled feedback
+are skipped by default. Existing installations must set this variable to keep
+these optional integrations enabled. Publication waits if the merged report
+uses an older policy or intent catalog; it resumes after a current report is
+merged and still performs the complete validation before writing.
 
 Each issue carries an `advisor:fp:<digest>` label and an inert fingerprint
 marker. Retries check both identities before every create, so a failure after
@@ -267,6 +305,7 @@ publication and mechanical remediation.
 uv run infra-fleet-advisor remediate \
   --checkout ../infra-fleet-public \
   --report reports/report.json \
+  --policy policy.yaml --intent-dir intent \
   --dry-run
 ```
 
@@ -277,7 +316,9 @@ out of bounds, and re-running over an already-fixed fleet changes nothing.
 `.github/workflows/fleet-remediation.yml` does the same in CI and opens the pull
 request against the fleet. It needs a `FLEET_TOKEN` secret with contents and
 pull-requests write there — a GitHub App installation rather than a personal
-token — and defaults to a dry run.
+token — only when opening a proposal. The default dry run reads the public
+fleet without this credential. Remediation revalidates the report against the
+current policy and intent before deriving any patch.
 
 Only `trivy_ignore_unfixed` is patchable today. `wildcard_iam_permissions` is
 deliberately excluded: scoping it requires knowing which API calls the pipeline
@@ -324,6 +365,7 @@ feedback into human-reviewed policy are implemented.
 ## Documentation
 
 - [Product research](docs/product-research.md)
+- [Setup and integration](docs/setup.md)
 - [Product requirements](docs/product-requirements.md)
 - [Architecture](docs/architecture.md)
 - [PDR 0001: Advisory delivery and the fleet feedback loop](docs/decisions/0001-advisory-delivery-and-feedback-loop.md)

@@ -13,3 +13,4 @@ dist/
 # next run compares against, and that comparison is what makes a finding
 # "unchanged" or "resolved" rather than perpetually "new".
 target/
+review-output/

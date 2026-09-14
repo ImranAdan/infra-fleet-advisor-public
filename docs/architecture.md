@@ -72,6 +72,21 @@ explicit scenario provider, and external publication plans for one invocation.
 It owns CLI composition, safe output handling, and GitHub adapter inputs but not
 recommendation semantics.
 
+Local review defaults to the deterministic stub; a real model is explicitly
+selected. `report-readiness` checks merged-report source identity and compares
+policy version and intent digest before capability and fleet issue publication.
+Missing or stale reports cause those workflows to wait without making a new
+baseline. Malformed provenance fails. Readiness is only an ordering gate: the
+existing publication plan validators still own evidence and eligibility checks.
+Fleet issue publication and feedback require `FLEET_ISSUES_ENABLED=true`.
+Remediation reuses issue-plan validation before selecting active, eligible
+fingerprints and needs a write token only when proposing a fleet PR.
+An optional advisor-only GitHub App delivers report PRs so their events trigger
+normal quality checks. Its identity is derived from the token-minting action,
+never report or PR prose. Bounded decline history recognizes that configured
+bot and the original GitHub Actions bot. The fallback requires no App but cannot
+trigger ordinary PR quality checks.
+
 ## Supporting adapters
 
 Repository parsers, subprocess-backed scanners, Git verification, model
@@ -113,6 +128,12 @@ resolves RollingUpdate percentage fenceposts against desired replicas, records
 readiness-probe coverage, and emits one typed capacity fact per unambiguous
 `apps/v1` Deployment. Malformed, excluded, untracked, duplicate, or truncated
 inputs cannot prove satisfaction.
+
+Workflow and Terraform source-file budgets apply after policy exclusions and
+tracked-path filtering. Downloaded `.terraform` files are local tool state and
+are ignored unless explicitly tracked, so initialized checkouts retain the same
+available source budget. IAM expressions beyond the bounded literal parser's
+supported forms remain explicit partial coverage.
 
 ### Intent compilation
 

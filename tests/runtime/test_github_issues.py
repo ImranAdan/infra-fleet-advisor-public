@@ -249,7 +249,8 @@ def test_resolution_comment_is_once_per_fingerprint_across_source_commits() -> N
     assert len(client.issue_comments[issue_number]) == 1
 
 
-def test_capability_lifecycle_records_each_state_transition_once() -> None:
+@pytest.mark.parametrize("state", ["open", "closed"])
+def test_capability_lifecycle_records_each_state_transition_once(state: str) -> None:
     client = FakeIssueClient()
     profile = IssuePublicationProfile(
         target_repository="ImranAdan/infra-fleet-advisor-public",
@@ -273,6 +274,7 @@ def test_capability_lifecycle_records_each_state_transition_once() -> None:
     assert publish_issue_actions(
         profile.target_repository, (active,), client, BOT, profile
     ) == PublicationResult(created=1)
+    client.issues[1] = replace(client.issues[1], state=state)
     assert (
         publish_issue_actions(
             profile.target_repository, (resolved,), client, BOT, profile
@@ -304,7 +306,7 @@ def test_capability_lifecycle_records_each_state_transition_once() -> None:
         == 0
     )
 
-    assert client.issues[1].state == "open"
+    assert client.issues[1].state == state
     assert [comment.body.splitlines()[0] for comment in client.issue_comments[1]] == [
         resolved.resolution_marker,
         reactivation_marker,

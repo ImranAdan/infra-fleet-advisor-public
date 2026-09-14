@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from infra_fleet_advisor.core.limits import ExecutionLimits
 from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
     terraform_iam_collector as tf_collector,
@@ -210,3 +212,44 @@ def test_tracked_paths_none_skips_the_check(git_checkout) -> None:
     repo, _sha = git_checkout(terraform_files=("wildcard_iam_policy.tf",))
     result = tf_collector.collect(repo, LIMITS, tracked_paths=None)
     assert result.coverage.status == "ok"
+
+
+def test_downloaded_modules_do_not_displace_verified_policy(git_checkout) -> None:
+    repo, _sha = git_checkout(terraform_files=("wildcard_iam_policy.tf",))
+    source = repo / "infrastructure/permanent/wildcard_iam_policy.tf"
+    cache = repo / "infrastructure/permanent/.terraform/modules/downloaded"
+    cache.mkdir(parents=True)
+    for number in range(60):
+        (cache / f"module-{number}.tf").write_text(source.read_text())
+    result = tf_collector.collect(
+        repo,
+        replace(LIMITS, max_workflow_files=1),
+        tracked_paths=frozenset({source.relative_to(repo).as_posix()}),
+    )
+    assert len(result.evidence) == 1
+    assert result.coverage.status == "ok"
+    assert result.coverage.error_summary is None
+
+
+def test_ineligible_terraform_files_do_not_consume_the_budget(git_checkout) -> None:
+    repo, _sha = git_checkout(terraform_files=("wildcard_iam_policy.tf",))
+    source = repo / "infrastructure/permanent/wildcard_iam_policy.tf"
+    excluded = source.with_name("aaa-excluded.tf")
+    untracked = source.with_name("bbb-untracked.tf")
+    excluded.write_text(source.read_text())
+    untracked.write_text(source.read_text())
+    result = tf_collector.collect(
+        repo,
+        replace(LIMITS, max_workflow_files=1),
+        excluded_paths=frozenset({excluded.relative_to(repo).as_posix()}),
+        tracked_paths=frozenset(
+            {
+                source.relative_to(repo).as_posix(),
+                excluded.relative_to(repo).as_posix(),
+            }
+        ),
+    )
+    assert len(result.evidence) == 1
+    assert result.coverage.status == "partial"
+    assert "not part of the verified commit" in (result.coverage.error_summary or "")
+    assert "omitted" not in (result.coverage.error_summary or "")

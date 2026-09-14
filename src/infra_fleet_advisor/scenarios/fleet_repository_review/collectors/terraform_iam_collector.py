@@ -216,22 +216,36 @@ def collect(
             ),
         )
 
-    all_files = sorted(infra_dir.rglob("*.tf"))
-    files = all_files[: limits.max_workflow_files]
-    truncated_count = len(all_files) - len(files)
+    # Downloaded modules are local tool state, not fleet desired state. Keep a
+    # deliberately tracked cache path visible, but ignore ordinary .terraform
+    # files before applying the bounded source-file budget.
+    all_files = sorted(
+        path
+        for path in infra_dir.rglob("*.tf")
+        if ".terraform" not in path.relative_to(infra_dir).parts
+        or (
+            tracked_paths is not None
+            and path.relative_to(checkout_root).as_posix() in tracked_paths
+        )
+    )
+    eligible_files: list[Path] = []
+    excluded_count = 0
+    untracked_count = 0
+    for path in all_files:
+        rel_path = path.relative_to(checkout_root).as_posix()
+        if _is_excluded(rel_path, excluded_paths):
+            excluded_count += 1
+        elif tracked_paths is not None and rel_path not in tracked_paths:
+            untracked_count += 1
+        else:
+            eligible_files.append(path)
+    files = eligible_files[: limits.max_workflow_files]
+    truncated_count = len(eligible_files) - len(files)
 
     evidence: list[Evidence] = []
     failures = 0
-    excluded_count = 0
-    untracked_count = 0
     for path in files:
         rel_path = str(path.relative_to(checkout_root))
-        if _is_excluded(rel_path, excluded_paths):
-            excluded_count += 1
-            continue
-        if tracked_paths is not None and rel_path not in tracked_paths:
-            untracked_count += 1
-            continue
         try:
             if path.is_symlink():
                 # A tracked symlink can point at an ignored/untracked file

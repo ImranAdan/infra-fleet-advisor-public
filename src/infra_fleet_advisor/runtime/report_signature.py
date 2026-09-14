@@ -238,6 +238,10 @@ def read_latest_declined_pr_body(
     workflow_bot_login: str = "github-actions[bot]",
 ) -> str:
     """Select the latest workflow-owned decision from bounded PR history."""
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]*\[bot\]", workflow_bot_login) is None:
+        raise PolicyError("workflow publisher must be a GitHub bot identity")
+    # Keep GITHUB_TOKEN decisions when an installation adopts App-authored PRs.
+    trusted_authors = {"github-actions[bot]", workflow_bot_login.casefold()}
     try:
         if path.stat().st_size > MAX_ADVISORY_PR_HISTORY_FILE_BYTES:
             raise PolicyError(
@@ -279,7 +283,7 @@ def read_latest_declined_pr_body(
             ):
                 raise ValueError
             seen_numbers.add(number)
-            if author.casefold() == workflow_bot_login.casefold():
+            if author.casefold() in trusted_authors:
                 workflow_pull_requests.append(
                     _AdvisoryPullRequest(number, body, merged_at is not None)
                 )

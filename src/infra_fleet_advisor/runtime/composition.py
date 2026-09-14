@@ -24,6 +24,7 @@ MAX_WORKFLOW_FILE_BYTES = 256 * 1024
 MAX_MANIFEST_FILES = 100
 MAX_MANIFEST_FILE_BYTES = 1024 * 1024
 SYNTHESIZERS = ("anthropic", "stub")
+DEFAULT_SYNTHESIZER = "stub"
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,7 +34,7 @@ class RunInputs:
     policy_path: Path
     source_label: str
     prior_report_path: Path | None
-    synthesizer_name: str = "anthropic"
+    synthesizer_name: str = DEFAULT_SYNTHESIZER
     intent_dir: Path | None = None
 
 

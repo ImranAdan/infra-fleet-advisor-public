@@ -229,7 +229,7 @@ def _publish_one(
     if action.action == "active":
         if issue is not None:
             reactivation_comment: str | None = None
-            if issue.state == "open" and reactivation is not None:
+            if reactivation is not None:
                 comments = client.comments(issue.number)
                 if not comments.complete:
                     raise IssuePublicationError(
@@ -271,7 +271,7 @@ def _publish_one(
 
     if action.action != "resolved":
         raise IssuePublicationError("issue plan contains an unknown action")
-    if issue is None or issue.state != "open":
+    if issue is None or (issue.state != "open" and reactivation is None):
         return PublicationResult(
             existing=1 if issue is not None else 0,
             labels_restored=labels_restored,
