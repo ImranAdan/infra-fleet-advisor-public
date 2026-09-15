@@ -2,15 +2,16 @@
 
 - Source: `infra-fleet-public` @ `d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0`
 - Advisor version: `0.1.0` · Policy version: `1.1`
-- Model: `stub-synthesizer-v1` · Run started: `2026-09-15T18:31:31.734827+00:00`
-- Intent catalog: `intent-md-v1:b5a09ac778f7b39c282838d7c2b80ebd832b6569b7cf8010574229bceb9f04a6`
-- Lifecycle: 0 new, 0 unchanged, 2 resolved, 0 suppressed (0 rejected)
+- Model: `stub-synthesizer-v1` · Run started: `2026-09-15T18:51:17.786400+00:00`
+- Intent catalog: `intent-md-v1:5781fb4fa3f59562c1eeb63d3b3212499a519a53bac6daef94f8fe225ac29481`
+- Lifecycle: 1 new, 0 unchanged, 2 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
 
 - `github_actions_workflow_collector`: ok (13 evidence)
 - `terraform_iam_collector`: ok (0 evidence)
 - `kubernetes_deployment_collector`: ok (7 evidence)
+- `fleet_lifecycle_collector`: ok (1 evidence)
 
 ## Intent evaluation
 
@@ -34,7 +35,7 @@
   environment, service, and owner tags so billed usage can be attributed. Any
   resource that cannot carry these tags is reported as an explicit coverage gap.
   - Category: `cost` · Priority: `medium` · Check: `not_declared` · Reason: `check_not_declared`
-- `declared_unverified` `infra_fleet_public_maintainability/M-001` — Every supported deployment profile exposes the same three lifecycle commands:
+- `divergent` `infra_fleet_public_maintainability/M-001` — Every supported deployment profile exposes the same three lifecycle commands:
   \`./fleet setup --profile \<profile\>\` prepares and validates the target,
   \`./fleet up --profile \<profile\>\` brings the platform to a ready state, and
   \`./fleet down --profile \<profile\>\` removes the resources owned by that profile.
@@ -42,7 +43,8 @@
   before mutation, and ends with either a clear success state or an actionable
   failure. Successful setup and startup print the next command needed by the
   adopter.
-  - Category: `maintainability` · Priority: `high` · Check: `not_declared` · Reason: `check_not_declared`
+  - Category: `maintainability` · Priority: `high` · Check: `fleet_profiles_expose_lifecycle` · Reason: `evidence_conflicts_with_intent`
+  - Evidence: `fleet_lifecycle_collector:6d72cf725a3df7bb`
 - `declared_unverified` `infra_fleet_public_maintainability/M-002` — From a clean clone on a supported workstation, an adopter can prepare the
   pinned local toolchain with one \`./fleet setup --profile local\` command, start
   the complete local platform with one \`./fleet up --profile local\` command, and
@@ -151,6 +153,20 @@
   - Category: `security` · Priority: `not_declared` · Check: `not_declared` · Reason: `check_not_declared`
 
 ## Recommendations
+
+### #1 [new] Fleet profiles lack the declared lifecycle command surface
+
+- Category: `maintainability` · Priority: `high` · Confidence: 0.95
+- Fingerprint: `fp_04b6e8f53c02c6a25eb3abe6`
+- Evidence: `fleet_lifecycle_collector:6d72cf725a3df7bb`
+
+The tracked Fleet facade does not route setup, up, and down through both the local and AWS staging profile strategies.
+
+**Impact:** A new adopter must leave the common interface and complete profile-specific manual steps before the platform can be used.
+
+**Suggested change:** Add setup to the fixed ./fleet action surface and implement it for local and aws-staging. Local setup should prepare and validate pinned tools; AWS setup should validate adopter configuration and sessions, configure GitHub and HCP Terraform, and bootstrap the OIDC foundation. Preserve the existing bounded teardown behavior.
+
+**Trade-offs:** Automated AWS onboarding expands the facade's credential and provider API surface, so target validation and explicit confirmation must precede mutations.
 
 ### [resolved] IAM policy grants a wildcard action on all resources
 
