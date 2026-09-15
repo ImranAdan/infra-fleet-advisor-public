@@ -1,15 +1,15 @@
 # Infra Fleet Advisor report
 
-- Source: `infra-fleet-public` @ `34f7f5a505d2f3614c3dd20a1c3128939bf8e255`
+- Source: `infra-fleet-public` @ `d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0`
 - Advisor version: `0.1.0` · Policy version: `1.0`
-- Model: `stub-synthesizer-v1` · Run started: `2026-09-14T20:25:35.223381+00:00`
-- Intent catalog: `intent-md-v1:c96ca2c1d8d301a0b94986f1c3ed6b9a41e0ee36166cf5e2b0fc5ab289010a30`
-- Lifecycle: 0 new, 3 unchanged, 1 resolved, 0 suppressed (0 rejected)
+- Model: `stub-synthesizer-v1` · Run started: `2026-09-15T14:49:26.350218+00:00`
+- Intent catalog: `intent-md-v1:03110df4f4eb46ec3327aad2680c5f850629a422165a37dac299b9fc0765f9b1`
+- Lifecycle: 0 new, 0 unchanged, 2 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
 
 - `github_actions_workflow_collector`: ok (13 evidence)
-- `terraform_iam_collector`: partial (0 evidence) — 4 unreadable/unparseable Terraform resource(s) or file(s)
+- `terraform_iam_collector`: ok (0 evidence)
 - `kubernetes_deployment_collector`: ok (7 evidence)
 
 ## Intent evaluation
@@ -34,56 +34,58 @@
   environment, service, and owner tags so billed usage can be attributed. Any
   resource that cannot carry these tags is reported as an explicit coverage gap.
   - Category: `cost` · Priority: `medium` · Check: `not_declared` · Reason: `check_not_declared`
-- `divergent` `infra_fleet_public_reliability/R-001` — Deployments retain enough healthy capacity during rollout. Temporary capacity
-  cost is acceptable when it prevents user-visible interruption.
-  - Category: `reliability` · Priority: `high` · Check: `deployment_rollout_capacity` · Reason: `evidence_conflicts_with_intent`
-  - Evidence: `kubernetes_deployment_collector:21df164d364775d0`
+- `satisfied` `infra_fleet_public_reliability/R-001` — Owner-managed application Deployments under \`k8s/applications/\` retain enough
+  healthy capacity during rollout. Temporary capacity cost is acceptable when it
+  prevents user-visible interruption.
+  - Category: `reliability` · Priority: `high` · Check: `deployment_rollout_capacity` · Reason: `complete_evidence_supports_intent`
 - `declared_unverified` `infra_fleet_public_security/S-001` — GitHub Actions uses short-lived OIDC credentials; long-lived AWS access keys are not allowed.
   
-  Evidence: \[OIDC design\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/GITHUB-OIDC-SETUP.md\#L1-L6)
+  Evidence: \[OIDC design\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/GITHUB-OIDC-SETUP.md)
   
-  Caveat: \`infrastructure/permanent/github-oidc.tf\` at the cited commit binds the
-  trust policy subject to the placeholder \`repo:your-org/infra-fleet:\*\`, which
-  does not match \`ImranAdan/infra-fleet-public\`. As deployed, AWS STS would deny
-  this role to GitHub Actions; verify the actual deployed subject before relying
-  on this control.
+  Caveat: the trust policy is generated from the adopter's \`OWNER/REPOSITORY\`,
+  deployment branch, and GitHub Environment inputs. Repository analysis can verify
+  that desired state and workflow credential method, but cannot attest which role
+  version is live in AWS.
   - Category: `security` · Priority: `high` · Check: `github_actions_uses_oidc` · Reason: `collector_cannot_prove_satisfaction`
 - `declared_unverified` `infra_fleet_public_security/S-002` — Application containers run as non-root users with privilege escalation disabled and all Linux capabilities dropped.
   
-  Evidence: \[pod security context\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md\#L20-L46)
+  Evidence: \[application Deployment\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/k8s/applications/load-harness/deployment.yaml)
   - Category: `security` · Priority: `not_declared` · Check: `not_declared` · Reason: `check_not_declared`
-- `declared_unverified` `infra_fleet_public_security/S-003` — Application ingress is limited to the NGINX ingress and Prometheus namespaces.
+- `declared_unverified` `infra_fleet_public_security/S-003` — Application ingress is limited to the declared ingress, observability, Flux load
+  tester, and same-workload peers.
   
-  Evidence: \[NetworkPolicy\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md\#L50-L87)
+  Evidence: \[NetworkPolicy\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/k8s/applications/load-harness/networkpolicy.yaml)
   - Category: `security` · Priority: `not_declared` · Check: `not_declared` · Reason: `check_not_declared`
 - `declared_unverified` `infra_fleet_public_security/S-004` — Permissive application egress is accepted for the current staging environment.
   
-  Evidence: \[current egress policy\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md\#L78-L87)
+  Evidence: \[current egress policy\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/k8s/applications/load-harness/networkpolicy.yaml)
   - Category: `security` · Priority: `not_declared` · Check: `not_declared` · Reason: `check_not_declared`
-- `declared_unverified` `infra_fleet_public_security/S-005` — External application traffic uses HTTPS with certificates managed by cert-manager and Let’s Encrypt.
+- `declared_unverified` `infra_fleet_public_security/S-005` — When an AWS staging deployment enables a public hostname, external application
+  traffic uses HTTPS with certificates managed by cert-manager and Let's Encrypt.
   
-  Evidence: \[TLS design\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/TLS-SSL-SETUP.md\#L5-L13) · \[conflicting deferred entry\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md\#L208-L220)
+  Evidence: \[TLS and optional DNS\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/TLS-SSL-SETUP.md)
   
-  Caveat: the two evidence sources conflict — \`SECURITY-CONCERNS.md\`'s C3 entry
-  still documents TLS as deferred/unencrypted. Verify the deployed endpoint and
-  certificate configuration before treating this proposition as resolved.
+  Caveat: the template defaults to a reserved \`.invalid\` hostname and port-forward
+  access. New public exposure remains blocked by the documented ingress-controller
+  migration, and repository desired state cannot prove a certificate is live.
   - Category: `security` · Priority: `not_declared` · Check: `not_declared` · Reason: `check_not_declared`
 - `declared_unverified` `infra_fleet_public_security/S-006` — A publicly reachable EKS API protected by IAM is accepted for staging only.
   
-  Evidence: \[staging access decision\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/EKS-ACCESS.md\#L94-L116)
+  Evidence: \[staging access decision\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/EKS-ACCESS.md)
   - Category: `security` · Priority: `not_declared` · Check: `not_declared` · Reason: `check_not_declared`
-- `declared_unverified` `infra_fleet_public_security/S-007` — Wildcard IAM permissions are not acceptable for a production or persistent environment.
+- `declared_unverified` `infra_fleet_public_security/S-007` — Service-wide IAM action wildcards such as \`eks:\*\` are not acceptable for a
+  production or persistent environment.
   
-  Evidence: \[deferred least-privilege concern\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md\#L247-L252)
+  Evidence: \[current IAM disposition\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/SECURITY-CONCERNS.md)
   
-  Caveat: \`infrastructure/permanent/github-oidc.tf\` — the current persistent
-  stack — grants \`eks:\*\`, \`ec2:\*\`, \`autoscaling:\*\`, \`ssm:\*\`, and \`ecr:\*\` on \`\*\`
-  today. A \`Yes\` on this proposition is a gate to remediate that role, not a
-  statement that the persistent stack already complies.
-  - Category: `security` · Priority: `critical` · Check: `persistent_iam_avoids_wildcards` · Reason: `collector_incomplete`
+  Caveat: the persistent policy now enumerates actions and deliberately retains
+  the read-only \`ec2:Describe\*\` prefix. Several IAM write actions still use
+  \`Resource = "\*"\`; that residual risk and live AWS validation are outside the
+  registered service-action-wildcard check.
+  - Category: `security` · Priority: `critical` · Check: `persistent_iam_avoids_wildcards` · Reason: `collector_cannot_prove_satisfaction`
 - `declared_unverified` `infra_fleet_public_security/S-008` — CSRF protection is not required for the current API-first staging application.
   
-  Evidence: \[documented CSRF decision\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md\#L231-L235)
+  Evidence: \[documented CSRF decision\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/SECURITY-CONCERNS.md)
   
   Caveat: the application is not purely API-first — when \`API\_KEY\` is
   configured, Flask session-cookie authentication protects \`/ui/\*\` POST routes,
@@ -93,20 +95,20 @@
   - Category: `security` · Priority: `not_declared` · Check: `not_declared` · Reason: `check_not_declared`
 - `declared_unverified` `infra_fleet_public_security/S-009` — Automatic Kubernetes service-account token mounting is accepted for the current application.
   
-  Evidence: \[documented token-mount decision\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md\#L239-L243)
+  Evidence: \[documented token-mount decision\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/SECURITY-CONCERNS.md)
   - Category: `security` · Priority: `not_declared` · Check: `not_declared` · Reason: `check_not_declared`
-- `declared_unverified` `infra_fleet_public_security/S-010` — Security dependency updates are handled immediately rather than waiting for the routine monthly update cycle.
+- `declared_unverified` `infra_fleet_public_security/S-010` — Repository owners enable dependency alerts and security-update pull requests;
+  routine version checks run monthly, while review and deployment remain an owned
+  operational decision.
   
-  Evidence: \[Dependabot security alerts\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/DEPENDABOT.md\#L54-L60)
+  Evidence: \[Dependabot operating model\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/DEPENDABOT.md)
   
-  Caveat: the cited evidence covers immediate alerting and priority PR
-  creation only; review, merge, and deployment remain manual with no stated
-  owner or remediation deadline. Treat "handled immediately" as scoped to
-  alerting and PR creation, not an end-to-end SLA.
+  Caveat: repository-level alert and security-update settings cannot be declared
+  by the template, and this proposition defines no remediation SLA.
   - Category: `security` · Priority: `not_declared` · Check: `not_declared` · Reason: `check_not_declared`
 - `declared_unverified` `infra_fleet_public_security/S-011` — Trivy blocks ECR publication when an image has any fixed Critical or High vulnerability; a documented exception is required to permit one.
   
-  Evidence: \[Trivy security control\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md\#L277-L283)
+  Evidence: \[Trivy publication gate\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/.github/workflows/load-harness-ci.yml)
   
   Caveat: the workflow sets \`ignore-unfixed: true\`, so unfixed Critical/High
   findings do not block, and the gate applies to ECR publication, not to
@@ -116,7 +118,7 @@
 
 ## Recommendations
 
-### #1 [unchanged] IAM policy grants a wildcard action on all resources
+### [resolved] IAM policy grants a wildcard action on all resources
 
 - Category: `security` · Priority: `critical` · Confidence: 0.85
 - Fingerprint: `fp_6a206c70c062521f8d4d2145`
@@ -130,7 +132,7 @@ A Terraform-managed IAM policy statement allows a wildcard action (e.g. service:
 
 **Trade-offs:** Narrowing permissions may require iterating as new resource types are added, and risks under-provisioning if scoped too tightly.
 
-### #2 [unchanged] IAM policy grants a wildcard action on all resources
+### [resolved] IAM policy grants a wildcard action on all resources
 
 - Category: `security` · Priority: `critical` · Confidence: 0.85
 - Fingerprint: `fp_b3cb0f1396ed1d3f4d4518b4`
@@ -143,31 +145,3 @@ A Terraform-managed IAM policy statement allows a wildcard action (e.g. service:
 **Suggested change:** Scope the action list to the specific API calls required, and constrain Resource to the specific ARNs the role needs instead of *.
 
 **Trade-offs:** Narrowing permissions may require iterating as new resource types are added, and risks under-provisioning if scoped too tightly.
-
-### #3 [unchanged] Deployment rollout can reduce healthy capacity
-
-- Category: `reliability` · Priority: `high` · Confidence: 0.95
-- Fingerprint: `fp_46603884b783f80f4cadc58d`
-- Evidence: `kubernetes_deployment_collector:21df164d364775d0`
-
-A declared Kubernetes Deployment can make existing healthy capacity unavailable before replacement capacity is ready.
-
-**Impact:** A routine rollout can interrupt service or reduce the workload below its declared replica capacity.
-
-**Suggested change:** Use RollingUpdate with an effective maxUnavailable of 0 and a positive maxSurge, and define a readiness probe for every application container.
-
-**Trade-offs:** Zero-unavailable rollouts temporarily consume surge capacity and may require extra cluster headroom.
-
-### [resolved] Deployment rollout can reduce healthy capacity
-
-- Category: `reliability` · Priority: `high` · Confidence: 0.95
-- Fingerprint: `fp_aaa9b490f08e5576be4b13a8`
-- Evidence: `kubernetes_deployment_collector:21df164d364775d0`, `kubernetes_deployment_collector:3fb87f240e478035`
-
-A declared Kubernetes Deployment can make existing healthy capacity unavailable before replacement capacity is ready.
-
-**Impact:** A routine rollout can interrupt service or reduce the workload below its declared replica capacity.
-
-**Suggested change:** Use RollingUpdate with an effective maxUnavailable of 0 and a positive maxSurge, and define a readiness probe for every application container.
-
-**Trade-offs:** Zero-unavailable rollouts temporarily consume surge capacity and may require extra cluster headroom.
