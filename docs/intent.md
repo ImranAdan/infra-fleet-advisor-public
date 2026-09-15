@@ -14,15 +14,16 @@ declared proposition:
 
 - Format: `1`
 - Intent ID: `platform_reliability`
-- Version: `1.0`
+- Version: `1.1`
 - Category: `reliability`
 
 ## R-001 · Rollout capacity
 
 ### Intent
 
-Deployments retain enough healthy capacity during rollout. Temporary capacity
-cost is acceptable when it prevents user-visible interruption.
+Owner-managed application Deployments under `k8s/applications/` retain enough
+healthy capacity during rollout. Temporary capacity cost is acceptable when it
+prevents user-visible interruption.
 
 ### Evaluation
 
@@ -42,14 +43,17 @@ way to verify itself. Registered propositions produce exactly one of:
   reviewable advice; or
 - `declared_unverified`: coverage or a trusted check is missing.
 
-The registered `deployment_rollout_capacity` check reads tracked `apps/v1`
-Deployment manifests under `k8s/`. For each active Deployment it deterministically
-resolves integer or percentage rollout fenceposts against the declared replica
-count. Capacity is preserved only when RollingUpdate has an effective
-`maxUnavailable` of zero, a positive effective `maxSurge`, and every application
-container has a readiness probe. A complete set of conforming Deployment evidence
-can prove the proposition satisfied; malformed, duplicate, missing, excluded, or
-truncated evidence leaves it explicitly unverified.
+The registered `deployment_rollout_capacity` check evaluates tracked `apps/v1`
+Deployment manifests under `k8s/applications/`. The collector still inventories
+Deployments elsewhere under `k8s/`, but generated platform controllers do not
+decide this owner-managed application proposition. For each active application
+Deployment the check deterministically resolves integer or percentage rollout
+fenceposts against the declared replica count. Capacity is preserved only when
+RollingUpdate has an effective `maxUnavailable` of zero, a positive effective
+`maxSurge`, and every application container has a readiness probe. A complete set
+of conforming application Deployment evidence can prove the proposition
+satisfied; malformed, duplicate, missing, excluded, or truncated evidence leaves
+it explicitly unverified.
 
 The catalog digest is part of report provenance and material signatures. Issue
 publication reloads the current catalog, requires the digest to match the merged

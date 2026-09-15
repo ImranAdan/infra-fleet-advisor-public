@@ -122,6 +122,84 @@ def test_scoped_policy_produces_no_evidence(git_checkout) -> None:
     assert result.coverage.status == "ok"
 
 
+def test_local_condition_traversal_does_not_hide_literal_wildcard_grant(tmp_path) -> None:
+    result = _collect_text(
+        tmp_path,
+        """resource "aws_iam_policy" "controller" {
+          policy = jsonencode({
+            Statement = [{
+              Effect = "Allow"
+              Action = "eks:*"
+              Resource = "*"
+              Condition = local.region_only
+            }]
+          })
+        }""",
+    )
+
+    assert result.coverage.status == "ok"
+    assert result.evidence[0].fact["wildcard_actions"] == "eks:*"
+
+
+def test_fixed_prefix_resource_interpolation_is_known_not_to_equal_wildcard(tmp_path) -> None:
+    result = _collect_text(
+        tmp_path,
+        """resource "aws_iam_policy" "controller" {
+          policy = jsonencode({
+            Statement = [{
+              Effect = "Allow"
+              Action = "ecr:GetDownloadUrlForLayer"
+              Resource = "arn:aws:ecr:${local.region}:${local.account}:repository/app"
+            }]
+          })
+        }""",
+    )
+
+    assert result.coverage.status == "ok"
+    assert result.evidence == ()
+
+
+@pytest.mark.parametrize("field", ["Action", "Resource"])
+def test_interpolation_only_decision_fields_remain_incomplete(tmp_path, field) -> None:
+    result = _collect_text(
+        tmp_path,
+        'resource "aws_iam_policy" "controller" {\n'
+        ' policy = jsonencode({ Statement = [{ Effect = "Allow", '
+        f'{field} = "${{local.value}}", '
+        f'{"Resource" if field == "Action" else "Action"} = "*" }}] }})\n}}',
+    )
+
+    assert result.evidence == ()
+    assert result.coverage.status == "partial"
+
+
+def test_collection_scope_excludes_unparseable_policy_outside_persistent_stack(tmp_path) -> None:
+    permanent = tmp_path / "infrastructure/permanent/policy.tf"
+    permanent.parent.mkdir(parents=True)
+    permanent.write_text(
+        'resource "aws_iam_policy" "persistent" {\n'
+        ' policy = jsonencode({ Statement = [{ Effect = "Allow", '
+        'Action = "iam:GetRole", Resource = "*" }] })\n}\n',
+        encoding="utf-8",
+    )
+    staging = tmp_path / "infrastructure/staging/policy.tf"
+    staging.parent.mkdir(parents=True)
+    staging.write_text(
+        'resource "aws_iam_policy" "external" { policy = data.http.policy.response_body }\n',
+        encoding="utf-8",
+    )
+
+    result = tf_collector.collect(
+        tmp_path,
+        LIMITS,
+        tracked_paths=frozenset({permanent.relative_to(tmp_path).as_posix()}),
+        included_path_prefixes=("infrastructure/permanent",),
+    )
+
+    assert result.coverage.status == "ok"
+    assert result.evidence == ()
+
+
 def test_non_iam_resource_produces_no_evidence_or_failure(git_checkout) -> None:
     repo, _sha = git_checkout(terraform_files=("non_iam_resource.tf",))
     result = tf_collector.collect(repo, LIMITS)
@@ -292,10 +370,13 @@ def test_referenced_or_dynamic_policies_report_incomplete_coverage(tmp_path, exp
         "null",
         '"not a statement"',
         '{ Effect = ["Allow"], Action = "eks:*", Resource = "*" }',
+        '{ Effect = local.effect, Action = "eks:*", Resource = "*" }',
         '{ Effect = "Allow", Action = null, Resource = "*" }',
         '{ Effect = "Allow", Action = [], Resource = "*" }',
+        '{ Effect = "Allow", Action = local.actions, Resource = "*" }',
         '{ Effect = "Allow", Action = "eks:*", Resource = {} }',
         '{ Effect = "Allow", Action = "eks:*", Resource = "" }',
+        '{ Effect = "Allow", Action = "eks:*", Resource = local.resource }',
         '{ Effect = "Allow", NotAction = "eks:Describe*", Resource = "*" }',
     ],
 )
@@ -406,8 +487,6 @@ def test_nested_policy_attribute_cannot_replace_the_resource_policy(tmp_path) ->
         '{ Statement = [{ Effect = "Allow", Action = "${var.action}", Resource = "*" }] }',
         '{ Statement = [{ Effect = "Allow", Action = "eks:*", Resource = "*" }], Statement = [] }',
         "{ Statement = [] }",
-        '{ Statement = [{ Effect = "Allow", Action = "eks:*", Resource = "*" }],'
-        " Condition = local.region_only }",
         '{ Statement = [{ Effect = "Allow", Action = "eks:*", Resource = "*" }],'
         " Metadata = " + "[" * 70 + "0" + "]" * 70 + " }",
     ],

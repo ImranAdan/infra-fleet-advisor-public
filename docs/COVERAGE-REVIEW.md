@@ -9,7 +9,7 @@ checks are implemented; current coverage remains in every report.
 
 | Intent | Evaluation limit or subject | Historical ticket |
 |---|---|---|
-| Security S-007 | IAM collector cannot fully parse the current policy expressions | [#30](https://github.com/ImranAdan/infra-fleet-advisor-public/issues/30) |
+| Security S-007 | Registered persistent-stack IAM check; bounded dynamic syntax is supported while referenced policies remain unverified in scope | [#30](https://github.com/ImranAdan/infra-fleet-advisor-public/issues/30) |
 | Security S-006 | No check for the staging EKS API access decision | [#31](https://github.com/ImranAdan/infra-fleet-advisor-public/issues/31) |
 | Cost C-003 | No log-retention check | [#32](https://github.com/ImranAdan/infra-fleet-advisor-public/issues/32) |
 | Cost C-001 | No scheduled worker-capacity check | [#33](https://github.com/ImranAdan/infra-fleet-advisor-public/issues/33) |
@@ -31,8 +31,9 @@ collector or check does not itself create fleet work. A subsequent report must
 capture conflicting evidence, a reviewer must merge that report PR, and the
 separate publisher must validate the applicable finding.
 
-The rollout position R-001 already has conflicting evidence for Flux's generated
-`source-controller`. Its workload scope and accepted availability trade-off
-need judgement; do not mechanically rewrite upstream output. Historical IAM
-recommendations remain unconfirmed by current partial collection and are
-deferred by the fleet publisher.
+The rollout position R-001 is scoped to owner-managed Deployments under
+`k8s/applications/`; Flux's generated controllers remain collected inventory but
+do not create application rollout work. S-007 collection is scoped to the
+persistent Terraform stack, matching its trusted rule. A staging-only external
+policy therefore cannot block lifecycle resolution of historical persistent IAM
+recommendations.

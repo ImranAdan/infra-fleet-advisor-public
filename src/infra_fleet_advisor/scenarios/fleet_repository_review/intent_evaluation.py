@@ -107,6 +107,7 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
                 category="reliability",
                 evidence_kind=EVIDENCE_KIND_DEPLOYMENT_ROLLOUT_CAPACITY,
                 collector_id=K8S_DEPLOYMENT_COLLECTOR_ID,
+                source_path_prefixes=("k8s/applications",),
                 required_facts={"retains_healthy_capacity": False},
             ),
             can_prove_satisfaction=True,
