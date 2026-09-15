@@ -17,9 +17,32 @@
       "error_summary": null,
       "evidence_count": 7,
       "status": "ok"
+    },
+    {
+      "collector_id": "fleet_lifecycle_collector",
+      "error_summary": null,
+      "evidence_count": 1,
+      "status": "ok"
     }
   ],
   "evidence": [
+    {
+      "collector_id": "fleet_lifecycle_collector",
+      "collector_version": "1.0.0",
+      "evidence_id": "fleet_lifecycle_collector:6d72cf725a3df7bb",
+      "excerpt": "setup routed by facade/local/aws-staging: false/false/false; up/down complete: true",
+      "fact": {
+        "aws_lifecycle_complete": false,
+        "common_lifecycle_complete": false,
+        "facade_executable": true,
+        "facade_lifecycle_complete": false,
+        "local_lifecycle_complete": false,
+        "profiles_are_closed": true
+      },
+      "kind": "fleet_profile_lifecycle",
+      "locator": "profile lifecycle dispatch",
+      "source_path": "fleet"
+    },
     {
       "collector_id": "terraform_iam_collector",
       "collector_version": "1.1.0",
@@ -105,14 +128,16 @@
     },
     {
       "category": "maintainability",
-      "check_key": null,
+      "check_key": "fleet_profiles_expose_lifecycle",
       "document_id": "infra_fleet_public_maintainability",
-      "evidence_ids": [],
+      "evidence_ids": [
+        "fleet_lifecycle_collector:6d72cf725a3df7bb"
+      ],
       "priority": "high",
       "proposition_id": "M-001",
-      "reason": "check_not_declared",
+      "reason": "evidence_conflicts_with_intent",
       "statement": "Every supported deployment profile exposes the same three lifecycle commands:\n`./fleet setup --profile <profile>` prepares and validates the target,\n`./fleet up --profile <profile>` brings the platform to a ready state, and\n`./fleet down --profile <profile>` removes the resources owned by that profile.\nEach phase is safe to repeat and resume after partial failure, reports its target\nbefore mutation, and ends with either a clear success state or an actionable\nfailure. Successful setup and startup print the next command needed by the\nadopter.",
-      "status": "declared_unverified"
+      "status": "divergent"
     },
     {
       "category": "maintainability",
@@ -269,22 +294,43 @@
       "status": "declared_unverified"
     }
   ],
-  "new_count": 0,
+  "new_count": 1,
   "provenance": {
     "advisor_version": "0.1.0",
     "collector_versions": {
+      "fleet_lifecycle_collector": "1.0.0",
       "github_actions_workflow_collector": "1.3.0",
       "kubernetes_deployment_collector": "1.0.0",
       "terraform_iam_collector": "1.4.0"
     },
-    "intent_digest": "intent-md-v1:b5a09ac778f7b39c282838d7c2b80ebd832b6569b7cf8010574229bceb9f04a6",
+    "intent_digest": "intent-md-v1:5781fb4fa3f59562c1eeb63d3b3212499a519a53bac6daef94f8fe225ac29481",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.1",
-    "run_started_at": "2026-09-15T18:31:31.734827+00:00",
+    "run_started_at": "2026-09-15T18:51:17.786400+00:00",
     "source_commit_sha": "d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0",
     "source_label": "infra-fleet-public"
   },
   "recommendations": [
+    {
+      "category": "maintainability",
+      "concern_key": "fleet_profile_lifecycle_incomplete",
+      "confidence": 0.95,
+      "confidence_explanation": "Derived from the closed action allowlist and fixed local and AWS dispatch branches.",
+      "evidence_ids": [
+        "fleet_lifecycle_collector:6d72cf725a3df7bb"
+      ],
+      "fingerprint": "fp_04b6e8f53c02c6a25eb3abe6",
+      "impact": "A new adopter must leave the common interface and complete profile-specific manual steps before the platform can be used.",
+      "owner_accepted_trade_off": null,
+      "priority": "high",
+      "rank": 1,
+      "rank_rationale": "priority=high, category_weight=8, confidence=0.95",
+      "status": "new",
+      "suggested_change": "Add setup to the fixed ./fleet action surface and implement it for local and aws-staging. Local setup should prepare and validate pinned tools; AWS setup should validate adopter configuration and sessions, configure GitHub and HCP Terraform, and bootstrap the OIDC foundation. Preserve the existing bounded teardown behavior.",
+      "summary": "The tracked Fleet facade does not route setup, up, and down through both the local and AWS staging profile strategies.",
+      "title": "Fleet profiles lack the declared lifecycle command surface",
+      "trade_offs": "Automated AWS onboarding expands the facade's credential and provider API surface, so target validation and explicit confirmation must precede mutations."
+    },
     {
       "category": "security",
       "concern_key": "wildcard_iam_permissions",
