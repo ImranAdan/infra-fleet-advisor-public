@@ -119,7 +119,9 @@ def test_authoritative_markdown_drives_the_production_review(git_checkout) -> No
     for proposition_id in ("C-001", "C-002", "C-003", "C-004", "C-005"):
         assert evaluations[proposition_id].status == "declared_unverified"
         assert evaluations[proposition_id].reason == "check_not_declared"
-    for proposition_id in ("M-001", "M-002", "M-003"):
+    assert evaluations["M-001"].status == "declared_unverified"
+    assert evaluations["M-001"].reason == "no_relevant_evidence"
+    for proposition_id in ("M-002", "M-003"):
         assert evaluations[proposition_id].status == "declared_unverified"
         assert evaluations[proposition_id].reason == "check_not_declared"
     assert {item.status for key, item in evaluations.items() if key not in {"S-001", "S-007"}} == {
@@ -129,6 +131,70 @@ def test_authoritative_markdown_drives_the_production_review(git_checkout) -> No
         "ci_credentials_without_oidc",
         "wildcard_iam_permissions",
     }
+
+
+def test_production_lifecycle_intent_requires_one_fleet_surface_fix(git_checkout) -> None:
+    repo, _sha = git_checkout()
+    facade = repo / "fleet"
+    facade.write_text(
+        (
+            "#!/usr/bin/env bash\n"
+            'action=${1:-help}\nprofile=""\n'
+            "case \"$profile\" in local|aws-staging) ;; *) echo 'Choose --profile' ;; esac\n"
+            'case "$action" in up|down|status) ;; *) echo "Unknown action: $action" ;; esac\n'
+            'if [ "$profile" = aws-staging ]; then\n'
+            '  case "$action" in\n'
+            "    up) command ;;\n"
+            "    down) command ;;\n"
+            "  esac\n"
+            "fi\n"
+            'local_main "$action"\n'
+        ),
+        encoding="utf-8",
+    )
+    facade.chmod(0o755)
+    local = repo / "scripts" / "fleet-profiles" / "local.sh"
+    local.parent.mkdir(parents=True)
+    local.write_text(
+        'local_main() {\n  case "$1" in\n    up) command ;;\n    down) command ;;\n  esac\n}\n',
+        encoding="utf-8",
+    )
+    _git("git", "add", "fleet", "scripts/fleet-profiles/local.sh", cwd=repo)
+    _git("git", "commit", "-q", "-m", "add incomplete fleet lifecycle", cwd=repo)
+    sha = subprocess.run(  # fixed argv, test-only
+        ["git", "rev-parse", "HEAD"],  # noqa: S603,S607
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    report = run_review(
+        checkout_root=repo,
+        policy=load_policy(PRODUCTION_POLICY_PATH, TAXONOMY),
+        source=verify_snapshot(repo, sha, "infra-fleet-public"),
+        synthesizer=_EmptySynthesizer(),
+        limits=LIMITS,
+        prior=None,
+        run_started_at="2026-08-26T00:00:00+00:00",
+        intent_catalog=load_intent_catalog(PRODUCTION_INTENT_PATH, TAXONOMY),
+    )
+
+    lifecycle = next(item for item in report.intent_evaluations if item.proposition_id == "M-001")
+    assert lifecycle.status == "divergent"
+    assert lifecycle.reason == "evidence_conflicts_with_intent"
+    assert [item.concern_key for item in report.recommendations] == [
+        "fleet_profile_lifecycle_incomplete"
+    ]
+    assert report.recommendations[0].evidence_ids == lifecycle.evidence_ids
+    published, _markdown = write_report(report, repo.parent / "lifecycle-report")
+    issue_plan = build_issue_plan(
+        published,
+        PRODUCTION_POLICY_PATH,
+        PRODUCTION_INTENT_PATH,
+    )
+    assert len(issue_plan.actions) == 1
+    assert issue_plan.actions[0].action == "active"
+    assert issue_plan.actions[0].intent_proposition_id == "M-001"
 
 
 def test_reliability_intent_produces_required_advice_for_unsafe_rollout(git_checkout) -> None:
@@ -286,7 +352,7 @@ def test_registered_collectors_contribute_to_one_report(git_checkout) -> None:
     concern_keys = {r.concern_key for r in report.recommendations}
     assert "trivy_ignore_unfixed" in concern_keys
     assert "wildcard_iam_permissions" in concern_keys
-    assert len(report.coverage) == 3
+    assert len(report.coverage) == 4
     assert all(c.status == "ok" for c in report.coverage)
     assert len(report.evidence) == 2
 

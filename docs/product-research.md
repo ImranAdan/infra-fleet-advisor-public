@@ -113,5 +113,7 @@ while retaining earlier decline decisions. Its real GitHub event path remains
 unverified locally, and the default token and feedback policy PRs retain the
 limitation. The initial rollout rule is now scoped to owner-managed application
 manifests, and persistent IAM completeness is isolated from unrelated staging
-policies. The remaining adoption gap is the three-check coverage limit. See
+policies. A fourth, divergence-only check now identifies a missing common Fleet
+lifecycle surface without executing target code. Coverage remains deliberately
+narrow, and the local and AWS runtime onboarding claims stay unverified. See
 [coverage](status.md) for operational limits.

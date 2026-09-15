@@ -11,6 +11,7 @@ from infra_fleet_advisor.core.report import CollectorCoverage
 from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
     CONCERN_CI_CREDENTIALS_WITHOUT_OIDC,
     CONCERN_DEPLOYMENT_ROLLOUT_CAPACITY,
+    CONCERN_FLEET_LIFECYCLE_INCOMPLETE,
     CONCERN_TEMPLATES,
     CONCERN_TRIVY_IGNORE_UNFIXED,
     CONCERN_WILDCARD_IAM_PERMISSIONS,
@@ -19,8 +20,10 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     EVIDENCE_KIND_CREDENTIAL_METHOD,
     EVIDENCE_KIND_DEPLOYMENT_ROLLOUT_CAPACITY,
+    EVIDENCE_KIND_FLEET_LIFECYCLE,
     EVIDENCE_KIND_IAM_WILDCARD,
     EVIDENCE_KIND_TRIVY_GATE,
+    FLEET_LIFECYCLE_COLLECTOR_ID,
     GHA_COLLECTOR_ID,
     K8S_DEPLOYMENT_COLLECTOR_ID,
     TF_IAM_COLLECTOR_ID,
@@ -30,6 +33,7 @@ CHECK_GITHUB_ACTIONS_USES_OIDC = "github_actions_uses_oidc"
 CHECK_PERSISTENT_IAM_AVOIDS_WILDCARDS = "persistent_iam_avoids_wildcards"
 CHECK_TRIVY_DOES_NOT_IGNORE_UNFIXED = "trivy_does_not_ignore_unfixed"
 CHECK_DEPLOYMENT_ROLLOUT_CAPACITY = "deployment_rollout_capacity"
+CHECK_FLEET_PROFILES_EXPOSE_LIFECYCLE = "fleet_profiles_expose_lifecycle"
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,6 +115,20 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
                 required_facts={"retains_healthy_capacity": False},
             ),
             can_prove_satisfaction=True,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_FLEET_PROFILES_EXPOSE_LIFECYCLE: IntentCheckDefinition(
+            concern_key=CONCERN_FLEET_LIFECYCLE_INCOMPLETE,
+            rule=ConcernRule(
+                category="maintainability",
+                evidence_kind=EVIDENCE_KIND_FLEET_LIFECYCLE,
+                collector_id=FLEET_LIFECYCLE_COLLECTOR_ID,
+                source_path_prefixes=("fleet",),
+                required_facts={"common_lifecycle_complete": False},
+            ),
+            # Static parsing can prove the declared command surface is absent,
+            # but cannot prove idempotence or runtime behavior from shell text.
+            can_prove_satisfaction=False,
             requires_relevant_evidence=True,
         ),
     }

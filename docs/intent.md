@@ -43,10 +43,13 @@ way to verify itself. Registered propositions produce exactly one of:
   reviewable advice; or
 - `declared_unverified`: coverage or a trusted check is missing.
 
-The current maintainability intent uses this deliberate first step to record the
-Fleet's local and AWS onboarding contract. Its propositions remain
-`declared_unverified` until trusted checks can evaluate the repository without
-executing Fleet-provided code.
+The maintainability intent records the Fleet's local and AWS onboarding
+contract. M-001 registers a static check that can prove the common lifecycle
+surface is missing or inconsistent without executing Fleet-provided code. A
+structurally complete surface remains `declared_unverified` because static shell
+inspection cannot prove idempotence or runtime behavior. M-002 and M-003 remain
+unregistered until implementation provides specific local and AWS controls that
+trusted collectors can evaluate.
 
 The registered `deployment_rollout_capacity` check evaluates tracked `apps/v1`
 Deployment manifests under `k8s/applications/`. The collector still inventories
