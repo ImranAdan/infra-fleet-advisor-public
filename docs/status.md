@@ -23,10 +23,11 @@ issue-creation decision record. See the [workflow](WORKFLOW.md) and
 | Terraform IAM | Persistent-stack policies under `infrastructure/permanent/`; bounded JSON/HCL objects, local condition traversals and fixed-prefix resource ARN interpolation | Referenced policy documents and unknown decision fields remain partial within the persistent scope; no policy URL fetch or Terraform execution |
 | Kubernetes Deployments | Tracked raw `apps/v1` Deployment manifests under `k8s/`; the reliability check evaluates owner-managed workloads under `k8s/applications/` | Does not render Helm or inspect a live cluster; missing, malformed, duplicate or truncated evidence remains unverified |
 
-The initial security, reliability and cost catalogs contain seventeen positions.
-Three have registered checks. Unsupported positions and incomplete evaluation
-remain explicit report coverage; the cost catalog has no registered checks.
-They do not automatically create issues in either repository. The
+The security, reliability, cost and maintainability catalogs contain twenty
+positions. Three have registered checks. Unsupported positions and incomplete
+evaluation remain explicit report coverage; the cost and maintainability
+catalogs have no registered checks. They do not automatically create issues in
+either repository. The
 [coverage review](COVERAGE-REVIEW.md) preserves the retired generated backlog.
 
 Untracked Terraform downloads, including `.terraform` module files, are not

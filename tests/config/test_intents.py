@@ -5,7 +5,7 @@ import pytest
 from infra_fleet_advisor.config.intents import load_intent_catalog
 from infra_fleet_advisor.core.errors import PolicyError
 
-TAXONOMY = frozenset({"security", "reliability", "cost"})
+TAXONOMY = frozenset({"security", "reliability", "cost", "maintainability"})
 PRODUCTION_INTENTS = Path(__file__).parent.parent.parent / "intent"
 
 
@@ -188,7 +188,7 @@ def test_rejects_symlinked_intent_documents(tmp_path: Path) -> None:
 def test_production_markdown_is_the_authoritative_catalog() -> None:
     catalog = load_intent_catalog(PRODUCTION_INTENTS, TAXONOMY)
 
-    assert len(catalog.propositions) == 17
+    assert len(catalog.propositions) == 20
     assert {item.check_key for item in catalog.propositions if item.check_key is not None} == {
         "deployment_rollout_capacity",
         "github_actions_uses_oidc",
@@ -214,3 +214,12 @@ def test_production_markdown_is_the_authoritative_catalog() -> None:
     assert len(cost) == 5
     assert all(item.category == "cost" for item in cost)
     assert all(item.check_key is None for item in cost)
+    maintainability = tuple(
+        item
+        for item in catalog.propositions
+        if item.document_id == "infra_fleet_public_maintainability"
+    )
+    assert len(maintainability) == 3
+    assert all(item.category == "maintainability" for item in maintainability)
+    assert all(item.check_key is None for item in maintainability)
+    assert all(item.priority == "high" for item in maintainability)

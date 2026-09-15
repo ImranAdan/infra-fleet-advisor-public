@@ -43,6 +43,11 @@ way to verify itself. Registered propositions produce exactly one of:
   reviewable advice; or
 - `declared_unverified`: coverage or a trusted check is missing.
 
+The current maintainability intent uses this deliberate first step to record the
+Fleet's local and AWS onboarding contract. Its propositions remain
+`declared_unverified` until trusted checks can evaluate the repository without
+executing Fleet-provided code.
+
 The registered `deployment_rollout_capacity` check evaluates tracked `apps/v1`
 Deployment manifests under `k8s/applications/`. The collector still inventories
 Deployments elsewhere under `k8s/`, but generated platform controllers do not

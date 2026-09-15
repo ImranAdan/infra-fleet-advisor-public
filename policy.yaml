@@ -4,18 +4,19 @@
 # against each other, and which concerns have already been considered and
 # accepted. Recommendations are judged against this, not against a notion of one
 # universally optimal configuration.
-version: "1.0"
+version: "1.1"
 
 # Bounded execution. The advisor makes exactly one model call per run.
 max_recommendations: 10
 max_wall_seconds: 300
 max_model_calls: 1
 
-enabled_categories: [security, reliability, cost]
+enabled_categories: [security, reliability, cost, maintainability]
 
 # Higher wins when ranking two findings of the same priority.
 category_priority:
   security: 10
+  maintainability: 8
   reliability: 5
   cost: 5
 

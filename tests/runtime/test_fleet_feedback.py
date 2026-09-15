@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from infra_fleet_advisor.config.loader import load_policy
 from infra_fleet_advisor.core.contracts import Recommendation, compute_fingerprint
 from infra_fleet_advisor.core.errors import PolicyError
 from infra_fleet_advisor.core.evidence import Evidence
@@ -27,6 +28,7 @@ from infra_fleet_advisor.runtime.report_writer import write_report
 from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
     CONCERN_TRIVY_IGNORE_UNFIXED,
 )
+from infra_fleet_advisor.scenarios.fleet_repository_review.constants import TAXONOMY
 
 POLICY = Path(__file__).parent.parent / "fixtures" / "policies" / "valid_policy.yaml"
 INTENTS = Path(__file__).parent.parent / "fixtures" / "intents"
@@ -36,7 +38,7 @@ EVIDENCE_ID = "github_actions_workflow_collector:aaaaaaaaaaaaaaaa"
 SECOND_EVIDENCE_ID = "github_actions_workflow_collector:bbbbbbbbbbbbbbbb"
 
 
-def _report(tmp_path: Path) -> tuple[Path, str]:
+def _report(tmp_path: Path, *, policy_version: str = "1.0") -> tuple[Path, str]:
     fingerprint = compute_fingerprint("security", CONCERN_TRIVY_IGNORE_UNFIXED, (EVIDENCE_ID,))
     recommendation = Recommendation(
         fingerprint=fingerprint,
@@ -68,7 +70,7 @@ def _report(tmp_path: Path) -> tuple[Path, str]:
             source_commit_sha="a" * 40,
             source_label="infra-fleet-public",
             advisor_version="0.1.0",
-            policy_version="1.0",
+            policy_version=policy_version,
             collector_versions={"github_actions_workflow_collector": "1.1.0"},
             model_identifier="stub-synthesizer-v1",
             run_started_at="2026-09-03T00:00:00Z",
@@ -354,7 +356,10 @@ def test_feedback_appends_to_existing_trade_offs_and_versions_deterministically(
 def test_repeated_feedback_keeps_trade_offs_above_the_next_policy_comment(
     tmp_path: Path,
 ) -> None:
-    report, fingerprint = _report(tmp_path)
+    report, fingerprint = _report(
+        tmp_path,
+        policy_version=load_policy(ROOT_POLICY, TAXONOMY).version,
+    )
     first_plan = build_feedback_plan(
         report,
         ROOT_POLICY,
