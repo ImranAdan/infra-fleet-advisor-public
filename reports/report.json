@@ -8,9 +8,9 @@
     },
     {
       "collector_id": "terraform_iam_collector",
-      "error_summary": "4 unreadable/unparseable Terraform resource(s) or file(s)",
+      "error_summary": null,
       "evidence_count": 0,
-      "status": "partial"
+      "status": "ok"
     },
     {
       "collector_id": "kubernetes_deployment_collector",
@@ -20,44 +20,6 @@
     }
   ],
   "evidence": [
-    {
-      "collector_id": "kubernetes_deployment_collector",
-      "collector_version": "1.0.0",
-      "evidence_id": "kubernetes_deployment_collector:21df164d364775d0",
-      "excerpt": "Deployment flux-system/source-controller: replicas=1, strategy=Recreate, maxUnavailable=n/a, maxSurge=n/a",
-      "fact": {
-        "all_containers_have_readiness_probe": true,
-        "effective_max_surge": 0,
-        "effective_max_unavailable": 1,
-        "max_surge": "n/a",
-        "max_unavailable": "n/a",
-        "replicas": 1,
-        "retains_healthy_capacity": false,
-        "strategy_type": "Recreate"
-      },
-      "kind": "k8s_deployment_rollout_capacity",
-      "locator": "Deployment/flux-system/source-controller",
-      "source_path": "k8s/flux-system/flux-system/gotk-components.yaml"
-    },
-    {
-      "collector_id": "kubernetes_deployment_collector",
-      "collector_version": "1.0.0",
-      "evidence_id": "kubernetes_deployment_collector:3fb87f240e478035",
-      "excerpt": "Deployment observability/pushgateway: replicas=1, strategy=RollingUpdate, maxUnavailable=25%, maxSurge=25%",
-      "fact": {
-        "all_containers_have_readiness_probe": false,
-        "effective_max_surge": 1,
-        "effective_max_unavailable": 0,
-        "max_surge": "25%",
-        "max_unavailable": "25%",
-        "replicas": 1,
-        "retains_healthy_capacity": false,
-        "strategy_type": "RollingUpdate"
-      },
-      "kind": "k8s_deployment_rollout_capacity",
-      "locator": "Deployment/observability/pushgateway",
-      "source_path": "k8s/infrastructure/observability/pushgateway.yaml"
-    },
     {
       "collector_id": "terraform_iam_collector",
       "collector_version": "1.1.0",
@@ -145,14 +107,12 @@
       "category": "reliability",
       "check_key": "deployment_rollout_capacity",
       "document_id": "infra_fleet_public_reliability",
-      "evidence_ids": [
-        "kubernetes_deployment_collector:21df164d364775d0"
-      ],
+      "evidence_ids": [],
       "priority": "high",
       "proposition_id": "R-001",
-      "reason": "evidence_conflicts_with_intent",
-      "statement": "Deployments retain enough healthy capacity during rollout. Temporary capacity\ncost is acceptable when it prevents user-visible interruption.",
-      "status": "divergent"
+      "reason": "complete_evidence_supports_intent",
+      "statement": "Owner-managed application Deployments under `k8s/applications/` retain enough\nhealthy capacity during rollout. Temporary capacity cost is acceptable when it\nprevents user-visible interruption.",
+      "status": "satisfied"
     },
     {
       "category": "security",
@@ -162,7 +122,7 @@
       "priority": "high",
       "proposition_id": "S-001",
       "reason": "collector_cannot_prove_satisfaction",
-      "statement": "GitHub Actions uses short-lived OIDC credentials; long-lived AWS access keys are not allowed.\n\nEvidence: [OIDC design](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/GITHUB-OIDC-SETUP.md#L1-L6)\n\nCaveat: `infrastructure/permanent/github-oidc.tf` at the cited commit binds the\ntrust policy subject to the placeholder `repo:your-org/infra-fleet:*`, which\ndoes not match `ImranAdan/infra-fleet-public`. As deployed, AWS STS would deny\nthis role to GitHub Actions; verify the actual deployed subject before relying\non this control.",
+      "statement": "GitHub Actions uses short-lived OIDC credentials; long-lived AWS access keys are not allowed.\n\nEvidence: [OIDC design](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/GITHUB-OIDC-SETUP.md)\n\nCaveat: the trust policy is generated from the adopter's `OWNER/REPOSITORY`,\ndeployment branch, and GitHub Environment inputs. Repository analysis can verify\nthat desired state and workflow credential method, but cannot attest which role\nversion is live in AWS.",
       "status": "declared_unverified"
     },
     {
@@ -173,7 +133,7 @@
       "priority": null,
       "proposition_id": "S-002",
       "reason": "check_not_declared",
-      "statement": "Application containers run as non-root users with privilege escalation disabled and all Linux capabilities dropped.\n\nEvidence: [pod security context](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md#L20-L46)",
+      "statement": "Application containers run as non-root users with privilege escalation disabled and all Linux capabilities dropped.\n\nEvidence: [application Deployment](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/k8s/applications/load-harness/deployment.yaml)",
       "status": "declared_unverified"
     },
     {
@@ -184,7 +144,7 @@
       "priority": null,
       "proposition_id": "S-003",
       "reason": "check_not_declared",
-      "statement": "Application ingress is limited to the NGINX ingress and Prometheus namespaces.\n\nEvidence: [NetworkPolicy](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md#L50-L87)",
+      "statement": "Application ingress is limited to the declared ingress, observability, Flux load\ntester, and same-workload peers.\n\nEvidence: [NetworkPolicy](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/k8s/applications/load-harness/networkpolicy.yaml)",
       "status": "declared_unverified"
     },
     {
@@ -195,7 +155,7 @@
       "priority": null,
       "proposition_id": "S-004",
       "reason": "check_not_declared",
-      "statement": "Permissive application egress is accepted for the current staging environment.\n\nEvidence: [current egress policy](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md#L78-L87)",
+      "statement": "Permissive application egress is accepted for the current staging environment.\n\nEvidence: [current egress policy](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/k8s/applications/load-harness/networkpolicy.yaml)",
       "status": "declared_unverified"
     },
     {
@@ -206,7 +166,7 @@
       "priority": null,
       "proposition_id": "S-005",
       "reason": "check_not_declared",
-      "statement": "External application traffic uses HTTPS with certificates managed by cert-manager and Let\u2019s Encrypt.\n\nEvidence: [TLS design](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/TLS-SSL-SETUP.md#L5-L13) \u00b7 [conflicting deferred entry](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md#L208-L220)\n\nCaveat: the two evidence sources conflict \u2014 `SECURITY-CONCERNS.md`'s C3 entry\nstill documents TLS as deferred/unencrypted. Verify the deployed endpoint and\ncertificate configuration before treating this proposition as resolved.",
+      "statement": "When an AWS staging deployment enables a public hostname, external application\ntraffic uses HTTPS with certificates managed by cert-manager and Let's Encrypt.\n\nEvidence: [TLS and optional DNS](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/TLS-SSL-SETUP.md)\n\nCaveat: the template defaults to a reserved `.invalid` hostname and port-forward\naccess. New public exposure remains blocked by the documented ingress-controller\nmigration, and repository desired state cannot prove a certificate is live.",
       "status": "declared_unverified"
     },
     {
@@ -217,7 +177,7 @@
       "priority": null,
       "proposition_id": "S-006",
       "reason": "check_not_declared",
-      "statement": "A publicly reachable EKS API protected by IAM is accepted for staging only.\n\nEvidence: [staging access decision](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/EKS-ACCESS.md#L94-L116)",
+      "statement": "A publicly reachable EKS API protected by IAM is accepted for staging only.\n\nEvidence: [staging access decision](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/EKS-ACCESS.md)",
       "status": "declared_unverified"
     },
     {
@@ -227,8 +187,8 @@
       "evidence_ids": [],
       "priority": "critical",
       "proposition_id": "S-007",
-      "reason": "collector_incomplete",
-      "statement": "Wildcard IAM permissions are not acceptable for a production or persistent environment.\n\nEvidence: [deferred least-privilege concern](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md#L247-L252)\n\nCaveat: `infrastructure/permanent/github-oidc.tf` \u2014 the current persistent\nstack \u2014 grants `eks:*`, `ec2:*`, `autoscaling:*`, `ssm:*`, and `ecr:*` on `*`\ntoday. A `Yes` on this proposition is a gate to remediate that role, not a\nstatement that the persistent stack already complies.",
+      "reason": "collector_cannot_prove_satisfaction",
+      "statement": "Service-wide IAM action wildcards such as `eks:*` are not acceptable for a\nproduction or persistent environment.\n\nEvidence: [current IAM disposition](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/SECURITY-CONCERNS.md)\n\nCaveat: the persistent policy now enumerates actions and deliberately retains\nthe read-only `ec2:Describe*` prefix. Several IAM write actions still use\n`Resource = \"*\"`; that residual risk and live AWS validation are outside the\nregistered service-action-wildcard check.",
       "status": "declared_unverified"
     },
     {
@@ -239,7 +199,7 @@
       "priority": null,
       "proposition_id": "S-008",
       "reason": "check_not_declared",
-      "statement": "CSRF protection is not required for the current API-first staging application.\n\nEvidence: [documented CSRF decision](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md#L231-L235)\n\nCaveat: the application is not purely API-first \u2014 when `API_KEY` is\nconfigured, Flask session-cookie authentication protects `/ui/*` POST routes,\nincluding endpoints that start CPU, memory, and cluster load tests. This\nproposition holds only if `SameSite=Lax` is the accepted compensating\ncontrol for those routes; otherwise CSRF exposure remains.",
+      "statement": "CSRF protection is not required for the current API-first staging application.\n\nEvidence: [documented CSRF decision](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/SECURITY-CONCERNS.md)\n\nCaveat: the application is not purely API-first \u2014 when `API_KEY` is\nconfigured, Flask session-cookie authentication protects `/ui/*` POST routes,\nincluding endpoints that start CPU, memory, and cluster load tests. This\nproposition holds only if `SameSite=Lax` is the accepted compensating\ncontrol for those routes; otherwise CSRF exposure remains.",
       "status": "declared_unverified"
     },
     {
@@ -250,7 +210,7 @@
       "priority": null,
       "proposition_id": "S-009",
       "reason": "check_not_declared",
-      "statement": "Automatic Kubernetes service-account token mounting is accepted for the current application.\n\nEvidence: [documented token-mount decision](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md#L239-L243)",
+      "statement": "Automatic Kubernetes service-account token mounting is accepted for the current application.\n\nEvidence: [documented token-mount decision](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/SECURITY-CONCERNS.md)",
       "status": "declared_unverified"
     },
     {
@@ -261,7 +221,7 @@
       "priority": null,
       "proposition_id": "S-010",
       "reason": "check_not_declared",
-      "statement": "Security dependency updates are handled immediately rather than waiting for the routine monthly update cycle.\n\nEvidence: [Dependabot security alerts](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/DEPENDABOT.md#L54-L60)\n\nCaveat: the cited evidence covers immediate alerting and priority PR\ncreation only; review, merge, and deployment remain manual with no stated\nowner or remediation deadline. Treat \"handled immediately\" as scoped to\nalerting and PR creation, not an end-to-end SLA.",
+      "statement": "Repository owners enable dependency alerts and security-update pull requests;\nroutine version checks run monthly, while review and deployment remain an owned\noperational decision.\n\nEvidence: [Dependabot operating model](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/DEPENDABOT.md)\n\nCaveat: repository-level alert and security-update settings cannot be declared\nby the template, and this proposition defines no remediation SLA.",
       "status": "declared_unverified"
     },
     {
@@ -272,7 +232,7 @@
       "priority": null,
       "proposition_id": "S-011",
       "reason": "check_not_declared",
-      "statement": "Trivy blocks ECR publication when an image has any fixed Critical or High vulnerability; a documented exception is required to permit one.\n\nEvidence: [Trivy security control](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md#L277-L283)\n\nCaveat: the workflow sets `ignore-unfixed: true`, so unfixed Critical/High\nfindings do not block, and the gate applies to ECR publication, not to\ndeployment. The proposition text above has been narrowed to match; a `Yes`\ndoes not imply a deployment-time gate exists.",
+      "statement": "Trivy blocks ECR publication when an image has any fixed Critical or High vulnerability; a documented exception is required to permit one.\n\nEvidence: [Trivy publication gate](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/.github/workflows/load-harness-ci.yml)\n\nCaveat: the workflow sets `ignore-unfixed: true`, so unfixed Critical/High\nfindings do not block, and the gate applies to ECR publication, not to\ndeployment. The proposition text above has been narrowed to match; a `Yes`\ndoes not imply a deployment-time gate exists.",
       "status": "declared_unverified"
     }
   ],
@@ -282,13 +242,13 @@
     "collector_versions": {
       "github_actions_workflow_collector": "1.3.0",
       "kubernetes_deployment_collector": "1.0.0",
-      "terraform_iam_collector": "1.3.0"
+      "terraform_iam_collector": "1.4.0"
     },
-    "intent_digest": "intent-md-v1:c96ca2c1d8d301a0b94986f1c3ed6b9a41e0ee36166cf5e2b0fc5ab289010a30",
+    "intent_digest": "intent-md-v1:03110df4f4eb46ec3327aad2680c5f850629a422165a37dac299b9fc0765f9b1",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.0",
-    "run_started_at": "2026-09-14T20:25:35.223381+00:00",
-    "source_commit_sha": "34f7f5a505d2f3614c3dd20a1c3128939bf8e255",
+    "run_started_at": "2026-09-15T14:49:26.350218+00:00",
+    "source_commit_sha": "d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0",
     "source_label": "infra-fleet-public"
   },
   "recommendations": [
@@ -304,9 +264,9 @@
       "impact": "Overly broad IAM grants expand the blast radius if the associated role's credentials are compromised, and make least-privilege review difficult.",
       "owner_accepted_trade_off": null,
       "priority": "critical",
-      "rank": 1,
-      "rank_rationale": "priority=critical, category_weight=10, confidence=0.85",
-      "status": "unchanged",
+      "rank": null,
+      "rank_rationale": null,
+      "status": "resolved",
       "suggested_change": "Scope the action list to the specific API calls required, and constrain Resource to the specific ARNs the role needs instead of *.",
       "summary": "A Terraform-managed IAM policy statement allows a wildcard action (e.g. service:*) with Resource set to *.",
       "title": "IAM policy grants a wildcard action on all resources",
@@ -324,59 +284,18 @@
       "impact": "Overly broad IAM grants expand the blast radius if the associated role's credentials are compromised, and make least-privilege review difficult.",
       "owner_accepted_trade_off": null,
       "priority": "critical",
-      "rank": 2,
-      "rank_rationale": "priority=critical, category_weight=10, confidence=0.85",
-      "status": "unchanged",
+      "rank": null,
+      "rank_rationale": null,
+      "status": "resolved",
       "suggested_change": "Scope the action list to the specific API calls required, and constrain Resource to the specific ARNs the role needs instead of *.",
       "summary": "A Terraform-managed IAM policy statement allows a wildcard action (e.g. service:*) with Resource set to *.",
       "title": "IAM policy grants a wildcard action on all resources",
       "trade_offs": "Narrowing permissions may require iterating as new resource types are added, and risks under-provisioning if scoped too tightly."
-    },
-    {
-      "category": "reliability",
-      "concern_key": "deployment_rollout_capacity_loss",
-      "confidence": 0.95,
-      "confidence_explanation": "Calculated directly from the Deployment replicas, rollout fenceposts, and container readiness probes in repository desired state.",
-      "evidence_ids": [
-        "kubernetes_deployment_collector:21df164d364775d0"
-      ],
-      "fingerprint": "fp_46603884b783f80f4cadc58d",
-      "impact": "A routine rollout can interrupt service or reduce the workload below its declared replica capacity.",
-      "owner_accepted_trade_off": null,
-      "priority": "high",
-      "rank": 3,
-      "rank_rationale": "priority=high, category_weight=5, confidence=0.95",
-      "status": "unchanged",
-      "suggested_change": "Use RollingUpdate with an effective maxUnavailable of 0 and a positive maxSurge, and define a readiness probe for every application container.",
-      "summary": "A declared Kubernetes Deployment can make existing healthy capacity unavailable before replacement capacity is ready.",
-      "title": "Deployment rollout can reduce healthy capacity",
-      "trade_offs": "Zero-unavailable rollouts temporarily consume surge capacity and may require extra cluster headroom."
-    },
-    {
-      "category": "reliability",
-      "concern_key": "deployment_rollout_capacity_loss",
-      "confidence": 0.95,
-      "confidence_explanation": "Calculated directly from the Deployment replicas, rollout fenceposts, and container readiness probes in repository desired state.",
-      "evidence_ids": [
-        "kubernetes_deployment_collector:21df164d364775d0",
-        "kubernetes_deployment_collector:3fb87f240e478035"
-      ],
-      "fingerprint": "fp_aaa9b490f08e5576be4b13a8",
-      "impact": "A routine rollout can interrupt service or reduce the workload below its declared replica capacity.",
-      "owner_accepted_trade_off": null,
-      "priority": "high",
-      "rank": null,
-      "rank_rationale": null,
-      "status": "resolved",
-      "suggested_change": "Use RollingUpdate with an effective maxUnavailable of 0 and a positive maxSurge, and define a readiness probe for every application container.",
-      "summary": "A declared Kubernetes Deployment can make existing healthy capacity unavailable before replacement capacity is ready.",
-      "title": "Deployment rollout can reduce healthy capacity",
-      "trade_offs": "Zero-unavailable rollouts temporarily consume surge capacity and may require extra cluster headroom."
     }
   ],
   "rejected": [],
   "rejected_count": 0,
-  "resolved_count": 1,
+  "resolved_count": 2,
   "suppressed_count": 0,
-  "unchanged_count": 3
+  "unchanged_count": 0
 }
