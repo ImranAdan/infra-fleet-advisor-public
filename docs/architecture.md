@@ -124,15 +124,20 @@ The Deployment collector reads only bounded, tracked YAML under `k8s/`. It
 resolves RollingUpdate percentage fenceposts against desired replicas, records
 readiness-probe coverage, and emits one typed capacity fact per unambiguous
 `apps/v1` Deployment. Malformed, excluded, untracked, duplicate, or truncated
-inputs cannot prove satisfaction.
+inputs cannot prove satisfaction. The R-001 trusted rule projects only evidence
+under `k8s/applications/`; collecting platform Deployments does not make them
+owner-managed application policy.
 
 Workflow and Terraform source-file budgets apply after policy exclusions and
 tracked-path filtering. Downloaded `.terraform` files are local tool state and
 are ignored unless explicitly tracked, so initialized checkouts retain the same
-available source budget. The IAM parser accepts bounded JSON/HCL literals,
-including quoted condition keys, and distinguishes comments from string values
-and heredoc examples. Duplicate keys, malformed statements, string templates,
-referenced policy documents, and other dynamic expressions make coverage
+available source budget. IAM collection follows the registered
+`infrastructure/permanent` scope. The parser accepts bounded JSON/HCL literals,
+quoted condition keys, local traversals in fields that do not decide the finding,
+and interpolated Resource strings only when fixed text proves they cannot equal
+the exact wildcard `*`. It distinguishes comments from string values and heredoc
+examples. Duplicate keys, malformed statements, dynamic Action/Effect values,
+unknown Resource values, and referenced policy documents make coverage
 partial. It never executes Terraform, resolves local references, or fetches a
 policy URL. The wildcard check detects explicit Allow/Action/Resource grants;
 it does not establish the effective permissions after conditions and denies.

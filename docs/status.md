@@ -20,8 +20,8 @@ issue-creation decision record. See the [workflow](WORKFLOW.md) and
 | Collector | Supported evidence | Limitations |
 |---|---|---|
 | GitHub Actions | Tracked workflow settings, including Trivy scanning configuration | Repository configuration only; exclusions and malformed or truncated input can leave coverage incomplete |
-| Terraform IAM | Bounded literal JSON and HCL policy objects, including quoted condition keys | References, interpolation and unsupported shapes remain partial; no policy URL fetch or Terraform execution |
-| Kubernetes Deployments | Tracked raw `apps/v1` Deployment manifests under `k8s/` | Does not render Helm or inspect a live cluster; missing, malformed, duplicate or truncated evidence remains unverified |
+| Terraform IAM | Persistent-stack policies under `infrastructure/permanent/`; bounded JSON/HCL objects, local condition traversals and fixed-prefix resource ARN interpolation | Referenced policy documents and unknown decision fields remain partial within the persistent scope; no policy URL fetch or Terraform execution |
+| Kubernetes Deployments | Tracked raw `apps/v1` Deployment manifests under `k8s/`; the reliability check evaluates owner-managed workloads under `k8s/applications/` | Does not render Helm or inspect a live cluster; missing, malformed, duplicate or truncated evidence remains unverified |
 
 The initial security, reliability and cost catalogs contain seventeen positions.
 Three have registered checks. Unsupported positions and incomplete evaluation
@@ -31,15 +31,16 @@ They do not automatically create issues in either repository. The
 
 Untracked Terraform downloads, including `.terraform` module files, are not
 evidence. Workflow and IAM collectors apply policy exclusions and tracked-path
-filtering before source-file limits. The IAM wildcard check does not establish
-effective permissions after conditions and denies. For example, an HTTP-loaded
-load balancer controller policy remains a gap because the advisor does not
-fetch it.
+filtering before source-file limits. IAM collection follows the registered
+persistent-stack scope, so an unparseable staging-only policy cannot make S-007
+incomplete. Within that scope, the wildcard check does not establish effective
+permissions after conditions and denies, and a referenced policy document remains
+a visible gap because the advisor does not fetch it.
 
-The rollout collector also sees Flux's generated `source-controller`, whose
-upstream Deployment uses `Recreate`. Evaluate the intent's workload scope and
-accepted availability trade-off before acting. A generic application rollout
-rule does not justify mechanically rewriting an upstream controller manifest.
+The rollout collector also records Flux's generated controllers, but R-001 is
+scoped to owner-managed application manifests. Platform evidence remains
+available for future platform-specific intent without generating application
+rollout advice.
 
 ## Model support
 

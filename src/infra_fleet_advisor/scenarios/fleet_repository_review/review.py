@@ -89,7 +89,8 @@ def run_review(
         checkout_root,
         limits,
         excluded_paths=excluded_paths,
-        tracked_paths=list_tracked_paths(checkout_root, "infrastructure"),
+        tracked_paths=list_tracked_paths(checkout_root, "infrastructure/permanent"),
+        included_path_prefixes=("infrastructure/permanent",),
     )
     k8s_result = k8s_deployment_collector.collect(
         checkout_root,

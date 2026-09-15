@@ -2,7 +2,7 @@
 
 - Format: `1`
 - Intent ID: `infra_fleet_public_reliability`
-- Version: `1.0`
+- Version: `1.1`
 - Category: `reliability`
 
 This document declares the fleet owner's initial reliability position. It does
@@ -12,8 +12,9 @@ not claim that the current repository already satisfies the proposition.
 
 ### Intent
 
-Deployments retain enough healthy capacity during rollout. Temporary capacity
-cost is acceptable when it prevents user-visible interruption.
+Owner-managed application Deployments under `k8s/applications/` retain enough
+healthy capacity during rollout. Temporary capacity cost is acceptable when it
+prevents user-visible interruption.
 
 ### Evaluation
 

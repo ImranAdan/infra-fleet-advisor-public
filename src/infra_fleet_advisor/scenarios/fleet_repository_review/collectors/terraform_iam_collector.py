@@ -28,9 +28,12 @@ _NON_CODE = re.compile(
     re.DOTALL | re.MULTILINE,
 )
 _TOKEN = re.compile(
-    r'"(?:\\.|[^"\\])*"|-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?'
+    r'"(?:\\.|[^"\\])*"|[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+'
+    r"|-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?"
     r"|[A-Za-z_][A-Za-z0-9_]*|[{}\[\],:=]"
 )
+_TRAVERSAL = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+$")
+_INTERPOLATION = re.compile(r"(?<!\$)\$\{[^{}]+\}")
 _MAX_LITERAL_DEPTH = 64
 
 
@@ -38,6 +41,16 @@ _MAX_LITERAL_DEPTH = 64
 class CollectorResult:
     evidence: tuple[Evidence, ...]
     coverage: CollectorCoverage
+
+
+@dataclass(frozen=True, slots=True)
+class _Traversal:
+    value: str
+
+
+@dataclass(frozen=True, slots=True)
+class _InterpolatedString:
+    static_text: str
 
 
 class _UnbalancedError(ValueError):
@@ -164,11 +177,19 @@ class _LiteralParser:
             self._take()
             return values
         if literal.startswith('"'):
-            if re.search(r"(?<!\$)\$\{|(?<!%)%\{", literal):
-                raise ValueError("Terraform string template is not a literal")
-            return json.loads(literal).replace("$${", "${").replace("%%{", "%{")
+            decoded = json.loads(literal)
+            if re.search(r"(?<!%)%\{", decoded):
+                raise ValueError("Terraform template directives are unsupported")
+            static_text = _INTERPOLATION.sub("", decoded)
+            if re.search(r"(?<!\$)\$\{", static_text):
+                raise ValueError("malformed Terraform string interpolation")
+            if static_text != decoded:
+                return _InterpolatedString(static_text=static_text)
+            return decoded.replace("$${", "${").replace("%%{", "%{")
         if literal in {"true", "false", "null"} or re.fullmatch(r"-?[0-9].*", literal):
             return json.loads(literal)
+        if _TRAVERSAL.fullmatch(literal):
+            return _Traversal(literal)
         raise ValueError("unsupported Terraform expression")
 
 
@@ -243,10 +264,22 @@ def _build_resource_evidence(
     for statement in statements:
         if not isinstance(statement, dict) or statement.get("Effect") not in ("Allow", "Deny"):
             return None, True
-        for field in ("Action", "Resource"):
-            values = _as_list(statement.get(field))
-            if not values or any(not isinstance(value, str) or not value for value in values):
-                return None, True
+        actions = _as_list(statement.get("Action"))
+        if not actions or any(not isinstance(value, str) or not value for value in actions):
+            return None, True
+        resources = _as_list(statement.get("Resource"))
+        if not resources:
+            return None, True
+        for value in resources:
+            if isinstance(value, str) and value:
+                continue
+            # An interpolated ARN with a fixed non-wildcard character cannot
+            # evaluate to the exact Resource "*" this collector detects. A
+            # traversal or interpolation-only value remains unknown and fails
+            # closed rather than being treated as scoped.
+            if isinstance(value, _InterpolatedString) and value.static_text.strip("*"):
+                continue
+            return None, True
         wildcards = _statement_is_wildcard_grant(statement)
         if wildcards:
             matching_statement_count += 1
@@ -287,6 +320,7 @@ def collect(
     limits: ExecutionLimits,
     excluded_paths: frozenset[str] = frozenset(),
     tracked_paths: frozenset[str] | None = None,
+    included_path_prefixes: tuple[str, ...] = (),
 ) -> CollectorResult:
     checkout_real = checkout_root.resolve()
     infra_dir = checkout_root / "infrastructure"
@@ -321,10 +355,20 @@ def collect(
     all_files = sorted(
         path
         for path in infra_dir.rglob("*.tf")
-        if ".terraform" not in path.relative_to(infra_dir).parts
-        or (
-            tracked_paths is not None
-            and path.relative_to(checkout_root).as_posix() in tracked_paths
+        if (
+            not included_path_prefixes
+            or any(
+                path.relative_to(checkout_root).as_posix() == prefix
+                or path.relative_to(checkout_root).as_posix().startswith(f"{prefix}/")
+                for prefix in included_path_prefixes
+            )
+        )
+        and (
+            ".terraform" not in path.relative_to(infra_dir).parts
+            or (
+                tracked_paths is not None
+                and path.relative_to(checkout_root).as_posix() in tracked_paths
+            )
         )
     )
     eligible_files: list[Path] = []

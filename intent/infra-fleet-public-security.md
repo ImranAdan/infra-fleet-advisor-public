@@ -2,14 +2,14 @@
 
 - Format: `1`
 - Intent ID: `infra_fleet_public_security`
-- Version: `1.0`
+- Version: `1.1`
 - Category: `security`
 
-Source: [`infra-fleet-public@65857138c50f3ab24bb8f58834c8ca3afe84a929/docs`](https://github.com/ImranAdan/infra-fleet-public/tree/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs)
+Source: [`infra-fleet-public@d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0`](https://github.com/ImranAdan/infra-fleet-public/tree/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0)
 
-This PR contains security decisions only. Review each proposition with an
-inline `Yes` or `No` comment. Product behaviour, cost, and availability are out
-of scope.
+This catalog records security decisions only. Review changes to each proposition
+as security intent; product behaviour, cost, and availability remain in their
+own catalogs.
 
 ## S-001 · CI credentials
 
@@ -17,13 +17,12 @@ of scope.
 
 GitHub Actions uses short-lived OIDC credentials; long-lived AWS access keys are not allowed.
 
-Evidence: [OIDC design](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/GITHUB-OIDC-SETUP.md#L1-L6)
+Evidence: [OIDC design](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/GITHUB-OIDC-SETUP.md)
 
-Caveat: `infrastructure/permanent/github-oidc.tf` at the cited commit binds the
-trust policy subject to the placeholder `repo:your-org/infra-fleet:*`, which
-does not match `ImranAdan/infra-fleet-public`. As deployed, AWS STS would deny
-this role to GitHub Actions; verify the actual deployed subject before relying
-on this control.
+Caveat: the trust policy is generated from the adopter's `OWNER/REPOSITORY`,
+deployment branch, and GitHub Environment inputs. Repository analysis can verify
+that desired state and workflow credential method, but cannot attest which role
+version is live in AWS.
 
 ### Evaluation
 
@@ -35,15 +34,16 @@ on this control.
 
 Application containers run as non-root users with privilege escalation disabled and all Linux capabilities dropped.
 
-Evidence: [pod security context](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md#L20-L46)
+Evidence: [application Deployment](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/k8s/applications/load-harness/deployment.yaml)
 
 ## S-003 · Network ingress
 
 ### Intent
 
-Application ingress is limited to the NGINX ingress and Prometheus namespaces.
+Application ingress is limited to the declared ingress, observability, Flux load
+tester, and same-workload peers.
 
-Evidence: [NetworkPolicy](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md#L50-L87)
+Evidence: [NetworkPolicy](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/k8s/applications/load-harness/networkpolicy.yaml)
 
 ## S-004 · Network egress
 
@@ -51,19 +51,20 @@ Evidence: [NetworkPolicy](https://github.com/ImranAdan/infra-fleet-public/blob/6
 
 Permissive application egress is accepted for the current staging environment.
 
-Evidence: [current egress policy](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md#L78-L87)
+Evidence: [current egress policy](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/k8s/applications/load-harness/networkpolicy.yaml)
 
 ## S-005 · External transport
 
 ### Intent
 
-External application traffic uses HTTPS with certificates managed by cert-manager and Let’s Encrypt.
+When an AWS staging deployment enables a public hostname, external application
+traffic uses HTTPS with certificates managed by cert-manager and Let's Encrypt.
 
-Evidence: [TLS design](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/TLS-SSL-SETUP.md#L5-L13) · [conflicting deferred entry](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md#L208-L220)
+Evidence: [TLS and optional DNS](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/TLS-SSL-SETUP.md)
 
-Caveat: the two evidence sources conflict — `SECURITY-CONCERNS.md`'s C3 entry
-still documents TLS as deferred/unencrypted. Verify the deployed endpoint and
-certificate configuration before treating this proposition as resolved.
+Caveat: the template defaults to a reserved `.invalid` hostname and port-forward
+access. New public exposure remains blocked by the documented ingress-controller
+migration, and repository desired state cannot prove a certificate is live.
 
 ## S-006 · Staging API exposure
 
@@ -71,20 +72,21 @@ certificate configuration before treating this proposition as resolved.
 
 A publicly reachable EKS API protected by IAM is accepted for staging only.
 
-Evidence: [staging access decision](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/EKS-ACCESS.md#L94-L116)
+Evidence: [staging access decision](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/EKS-ACCESS.md)
 
 ## S-007 · IAM scope
 
 ### Intent
 
-Wildcard IAM permissions are not acceptable for a production or persistent environment.
+Service-wide IAM action wildcards such as `eks:*` are not acceptable for a
+production or persistent environment.
 
-Evidence: [deferred least-privilege concern](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md#L247-L252)
+Evidence: [current IAM disposition](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/SECURITY-CONCERNS.md)
 
-Caveat: `infrastructure/permanent/github-oidc.tf` — the current persistent
-stack — grants `eks:*`, `ec2:*`, `autoscaling:*`, `ssm:*`, and `ecr:*` on `*`
-today. A `Yes` on this proposition is a gate to remediate that role, not a
-statement that the persistent stack already complies.
+Caveat: the persistent policy now enumerates actions and deliberately retains
+the read-only `ec2:Describe*` prefix. Several IAM write actions still use
+`Resource = "*"`; that residual risk and live AWS validation are outside the
+registered service-action-wildcard check.
 
 ### Evaluation
 
@@ -96,7 +98,7 @@ statement that the persistent stack already complies.
 
 CSRF protection is not required for the current API-first staging application.
 
-Evidence: [documented CSRF decision](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md#L231-L235)
+Evidence: [documented CSRF decision](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/SECURITY-CONCERNS.md)
 
 Caveat: the application is not purely API-first — when `API_KEY` is
 configured, Flask session-cookie authentication protects `/ui/*` POST routes,
@@ -110,20 +112,20 @@ control for those routes; otherwise CSRF exposure remains.
 
 Automatic Kubernetes service-account token mounting is accepted for the current application.
 
-Evidence: [documented token-mount decision](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md#L239-L243)
+Evidence: [documented token-mount decision](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/SECURITY-CONCERNS.md)
 
 ## S-010 · Security updates
 
 ### Intent
 
-Security dependency updates are handled immediately rather than waiting for the routine monthly update cycle.
+Repository owners enable dependency alerts and security-update pull requests;
+routine version checks run monthly, while review and deployment remain an owned
+operational decision.
 
-Evidence: [Dependabot security alerts](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/DEPENDABOT.md#L54-L60)
+Evidence: [Dependabot operating model](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/DEPENDABOT.md)
 
-Caveat: the cited evidence covers immediate alerting and priority PR
-creation only; review, merge, and deployment remain manual with no stated
-owner or remediation deadline. Treat "handled immediately" as scoped to
-alerting and PR creation, not an end-to-end SLA.
+Caveat: repository-level alert and security-update settings cannot be declared
+by the template, and this proposition defines no remediation SLA.
 
 ## S-011 · Image scanning
 
@@ -131,7 +133,7 @@ alerting and PR creation, not an end-to-end SLA.
 
 Trivy blocks ECR publication when an image has any fixed Critical or High vulnerability; a documented exception is required to permit one.
 
-Evidence: [Trivy security control](https://github.com/ImranAdan/infra-fleet-public/blob/65857138c50f3ab24bb8f58834c8ca3afe84a929/docs/SECURITY-CONCERNS.md#L277-L283)
+Evidence: [Trivy publication gate](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/.github/workflows/load-harness-ci.yml)
 
 Caveat: the workflow sets `ignore-unfixed: true`, so unfixed Critical/High
 findings do not block, and the gate applies to ECR publication, not to

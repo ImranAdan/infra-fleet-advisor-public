@@ -187,6 +187,35 @@ def test_rollout_capacity_requires_complete_relevant_evidence() -> None:
     assert incomplete.evaluations[0].reason == "collector_incomplete"
 
 
+def test_rollout_capacity_ignores_platform_deployments_outside_application_scope() -> None:
+    application = _evidence(
+        collector_id=K8S_DEPLOYMENT_COLLECTOR_ID,
+        kind=EVIDENCE_KIND_DEPLOYMENT_ROLLOUT_CAPACITY,
+        path="k8s/applications/safe.yaml",
+        fact={"retains_healthy_capacity": True},
+    )
+    platform = _evidence(
+        collector_id=K8S_DEPLOYMENT_COLLECTOR_ID,
+        kind=EVIDENCE_KIND_DEPLOYMENT_ROLLOUT_CAPACITY,
+        path="k8s/infrastructure/flux-system/gotk-components.yaml",
+        fact={"retains_healthy_capacity": False},
+        digest="c" * 16,
+    )
+
+    compilation = compile_intents(
+        _catalog(CHECK_DEPLOYMENT_ROLLOUT_CAPACITY, category="reliability"),
+        enabled_categories=frozenset({"reliability"}),
+        evidence=(application, platform),
+        coverage=_coverage(K8S_DEPLOYMENT_COLLECTOR_ID),
+    )
+
+    assert compilation.evaluations[0].status == "satisfied"
+    assert compilation.evaluations[0].evidence_ids == ()
+    rule = compilation.concern_rules["deployment_rollout_capacity_loss"]
+    assert rule.source_path_prefixes == ("k8s/applications",)
+    assert compilation.divergence_candidates == ()
+
+
 def test_unmapped_and_unknown_checks_are_explicitly_unverified() -> None:
     unmapped = compile_intents(
         _catalog(None),
