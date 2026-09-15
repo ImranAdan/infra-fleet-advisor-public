@@ -1,6 +1,7 @@
 # Infra Fleet Advisor
 
-Infra Fleet Advisor checks the declared intent of the
+Infra Fleet Advisor checks the declared security, reliability, cost, and
+maintainability intent of the
 [`infra-fleet-public`](https://github.com/ImranAdan/infra-fleet-public) GitOps
 platform against a verified repository revision. It produces evidenced
 recommendations for human review.
@@ -70,10 +71,11 @@ are listed in the [documentation index](docs/README.md).
 
 ## Current scope
 
-The advisor reviews one public fleet repository. Three registered checks cover
+The advisor reviews one public fleet repository. Twenty declared positions span
+security, reliability, cost, and maintainability. Three registered checks cover
 workflow settings, literal Terraform IAM policies and Kubernetes Deployment
-rollouts. Other declared positions remain explicitly unverified. Repository
-analysis does not establish live infrastructure health.
+rollouts; positions without a trusted check remain explicitly unverified.
+Repository analysis does not establish live infrastructure health.
 
 ## License
 
