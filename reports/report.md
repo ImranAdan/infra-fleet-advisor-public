@@ -1,9 +1,9 @@
 # Infra Fleet Advisor report
 
 - Source: `infra-fleet-public` @ `d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0`
-- Advisor version: `0.1.0` · Policy version: `1.0`
-- Model: `stub-synthesizer-v1` · Run started: `2026-09-15T14:49:26.350218+00:00`
-- Intent catalog: `intent-md-v1:03110df4f4eb46ec3327aad2680c5f850629a422165a37dac299b9fc0765f9b1`
+- Advisor version: `0.1.0` · Policy version: `1.1`
+- Model: `stub-synthesizer-v1` · Run started: `2026-09-15T18:31:31.734827+00:00`
+- Intent catalog: `intent-md-v1:b5a09ac778f7b39c282838d7c2b80ebd832b6569b7cf8010574229bceb9f04a6`
 - Lifecycle: 0 new, 0 unchanged, 2 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
@@ -34,6 +34,40 @@
   environment, service, and owner tags so billed usage can be attributed. Any
   resource that cannot carry these tags is reported as an explicit coverage gap.
   - Category: `cost` · Priority: `medium` · Check: `not_declared` · Reason: `check_not_declared`
+- `declared_unverified` `infra_fleet_public_maintainability/M-001` — Every supported deployment profile exposes the same three lifecycle commands:
+  \`./fleet setup --profile \<profile\>\` prepares and validates the target,
+  \`./fleet up --profile \<profile\>\` brings the platform to a ready state, and
+  \`./fleet down --profile \<profile\>\` removes the resources owned by that profile.
+  Each phase is safe to repeat and resume after partial failure, reports its target
+  before mutation, and ends with either a clear success state or an actionable
+  failure. Successful setup and startup print the next command needed by the
+  adopter.
+  - Category: `maintainability` · Priority: `high` · Check: `not_declared` · Reason: `check_not_declared`
+- `declared_unverified` `infra_fleet_public_maintainability/M-002` — From a clean clone on a supported workstation, an adopter can prepare the
+  pinned local toolchain with one \`./fleet setup --profile local\` command, start
+  the complete local platform with one \`./fleet up --profile local\` command, and
+  remove every local resource owned by that checkout with one
+  \`./fleet down --profile local\` command. The local path requires no AWS account,
+  HCP Terraform account, GitHub write credential, repository edit, or mutation of
+  the user's default Kubernetes context.
+  - Category: `maintainability` · Priority: `high` · Check: `not_declared` · Reason: `check_not_declared`
+- `declared_unverified` `infra_fleet_public_maintainability/M-003` — An adopter with an AWS account, an HCP Terraform organization, and a GitHub
+  repository supplies account-specific configuration through a non-committed
+  input file and existing local AWS, HCP Terraform, and GitHub CLI sessions. One
+  \`./fleet setup --profile aws-staging\` command validates the selected account,
+  region, organization, repository, and protected environment; configures the
+  required repository and HCP Terraform settings; and bootstraps the permanent
+  AWS foundation used for GitHub OIDC deployment. It never stores long-lived AWS
+  access keys in GitHub.
+  
+  After setup, one \`./fleet up --profile aws-staging\` command deploys the reviewed
+  staging platform into that account through the protected GitHub environment and
+  short-lived AWS credentials. One \`./fleet down --profile aws-staging\` command
+  removes billable staging resources, preserves the permanent bootstrap foundation,
+  requires explicit confirmation of the target, and reports any resource it could
+  not remove. Destroying permanent bootstrap resources remains a separate,
+  deliberate operation.
+  - Category: `maintainability` · Priority: `high` · Check: `not_declared` · Reason: `check_not_declared`
 - `satisfied` `infra_fleet_public_reliability/R-001` — Owner-managed application Deployments under \`k8s/applications/\` retain enough
   healthy capacity during rollout. Temporary capacity cost is acceptable when it
   prevents user-visible interruption.
