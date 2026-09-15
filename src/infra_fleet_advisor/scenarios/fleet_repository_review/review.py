@@ -19,6 +19,9 @@ from infra_fleet_advisor.core.report import (
 )
 from infra_fleet_advisor.provenance.source_verification import SourceProvenance, list_tracked_paths
 from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
+    fleet_lifecycle_collector,
+)
+from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
     github_actions_workflow_collector as gha_collector,
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
@@ -29,6 +32,8 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import CONCERN_RULES
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
+    FLEET_LIFECYCLE_COLLECTOR_ID,
+    FLEET_LIFECYCLE_COLLECTOR_VERSION,
     GHA_COLLECTOR_ID,
     GHA_COLLECTOR_VERSION,
     K8S_DEPLOYMENT_COLLECTOR_ID,
@@ -98,14 +103,24 @@ def run_review(
         excluded_paths=excluded_paths,
         tracked_paths=list_tracked_paths(checkout_root, "k8s"),
     )
+    lifecycle_result = fleet_lifecycle_collector.collect(
+        checkout_root,
+        limits,
+        excluded_paths=excluded_paths,
+        tracked_paths=(
+            list_tracked_paths(checkout_root, "fleet")
+            | list_tracked_paths(checkout_root, "scripts/fleet-profiles/local.sh")
+        ),
+    )
     all_evidence: tuple[Evidence, ...] = (
-        gha_result.evidence + tf_result.evidence + k8s_result.evidence
+        gha_result.evidence + tf_result.evidence + k8s_result.evidence + lifecycle_result.evidence
     )
     evidence_by_id = {e.evidence_id: e for e in all_evidence}
     coverage: list[CollectorCoverage] = [
         gha_result.coverage,
         tf_result.coverage,
         k8s_result.coverage,
+        lifecycle_result.coverage,
     ]
 
     if intent_catalog is None:
@@ -159,6 +174,7 @@ def run_review(
             GHA_COLLECTOR_ID: GHA_COLLECTOR_VERSION,
             TF_IAM_COLLECTOR_ID: TF_IAM_COLLECTOR_VERSION,
             K8S_DEPLOYMENT_COLLECTOR_ID: K8S_DEPLOYMENT_COLLECTOR_VERSION,
+            FLEET_LIFECYCLE_COLLECTOR_ID: FLEET_LIFECYCLE_COLLECTOR_VERSION,
         },
         model_identifier=synthesis_response.model_identifier,
         run_started_at=run_started_at,

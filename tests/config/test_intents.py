@@ -191,6 +191,7 @@ def test_production_markdown_is_the_authoritative_catalog() -> None:
     assert len(catalog.propositions) == 20
     assert {item.check_key for item in catalog.propositions if item.check_key is not None} == {
         "deployment_rollout_capacity",
+        "fleet_profiles_expose_lifecycle",
         "github_actions_uses_oidc",
         "persistent_iam_avoids_wildcards",
     }
@@ -221,5 +222,6 @@ def test_production_markdown_is_the_authoritative_catalog() -> None:
     )
     assert len(maintainability) == 3
     assert all(item.category == "maintainability" for item in maintainability)
-    assert all(item.check_key is None for item in maintainability)
+    assert maintainability[0].check_key == "fleet_profiles_expose_lifecycle"
+    assert all(item.check_key is None for item in maintainability[1:])
     assert all(item.priority == "high" for item in maintainability)

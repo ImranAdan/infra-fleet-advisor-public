@@ -2,7 +2,7 @@
 
 - Format: `1`
 - Intent ID: `infra_fleet_public_maintainability`
-- Version: `1.0`
+- Version: `1.1`
 - Category: `maintainability`
 
 This document declares the fleet owner's adoption experience for the public
@@ -24,6 +24,7 @@ adopter.
 
 ### Evaluation
 
+- Check: `fleet_profiles_expose_lifecycle`
 - Priority: `high`
 
 ## M-002 · Local first-use path

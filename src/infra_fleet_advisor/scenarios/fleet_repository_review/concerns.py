@@ -17,6 +17,7 @@ CONCERN_CI_CREDENTIALS_WITHOUT_OIDC = "ci_credentials_without_oidc"
 CONCERN_TRIVY_IGNORE_UNFIXED = "trivy_ignore_unfixed"
 CONCERN_WILDCARD_IAM_PERMISSIONS = "wildcard_iam_permissions"
 CONCERN_DEPLOYMENT_ROLLOUT_CAPACITY = "deployment_rollout_capacity_loss"
+CONCERN_FLEET_LIFECYCLE_INCOMPLETE = "fleet_profile_lifecycle_incomplete"
 
 # The deterministic support conditions for each concern: which evidence kind
 # can back it, and which collector-derived facts must hold. A collector emits
@@ -162,6 +163,34 @@ CONCERN_TEMPLATES: dict[str, ConcernTemplate] = {
         confidence_explanation=(
             "Calculated directly from the Deployment replicas, rollout fenceposts, and container "
             "readiness probes in repository desired state."
+        ),
+    ),
+    CONCERN_FLEET_LIFECYCLE_INCOMPLETE: ConcernTemplate(
+        category="maintainability",
+        priority="high",
+        title="Fleet profiles lack the declared lifecycle command surface",
+        summary=(
+            "The tracked Fleet facade does not route setup, up, and down through both "
+            "the local and AWS staging profile strategies."
+        ),
+        impact=(
+            "A new adopter must leave the common interface and complete profile-specific "
+            "manual steps before the platform can be used."
+        ),
+        suggested_change=(
+            "Add setup to the fixed ./fleet action surface and implement it for local and "
+            "aws-staging. Local setup should prepare and validate pinned tools; AWS setup "
+            "should validate adopter configuration and sessions, configure GitHub and HCP "
+            "Terraform, and bootstrap the OIDC foundation. Preserve the existing bounded "
+            "teardown behavior."
+        ),
+        trade_offs=(
+            "Automated AWS onboarding expands the facade's credential and provider API surface, "
+            "so target validation and explicit confirmation must precede mutations."
+        ),
+        confidence=0.95,
+        confidence_explanation=(
+            "Derived from the closed action allowlist and fixed local and AWS dispatch branches."
         ),
     ),
 }

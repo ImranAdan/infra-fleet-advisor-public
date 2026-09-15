@@ -120,6 +120,13 @@ and name as its stable handle. Duplicate declarations of that handle make
 coverage partial and are withheld rather than selecting one declaration
 arbitrarily.
 
+Fleet lifecycle evidence uses one stable identity for the common profile
+dispatch contract. Its collector reads only the tracked `fleet` facade and
+fixed local strategy as bounded text. It recognizes a closed shell structure
+for the `local` and `aws-staging` routes and never sources or executes repository
+code. Unknown structure, exclusions, untracked files, links, and unreadable
+input make coverage partial instead of becoming a finding.
+
 The Deployment collector reads only bounded, tracked YAML under `k8s/`. It
 resolves RollingUpdate percentage fenceposts against desired replicas, records
 readiness-probe coverage, and emits one typed capacity fact per unambiguous

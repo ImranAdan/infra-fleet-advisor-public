@@ -7,13 +7,16 @@ from infra_fleet_advisor.core.report import CollectorCoverage
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     EVIDENCE_KIND_CREDENTIAL_METHOD,
     EVIDENCE_KIND_DEPLOYMENT_ROLLOUT_CAPACITY,
+    EVIDENCE_KIND_FLEET_LIFECYCLE,
     EVIDENCE_KIND_IAM_WILDCARD,
+    FLEET_LIFECYCLE_COLLECTOR_ID,
     GHA_COLLECTOR_ID,
     K8S_DEPLOYMENT_COLLECTOR_ID,
     TF_IAM_COLLECTOR_ID,
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.intent_evaluation import (
     CHECK_DEPLOYMENT_ROLLOUT_CAPACITY,
+    CHECK_FLEET_PROFILES_EXPOSE_LIFECYCLE,
     CHECK_GITHUB_ACTIONS_USES_OIDC,
     CHECK_PERSISTENT_IAM_AVOIDS_WILDCARDS,
     compile_intents,
@@ -214,6 +217,41 @@ def test_rollout_capacity_ignores_platform_deployments_outside_application_scope
     rule = compilation.concern_rules["deployment_rollout_capacity_loss"]
     assert rule.source_path_prefixes == ("k8s/applications",)
     assert compilation.divergence_candidates == ()
+
+
+def test_lifecycle_surface_detects_divergence_without_claiming_runtime_proof() -> None:
+    incomplete = _evidence(
+        collector_id=FLEET_LIFECYCLE_COLLECTOR_ID,
+        kind=EVIDENCE_KIND_FLEET_LIFECYCLE,
+        path="fleet",
+        fact={"common_lifecycle_complete": False},
+    )
+    divergent = compile_intents(
+        _catalog(CHECK_FLEET_PROFILES_EXPOSE_LIFECYCLE, category="maintainability"),
+        enabled_categories=frozenset({"maintainability"}),
+        evidence=(incomplete,),
+        coverage=_coverage(FLEET_LIFECYCLE_COLLECTOR_ID),
+    )
+
+    assert divergent.evaluations[0].status == "divergent"
+    assert divergent.evaluations[0].evidence_ids == (incomplete.evidence_id,)
+    assert divergent.divergence_candidates[0].category == "maintainability"
+
+    complete = _evidence(
+        collector_id=FLEET_LIFECYCLE_COLLECTOR_ID,
+        kind=EVIDENCE_KIND_FLEET_LIFECYCLE,
+        path="fleet",
+        fact={"common_lifecycle_complete": True},
+    )
+    unverified = compile_intents(
+        _catalog(CHECK_FLEET_PROFILES_EXPOSE_LIFECYCLE, category="maintainability"),
+        enabled_categories=frozenset({"maintainability"}),
+        evidence=(complete,),
+        coverage=_coverage(FLEET_LIFECYCLE_COLLECTOR_ID),
+    )
+
+    assert unverified.evaluations[0].status == "declared_unverified"
+    assert unverified.evaluations[0].reason == "collector_cannot_prove_satisfaction"
 
 
 def test_unmapped_and_unknown_checks_are_explicitly_unverified() -> None:
