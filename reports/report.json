@@ -287,8 +287,8 @@
     "intent_digest": "intent-md-v1:c96ca2c1d8d301a0b94986f1c3ed6b9a41e0ee36166cf5e2b0fc5ab289010a30",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.0",
-    "run_started_at": "2026-09-14T20:25:35.223381+00:00",
-    "source_commit_sha": "34f7f5a505d2f3614c3dd20a1c3128939bf8e255",
+    "run_started_at": "2026-09-15T08:30:36.379447+00:00",
+    "source_commit_sha": "04a7ccc9fa87e7a0aad0b9b50c5d1e984be43359",
     "source_label": "infra-fleet-public"
   },
   "recommendations": [
