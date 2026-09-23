@@ -190,11 +190,14 @@ def test_production_markdown_is_the_authoritative_catalog() -> None:
 
     assert len(catalog.propositions) == 20
     assert {item.check_key for item in catalog.propositions if item.check_key is not None} == {
+        "application_containers_hardened",
         "deployment_rollout_capacity",
+        "ecr_lifecycle_bounded",
         "fleet_local_first_use",
         "fleet_profiles_expose_lifecycle",
         "github_actions_uses_oidc",
         "persistent_iam_avoids_wildcards",
+        "staging_log_retention_bounded",
     }
     security_oidc = next(
         item
@@ -215,7 +218,13 @@ def test_production_markdown_is_the_authoritative_catalog() -> None:
     )
     assert len(cost) == 5
     assert all(item.category == "cost" for item in cost)
-    assert all(item.check_key is None for item in cost)
+    assert [item.check_key for item in cost] == [
+        None,
+        None,
+        "staging_log_retention_bounded",
+        "ecr_lifecycle_bounded",
+        None,
+    ]
     maintainability = tuple(
         item
         for item in catalog.propositions

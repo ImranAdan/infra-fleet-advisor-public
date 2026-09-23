@@ -116,9 +116,11 @@ def test_authoritative_markdown_drives_the_production_review(git_checkout) -> No
     assert evaluations["S-007"].status == "divergent"
     assert evaluations["R-001"].status == "declared_unverified"
     assert evaluations["R-001"].reason == "no_relevant_evidence"
-    for proposition_id in ("C-001", "C-002", "C-003", "C-004", "C-005"):
+    for proposition_id in ("C-001", "C-002", "C-005"):
         assert evaluations[proposition_id].status == "declared_unverified"
         assert evaluations[proposition_id].reason == "check_not_declared"
+    assert evaluations["C-003"].reason == "collector_cannot_prove_satisfaction"
+    assert evaluations["C-004"].reason == "no_relevant_evidence"
     assert evaluations["M-001"].status == "declared_unverified"
     assert evaluations["M-001"].reason == "no_relevant_evidence"
     assert evaluations["M-002"].status == "declared_unverified"
@@ -317,10 +319,12 @@ def test_reliability_intent_produces_required_advice_for_unsafe_rollout(git_chec
     evaluation = next(item for item in report.intent_evaluations if item.proposition_id == "R-001")
     assert evaluation.status == "divergent"
     assert len(evaluation.evidence_ids) == 1
-    assert [item.concern_key for item in report.recommendations] == [
-        "deployment_rollout_capacity_loss"
-    ]
-    assert report.recommendations[0].evidence_ids == evaluation.evidence_ids
+    rollout = next(
+        item
+        for item in report.recommendations
+        if item.concern_key == "deployment_rollout_capacity_loss"
+    )
+    assert rollout.evidence_ids == evaluation.evidence_ids
 
 
 def test_collector_failure_visible_in_coverage(git_checkout) -> None:
@@ -452,7 +456,7 @@ def test_registered_collectors_contribute_to_one_report(git_checkout) -> None:
     concern_keys = {r.concern_key for r in report.recommendations}
     assert "trivy_ignore_unfixed" in concern_keys
     assert "wildcard_iam_permissions" in concern_keys
-    assert len(report.coverage) == 4
+    assert len(report.coverage) == 5
     assert all(c.status == "ok" for c in report.coverage)
     assert len(report.evidence) == 2
 

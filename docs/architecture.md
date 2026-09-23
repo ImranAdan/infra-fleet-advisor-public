@@ -160,6 +160,26 @@ inputs cannot prove satisfaction. The R-001 trusted rule projects only evidence
 under `k8s/applications/`; collecting platform Deployments does not make them
 owner-managed application policy.
 
+The same traversal emits a second, separately identified hardening fact per
+Deployment: every container and init container must resolve to a non-root user
+(`runAsNonRoot` or a positive `runAsUser`, container over pod), set
+`allowPrivilegeEscalation: false`, not be privileged, drop `ALL` capabilities and
+add none. A malformed security context withholds only the hardening fact. S-002
+projects the fact only under `k8s/applications/`.
+
+The Terraform cost collector reads tracked `.tf` files under `infrastructure/`
+and emits two closed facts. Log-retention evidence covers each
+`aws_cloudwatch_log_group` (absent retention means never expires) and each
+`terraform-aws-modules/eks/aws` module call, whose control-plane log group is
+derived from the published defaults of a trusted major version, without
+downloading the module. ECR evidence joins each repository to its lifecycle
+policy within one root module and records whether untagged images expire and
+every retained image is bounded by count or age. Variables, multi-line
+expressions, unknown module majors and unresolved policy references make
+coverage partial rather than assuming a value. C-003 projects log retention only
+under `infrastructure/staging/` and cannot prove satisfaction, because AWS
+services create log groups the repository never declares.
+
 Workflow and Terraform source-file budgets apply after policy exclusions and
 tracked-path filtering. Downloaded `.terraform` files are local tool state and
 are ignored unless explicitly tracked, so initialized checkouts retain the same
