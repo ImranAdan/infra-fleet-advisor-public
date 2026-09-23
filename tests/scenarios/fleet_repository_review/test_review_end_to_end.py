@@ -126,7 +126,7 @@ def test_authoritative_markdown_drives_the_production_review(git_checkout) -> No
     assert evaluations["M-002"].status == "declared_unverified"
     assert evaluations["M-002"].reason == "no_relevant_evidence"
     assert evaluations["M-003"].status == "declared_unverified"
-    assert evaluations["M-003"].reason == "check_not_declared"
+    assert evaluations["M-003"].reason == "no_relevant_evidence"
     assert {item.status for key, item in evaluations.items() if key not in {"S-001", "S-007"}} == {
         "declared_unverified"
     }
@@ -213,8 +213,10 @@ def test_production_lifecycle_intent_requires_one_fleet_surface_fix(git_checkout
     lifecycle = next(item for item in report.intent_evaluations if item.proposition_id == "M-001")
     assert lifecycle.status == "divergent"
     assert lifecycle.reason == "evidence_conflicts_with_intent"
+    # Without setup the AWS onboarding contract (M-003) cannot hold either.
     assert [item.concern_key for item in report.recommendations] == [
-        "fleet_profile_lifecycle_incomplete"
+        "fleet_profile_lifecycle_incomplete",
+        "fleet_aws_onboarding_incomplete",
     ]
     assert report.recommendations[0].evidence_ids == lifecycle.evidence_ids
     published, _markdown = write_report(report, repo.parent / "lifecycle-report")
@@ -223,9 +225,11 @@ def test_production_lifecycle_intent_requires_one_fleet_surface_fix(git_checkout
         PRODUCTION_POLICY_PATH,
         PRODUCTION_INTENT_PATH,
     )
-    assert len(issue_plan.actions) == 1
-    assert issue_plan.actions[0].action == "active"
-    assert issue_plan.actions[0].intent_proposition_id == "M-001"
+    assert sorted(action.intent_proposition_id for action in issue_plan.actions) == [
+        "M-001",
+        "M-003",
+    ]
+    assert all(action.action == "active" for action in issue_plan.actions)
 
 
 def test_production_local_first_use_intent_requires_declared_controls(git_checkout) -> None:
@@ -248,9 +252,25 @@ def test_production_local_first_use_intent_requires_declared_controls(git_checko
     facade.chmod(0o755)
     strategies = repo / "scripts" / "fleet-profiles"
     strategies.mkdir(parents=True)
+    (repo / "scripts" / "onboard-aws-profile.sh").write_text(
+        (
+            "mode=${1:-plan}\n"
+            'echo "AWS target: $arn"\n'
+            'echo "GitHub target: $GITHUB_REPOSITORY"\n'
+            'printf \'%s\' "$value" | gh secret set "$name" --repo "$GITHUB_REPOSITORY"\n'
+            "echo 'Next: ./fleet up --profile aws-staging'\n"
+        ),
+        encoding="utf-8",
+    )
     for profile in ("local", "aws-staging"):
+        aws_route = (
+            'setup_plan() {\n  exec "$fleet_root/scripts/onboard-aws-profile.sh" plan ;;\n}\n'
+            if profile == "aws-staging"
+            else ""
+        )
         (strategies / f"{profile}.sh").write_text(
-            (
+            aws_route
+            + (
                 "profile_main() {\n"
                 '  case "$1" in\n'
                 "    setup) command ;;\n"
@@ -261,7 +281,7 @@ def test_production_local_first_use_intent_requires_declared_controls(git_checko
             ),
             encoding="utf-8",
         )
-    _git("git", "add", "fleet", "scripts/fleet-profiles", cwd=repo)
+    _git("git", "add", "fleet", "scripts", cwd=repo)
     _git("git", "commit", "-q", "-m", "add local profile without first-use controls", cwd=repo)
     sha = subprocess.run(  # fixed argv, test-only
         ["git", "rev-parse", "HEAD"],  # noqa: S603,S607

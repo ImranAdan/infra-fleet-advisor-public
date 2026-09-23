@@ -193,6 +193,7 @@ def test_production_markdown_is_the_authoritative_catalog() -> None:
         "application_containers_hardened",
         "deployment_rollout_capacity",
         "ecr_lifecycle_bounded",
+        "fleet_aws_onboarding",
         "fleet_local_first_use",
         "fleet_profiles_expose_lifecycle",
         "github_actions_uses_oidc",
@@ -234,5 +235,5 @@ def test_production_markdown_is_the_authoritative_catalog() -> None:
     assert all(item.category == "maintainability" for item in maintainability)
     assert maintainability[0].check_key == "fleet_profiles_expose_lifecycle"
     assert maintainability[1].check_key == "fleet_local_first_use"
-    assert maintainability[2].check_key is None
+    assert maintainability[2].check_key == "fleet_aws_onboarding"
     assert all(item.priority == "high" for item in maintainability)

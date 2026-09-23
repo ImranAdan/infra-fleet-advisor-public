@@ -54,8 +54,12 @@ the local strategy lacks the pinned-tool installer, checkout-owned state,
 explicit kubectl and Flux context, or the next startup command. Structurally
 complete controls remain unverified because static shell inspection cannot
 establish downloads, repeatability, runtime behavior, or successful teardown.
-M-003 remains declared without a check until the AWS onboarding implementation
-exposes specific controls that a trusted collector can evaluate.
+M-003 is divergent when the AWS strategy or `scripts/onboard-aws-profile.sh`
+lacks plan-by-default setup, printed AWS and GitHub targets, stdin-only secret
+writes, the next `up` command, or leaves the teardown workflow's
+`destroy staging` confirmation to the operator rather than typing it itself.
+Complete controls remain unverified: static text cannot prove any AWS, HCP
+Terraform or GitHub call succeeds.
 
 ## Model support
 

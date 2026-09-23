@@ -72,6 +72,21 @@ _LOCAL_FLUX_CONTEXT = re.compile(
     r'--context\s+"\$FLEET_CONTEXT"'
 )
 _LOCAL_NEXT_COMMAND = re.compile(r"Next:\s+\./fleet up --profile local")
+_AWS_ONBOARDING_PATH = "scripts/onboard-aws-profile.sh"
+_AWS_SETUP_PLAN_ROUTE = re.compile(
+    r'^\s*exec\s+"\$fleet_root/scripts/onboard-aws-profile\.sh"\s+plan\s*;;\s*$', re.MULTILINE
+)
+_AWS_PLAN_DEFAULT = re.compile(r"^mode=\$\{1:-plan\}\s*$", re.MULTILINE)
+_AWS_TARGET_REPORTS = (
+    re.compile(r'^echo\s+"AWS target:', re.MULTILINE),
+    re.compile(r'^echo\s+"GitHub target:', re.MULTILINE),
+)
+_AWS_SECRET_FROM_STDIN = re.compile(r"\|\s*gh\s+secret\s+set\s")
+_AWS_SECRET_IN_ARGV = re.compile(r"gh\s+secret\s+set\b[^\n]*--body")
+_AWS_NEXT_COMMAND = re.compile(r"Next:\s+\./fleet up --profile aws-staging")
+# The teardown workflow asks a human to type its target. A strategy that types
+# it for them turns that gate into a formality.
+_AWS_TEARDOWN_AUTOCONFIRM = re.compile(r"confirm_destroy=destroy staging")
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,7 +157,7 @@ def collect(
     excluded_paths: frozenset[str] = frozenset(),
     tracked_paths: frozenset[str] | None = None,
 ) -> CollectorResult:
-    lifecycle_paths = (_FACADE_PATH, *_STRATEGY_PATHS.values())
+    lifecycle_paths = (_FACADE_PATH, *_STRATEGY_PATHS.values(), _AWS_ONBOARDING_PATH)
     if any(_is_excluded(path, excluded_paths) for path in lifecycle_paths):
         return CollectorResult(
             evidence=(),
@@ -162,7 +177,12 @@ def collect(
         strategy_sources[profile] = source
         if error is not None:
             strategy_errors.append(error)
-    errors = tuple(error for error in (facade_error, *strategy_errors) if error is not None)
+    onboarding, onboarding_error = _read_bounded_file(
+        checkout_root, _AWS_ONBOARDING_PATH, limits, tracked_paths
+    )
+    errors = tuple(
+        error for error in (facade_error, *strategy_errors, onboarding_error) if error is not None
+    )
     if errors:
         return CollectorResult(
             evidence=(),
@@ -269,6 +289,31 @@ def collect(
             local_prints_next_command,
         )
     )
+    aws_source = strategy_sources["aws-staging"] or ""
+    onboarding = onboarding or ""
+    aws_setup_plans_by_default = (
+        _AWS_SETUP_PLAN_ROUTE.search(aws_source) is not None
+        and _AWS_PLAN_DEFAULT.search(onboarding) is not None
+    )
+    aws_setup_reports_targets = all(
+        pattern.search(onboarding) is not None for pattern in _AWS_TARGET_REPORTS
+    )
+    aws_secrets_from_stdin = (
+        _AWS_SECRET_FROM_STDIN.search(onboarding) is not None
+        and _AWS_SECRET_IN_ARGV.search(onboarding) is None
+    )
+    aws_prints_next_command = _AWS_NEXT_COMMAND.search(onboarding) is not None
+    aws_teardown_operator_confirmed = _AWS_TEARDOWN_AUTOCONFIRM.search(aws_source) is None
+    aws_onboarding_complete = all(
+        (
+            aws_complete,
+            aws_setup_plans_by_default,
+            aws_setup_reports_targets,
+            aws_secrets_from_stdin,
+            aws_prints_next_command,
+            aws_teardown_operator_confirmed,
+        )
+    )
     evidence = build_evidence(
         collector_id=FLEET_LIFECYCLE_COLLECTOR_ID,
         collector_version=FLEET_LIFECYCLE_COLLECTOR_VERSION,
@@ -280,7 +325,8 @@ def collect(
             f"{str(facade_complete).lower()}/"
             f"{str(local_complete).lower()}/"
             f"{str(aws_complete).lower()}; "
-            f"local first-use: {str(local_first_use_complete).lower()}"
+            f"local first-use: {str(local_first_use_complete).lower()}; "
+            f"aws onboarding: {str(aws_onboarding_complete).lower()}"
         ),
         fact={
             "facade_executable": facade_executable,
@@ -294,6 +340,12 @@ def collect(
             "local_uses_explicit_context": local_uses_explicit_context,
             "local_prints_next_command": local_prints_next_command,
             "local_first_use_complete": local_first_use_complete,
+            "aws_setup_plans_by_default": aws_setup_plans_by_default,
+            "aws_setup_reports_targets": aws_setup_reports_targets,
+            "aws_secrets_from_stdin": aws_secrets_from_stdin,
+            "aws_prints_next_command": aws_prints_next_command,
+            "aws_teardown_operator_confirmed": aws_teardown_operator_confirmed,
+            "aws_onboarding_complete": aws_onboarding_complete,
         },
         identity_parts=("profile-lifecycle-dispatch",),
     )

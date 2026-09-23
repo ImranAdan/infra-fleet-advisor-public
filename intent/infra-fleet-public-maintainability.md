@@ -2,7 +2,7 @@
 
 - Format: `1`
 - Intent ID: `infra_fleet_public_maintainability`
-- Version: `1.2`
+- Version: `1.3`
 - Category: `maintainability`
 
 This document declares the fleet owner's adoption experience for the public
@@ -67,4 +67,5 @@ deliberate operation.
 
 ### Evaluation
 
+- Check: `fleet_aws_onboarding`
 - Priority: `high`
