@@ -110,13 +110,23 @@ def test_eks_module_uses_trusted_log_group_defaults(tmp_path) -> None:
         assert _facts(result, EVIDENCE_KIND_LOG_RETENTION) == expected
 
 
-def test_untrusted_eks_module_major_is_partial(tmp_path) -> None:
-    text = (EKS % "").replace("21.25.0", "22.0.0")
+def test_eks_version_must_pin_the_trusted_major(tmp_path) -> None:
+    for version, trusted in {
+        "21.25.0": True,
+        "~> 21.0": True,
+        "22.0.0": False,
+        "20.37.0": False,
+        ">= 18.0": False,
+        "> 21.0": False,
+        "~> 21": False,
+        ">= 21.0, < 22.0": False,
+    }.items():
+        text = (EKS % "").replace("21.25.0", version)
 
-    result = _collect(tmp_path, {"infrastructure/staging/eks.tf": text})
+        result = _collect(tmp_path, {"infrastructure/staging/eks.tf": text})
 
-    assert result.coverage.status == "partial"
-    assert result.evidence == ()
+        assert (result.coverage.status == "ok") is trusted, version
+        assert bool(result.evidence) is trusted, version
 
 
 def test_modules_declared_in_strings_or_comments_are_ignored(tmp_path) -> None:

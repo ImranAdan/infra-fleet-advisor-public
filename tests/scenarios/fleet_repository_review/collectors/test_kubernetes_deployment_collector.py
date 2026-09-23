@@ -69,6 +69,18 @@ def test_each_missing_hardening_control_is_divergent(git_checkout) -> None:
         assert evidence.fact["all_containers_hardened"] is False
 
 
+def test_explicit_root_uid_overrides_run_as_non_root(git_checkout) -> None:
+    repo, _sha = git_checkout(kubernetes_files=("hardened.yaml",))
+    path = repo / "k8s" / "applications" / "hardened.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["spec"]["template"]["spec"]["containers"][0]["securityContext"]["runAsUser"] = 0
+    path.write_text(yaml.safe_dump(document), encoding="utf-8")
+
+    [evidence] = _hardening(collector.collect(repo, LIMITS))
+
+    assert evidence.fact["all_containers_hardened"] is False
+
+
 def test_container_run_as_user_satisfies_non_root(git_checkout) -> None:
     repo, _sha = git_checkout(kubernetes_files=("hardened.yaml",))
     path = repo / "k8s" / "applications" / "hardened.yaml"

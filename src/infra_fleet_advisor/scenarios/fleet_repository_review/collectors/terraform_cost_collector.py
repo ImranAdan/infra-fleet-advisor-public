@@ -31,10 +31,11 @@ _ECR_REFERENCE = re.compile(r"^aws_ecr_repository\.([A-Za-z0-9_-]+)\.(?:name|id)
 _MAX_RETENTION_DAYS = 30
 
 # The advisor never downloads modules, so a registry module's log group is
-# derived from its published defaults. Only majors whose defaults were checked
-# are trusted; any other version is an explicit coverage gap.
+# derived from its published defaults. Only v21 defaults and variable names were
+# checked; an exact v21 version or a ~> 21.x constraint must pin that major, and
+# anything else is an explicit coverage gap.
 _EKS_MODULE_SOURCE = "terraform-aws-modules/eks/aws"
-_EKS_MODULE_MAJORS = range(18, 22)
+_EKS_MODULE_VERSION = re.compile(r"^(?:=\s*)?21\.[0-9]+\.[0-9]+$|^~>\s*21\.[0-9]+(?:\.[0-9]+)?$")
 _EKS_DEFAULT_RETENTION_DAYS = 90
 
 
@@ -103,8 +104,7 @@ def _log_group_evidence(rel_path: str, name: str, body: str) -> Evidence:
 
 def _eks_module_evidence(rel_path: str, name: str, body: str) -> Evidence | None:
     version = _attribute(body, "version")
-    major = re.search(r"[0-9]+", version) if isinstance(version, str) else None
-    if major is None or int(major.group()) not in _EKS_MODULE_MAJORS:
+    if not isinstance(version, str) or not _EKS_MODULE_VERSION.fullmatch(version.strip()):
         raise ValueError("EKS module version has no trusted log-group defaults")
     log_types = _attribute(body, "enabled_log_types", ["audit", "api", "authenticator"])
     create = _attribute(body, "create_cloudwatch_log_group", True)
