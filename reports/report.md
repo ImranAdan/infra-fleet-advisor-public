@@ -1,9 +1,9 @@
 # Infra Fleet Advisor report
 
-- Source: `infra-fleet-public` @ `f885fa843d38bf8e3ddaa7137be6294d304bde3b`
+- Source: `infra-fleet-public` @ `14deac3ae4f5898dc0c801725a4b77840c8a471e`
 - Advisor version: `0.1.0` · Policy version: `1.1`
-- Model: `stub-synthesizer-v1` · Run started: `2026-09-23T20:54:33.754038+00:00`
-- Intent catalog: `intent-md-v1:5781fb4fa3f59562c1eeb63d3b3212499a519a53bac6daef94f8fe225ac29481`
+- Model: `stub-synthesizer-v1` · Run started: `2026-09-23T21:23:55.224699+00:00`
+- Intent catalog: `intent-md-v1:a06b3c0e55efcf7d02a9e3b19905de19c09a0c0c65a10daf17f836b7a030f0ae`
 - Lifecycle: 0 new, 0 unchanged, 3 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
@@ -51,7 +51,7 @@
   \`./fleet down --profile local\` command. The local path requires no AWS account,
   HCP Terraform account, GitHub write credential, repository edit, or mutation of
   the user's default Kubernetes context.
-  - Category: `maintainability` · Priority: `high` · Check: `not_declared` · Reason: `check_not_declared`
+  - Category: `maintainability` · Priority: `high` · Check: `fleet_local_first_use` · Reason: `collector_cannot_prove_satisfaction`
 - `declared_unverified` `infra_fleet_public_maintainability/M-003` — An adopter with an AWS account, an HCP Terraform organization, and a GitHub
   repository supplies account-specific configuration through a non-committed
   input file and existing local AWS, HCP Terraform, and GitHub CLI sessions. One
