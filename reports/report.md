@@ -1,19 +1,22 @@
 # Infra Fleet Advisor report
 
-- Source: `infra-fleet-public` @ `14deac3ae4f5898dc0c801725a4b77840c8a471e`
+- Source: `infra-fleet-public` @ `f3c42956a63066568e7d7133f41b053cd58293ac`
 - Advisor version: `0.1.0` · Policy version: `1.1`
-- Model: `stub-synthesizer-v1` · Run started: `2026-09-23T21:23:55.224699+00:00`
-- Intent catalog: `intent-md-v1:a06b3c0e55efcf7d02a9e3b19905de19c09a0c0c65a10daf17f836b7a030f0ae`
-- Lifecycle: 0 new, 0 unchanged, 3 resolved, 0 suppressed (0 rejected)
+- Model: `stub-synthesizer-v1` · Run started: `2026-09-23T23:21:15.416103+00:00`
+- Intent catalog: `intent-md-v1:e9386fb7406828b843cb906fd839177e90e13867a69dd2fbda512028fa48549f`
+- Lifecycle: 2 new, 0 unchanged, 3 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
 
 - `github_actions_workflow_collector`: ok (13 evidence)
 - `terraform_iam_collector`: ok (0 evidence)
-- `kubernetes_deployment_collector`: ok (7 evidence)
+- `terraform_cost_collector`: ok (2 evidence)
+- `kubernetes_deployment_collector`: ok (14 evidence)
 - `fleet_lifecycle_collector`: ok (1 evidence)
 
 ## Intent evaluation
+
+**Coverage:** 9 of 20 positions have a check — 3 satisfied, 2 divergent, 4 checked but unproven; 11 declared without a check.
 
 - `declared_unverified` `infra_fleet_public_cost/C-001` — Staging application worker capacity scales to zero outside an owner-defined
   usage window. A delayed startup of up to 30 minutes is acceptable when it avoids
@@ -23,14 +26,15 @@
   minimum where its workloads permit it and an explicit bounded maximum. Any
   always-on baseline must name the workload that requires it.
   - Category: `cost` · Priority: `high` · Check: `not_declared` · Reason: `check_not_declared`
-- `declared_unverified` `infra_fleet_public_cost/C-003` — Every staging CloudWatch log group managed by the fleet has an explicit
+- `divergent` `infra_fleet_public_cost/C-003` — Every staging CloudWatch log group managed by the fleet has an explicit
   retention period of no more than 30 days. Longer retention requires a documented
   operational or compliance reason.
-  - Category: `cost` · Priority: `medium` · Check: `not_declared` · Reason: `check_not_declared`
-- `declared_unverified` `infra_fleet_public_cost/C-004` — Every ECR repository managed by the fleet has a lifecycle policy that removes
+  - Category: `cost` · Priority: `medium` · Check: `staging_log_retention_bounded` · Reason: `evidence_conflicts_with_intent`
+  - Evidence: `terraform_cost_collector:d2d6fa1dfde83257`
+- `satisfied` `infra_fleet_public_cost/C-004` — Every ECR repository managed by the fleet has a lifecycle policy that removes
   untagged images and bounds the number or age of retained images. Images retained
   for rollback or audit have an explicit exception.
-  - Category: `cost` · Priority: `medium` · Check: `not_declared` · Reason: `check_not_declared`
+  - Category: `cost` · Priority: `medium` · Check: `ecr_lifecycle_bounded` · Reason: `complete_evidence_supports_intent`
 - `declared_unverified` `infra_fleet_public_cost/C-005` — Terraform-managed AWS resources that support tagging declare consistent
   environment, service, and owner tags so billed usage can be attributed. Any
   resource that cannot carry these tags is reported as an explicit coverage gap.
@@ -52,7 +56,7 @@
   HCP Terraform account, GitHub write credential, repository edit, or mutation of
   the user's default Kubernetes context.
   - Category: `maintainability` · Priority: `high` · Check: `fleet_local_first_use` · Reason: `collector_cannot_prove_satisfaction`
-- `declared_unverified` `infra_fleet_public_maintainability/M-003` — An adopter with an AWS account, an HCP Terraform organization, and a GitHub
+- `divergent` `infra_fleet_public_maintainability/M-003` — An adopter with an AWS account, an HCP Terraform organization, and a GitHub
   repository supplies account-specific configuration through a non-committed
   input file and existing local AWS, HCP Terraform, and GitHub CLI sessions. One
   \`./fleet setup --profile aws-staging\` command validates the selected account,
@@ -68,7 +72,8 @@
   requires explicit confirmation of the target, and reports any resource it could
   not remove. Destroying permanent bootstrap resources remains a separate,
   deliberate operation.
-  - Category: `maintainability` · Priority: `high` · Check: `not_declared` · Reason: `check_not_declared`
+  - Category: `maintainability` · Priority: `high` · Check: `fleet_aws_onboarding` · Reason: `evidence_conflicts_with_intent`
+  - Evidence: `fleet_lifecycle_collector:6d72cf725a3df7bb`
 - `satisfied` `infra_fleet_public_reliability/R-001` — Owner-managed application Deployments under \`k8s/applications/\` retain enough
   healthy capacity during rollout. Temporary capacity cost is acceptable when it
   prevents user-visible interruption.
@@ -82,10 +87,10 @@
   that desired state and workflow credential method, but cannot attest which role
   version is live in AWS.
   - Category: `security` · Priority: `high` · Check: `github_actions_uses_oidc` · Reason: `collector_cannot_prove_satisfaction`
-- `declared_unverified` `infra_fleet_public_security/S-002` — Application containers run as non-root users with privilege escalation disabled and all Linux capabilities dropped.
+- `satisfied` `infra_fleet_public_security/S-002` — Application containers run as non-root users with privilege escalation disabled and all Linux capabilities dropped.
   
   Evidence: \[application Deployment\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/k8s/applications/load-harness/deployment.yaml)
-  - Category: `security` · Priority: `not_declared` · Check: `not_declared` · Reason: `check_not_declared`
+  - Category: `security` · Priority: `high` · Check: `application_containers_hardened` · Reason: `complete_evidence_supports_intent`
 - `declared_unverified` `infra_fleet_public_security/S-003` — Application ingress is limited to the declared ingress, observability, Flux load
   tester, and same-workload peers.
   
@@ -152,6 +157,34 @@
   - Category: `security` · Priority: `not_declared` · Check: `not_declared` · Reason: `check_not_declared`
 
 ## Recommendations
+
+### #1 [new] AWS staging lifecycle lacks a declared onboarding or teardown control
+
+- Category: `maintainability` · Priority: `high` · Confidence: 0.90
+- Fingerprint: `fp_eacf27798e9b66973b4213b3`
+- Evidence: `fleet_lifecycle_collector:6d72cf725a3df7bb`
+
+The aws-staging strategy or its onboarding coordinator does not show every static control: plan-by-default setup, reported targets, stdin-only secrets, a next command, and a teardown confirmation typed by the operator.
+
+**Impact:** An adopter can mutate or destroy a billable AWS target without first seeing and confirming it, or leak a credential through process arguments.
+
+**Suggested change:** Keep setup in plan mode unless --apply is given, print the AWS and GitHub targets before mutation, pipe secrets to gh secret set, print the next lifecycle command, and have down show its target and pass the operator's typed confirmation to the teardown workflow instead of a hard-coded one.
+
+**Trade-offs:** Interactive confirmation makes unattended teardown require an explicit, separately supplied confirmation value.
+
+### #2 [new] Staging CloudWatch log group keeps logs longer than 30 days
+
+- Category: `cost` · Priority: `medium` · Confidence: 0.90
+- Fingerprint: `fp_71b389eab950ffc8b4efa99c`
+- Evidence: `terraform_cost_collector:d2d6fa1dfde83257`
+
+A staging log group declared directly or created by a pinned module retains events for more than 30 days or never expires them.
+
+**Impact:** Log storage grows with every rebuild cycle and is billed after the staging environment's usefulness for debugging has passed.
+
+**Suggested change:** Declare an explicit retention of at most 30 days, for the EKS module via cloudwatch_log_group_retention_in_days, or document why longer retention is needed.
+
+**Trade-offs:** Shorter retention removes older control-plane audit trails that could help a late incident investigation.
 
 ### [resolved] Fleet profiles lack the declared lifecycle command surface
 

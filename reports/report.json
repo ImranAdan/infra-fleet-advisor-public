@@ -13,9 +13,15 @@
       "status": "ok"
     },
     {
+      "collector_id": "terraform_cost_collector",
+      "error_summary": null,
+      "evidence_count": 2,
+      "status": "ok"
+    },
+    {
       "collector_id": "kubernetes_deployment_collector",
       "error_summary": null,
-      "evidence_count": 7,
+      "evidence_count": 14,
       "status": "ok"
     },
     {
@@ -28,20 +34,44 @@
   "evidence": [
     {
       "collector_id": "fleet_lifecycle_collector",
-      "collector_version": "1.0.0",
+      "collector_version": "1.3.0",
       "evidence_id": "fleet_lifecycle_collector:6d72cf725a3df7bb",
-      "excerpt": "setup routed by facade/local/aws-staging: false/false/false; up/down complete: true",
+      "excerpt": "lifecycle routed by facade/local/aws-staging: true/true/true; local first-use: true; aws onboarding: false",
       "fact": {
-        "aws_lifecycle_complete": false,
-        "common_lifecycle_complete": false,
+        "aws_lifecycle_complete": true,
+        "aws_onboarding_complete": false,
+        "aws_prints_next_command": true,
+        "aws_secrets_from_stdin": true,
+        "aws_setup_plans_by_default": true,
+        "aws_setup_reports_targets": true,
+        "aws_teardown_operator_confirmed": false,
+        "common_lifecycle_complete": true,
         "facade_executable": true,
-        "facade_lifecycle_complete": false,
-        "local_lifecycle_complete": false,
+        "facade_lifecycle_complete": true,
+        "local_first_use_complete": true,
+        "local_installs_pinned_tools": true,
+        "local_lifecycle_complete": true,
+        "local_prints_next_command": true,
+        "local_uses_checkout_state": true,
+        "local_uses_explicit_context": true,
         "profiles_are_closed": true
       },
       "kind": "fleet_profile_lifecycle",
       "locator": "profile lifecycle dispatch",
       "source_path": "fleet"
+    },
+    {
+      "collector_id": "terraform_cost_collector",
+      "collector_version": "1.0.0",
+      "evidence_id": "terraform_cost_collector:d2d6fa1dfde83257",
+      "excerpt": "module.eks (terraform-aws-modules/eks/aws 21.25.0): control-plane log group retention 90 days",
+      "fact": {
+        "bounded_retention": false,
+        "retention_days": 90
+      },
+      "kind": "tf_log_retention",
+      "locator": "module.eks.aws_cloudwatch_log_group.this",
+      "source_path": "infrastructure/staging/eks.tf"
     },
     {
       "collector_id": "terraform_iam_collector",
@@ -95,25 +125,27 @@
     },
     {
       "category": "cost",
-      "check_key": null,
+      "check_key": "staging_log_retention_bounded",
       "document_id": "infra_fleet_public_cost",
-      "evidence_ids": [],
+      "evidence_ids": [
+        "terraform_cost_collector:d2d6fa1dfde83257"
+      ],
       "priority": "medium",
       "proposition_id": "C-003",
-      "reason": "check_not_declared",
+      "reason": "evidence_conflicts_with_intent",
       "statement": "Every staging CloudWatch log group managed by the fleet has an explicit\nretention period of no more than 30 days. Longer retention requires a documented\noperational or compliance reason.",
-      "status": "declared_unverified"
+      "status": "divergent"
     },
     {
       "category": "cost",
-      "check_key": null,
+      "check_key": "ecr_lifecycle_bounded",
       "document_id": "infra_fleet_public_cost",
       "evidence_ids": [],
       "priority": "medium",
       "proposition_id": "C-004",
-      "reason": "check_not_declared",
+      "reason": "complete_evidence_supports_intent",
       "statement": "Every ECR repository managed by the fleet has a lifecycle policy that removes\nuntagged images and bounds the number or age of retained images. Images retained\nfor rollback or audit have an explicit exception.",
-      "status": "declared_unverified"
+      "status": "satisfied"
     },
     {
       "category": "cost",
@@ -150,14 +182,16 @@
     },
     {
       "category": "maintainability",
-      "check_key": null,
+      "check_key": "fleet_aws_onboarding",
       "document_id": "infra_fleet_public_maintainability",
-      "evidence_ids": [],
+      "evidence_ids": [
+        "fleet_lifecycle_collector:6d72cf725a3df7bb"
+      ],
       "priority": "high",
       "proposition_id": "M-003",
-      "reason": "check_not_declared",
+      "reason": "evidence_conflicts_with_intent",
       "statement": "An adopter with an AWS account, an HCP Terraform organization, and a GitHub\nrepository supplies account-specific configuration through a non-committed\ninput file and existing local AWS, HCP Terraform, and GitHub CLI sessions. One\n`./fleet setup --profile aws-staging` command validates the selected account,\nregion, organization, repository, and protected environment; configures the\nrequired repository and HCP Terraform settings; and bootstraps the permanent\nAWS foundation used for GitHub OIDC deployment. It never stores long-lived AWS\naccess keys in GitHub.\n\nAfter setup, one `./fleet up --profile aws-staging` command deploys the reviewed\nstaging platform into that account through the protected GitHub environment and\nshort-lived AWS credentials. One `./fleet down --profile aws-staging` command\nremoves billable staging resources, preserves the permanent bootstrap foundation,\nrequires explicit confirmation of the target, and reports any resource it could\nnot remove. Destroying permanent bootstrap resources remains a separate,\ndeliberate operation.",
-      "status": "declared_unverified"
+      "status": "divergent"
     },
     {
       "category": "reliability",
@@ -183,14 +217,14 @@
     },
     {
       "category": "security",
-      "check_key": null,
+      "check_key": "application_containers_hardened",
       "document_id": "infra_fleet_public_security",
       "evidence_ids": [],
-      "priority": null,
+      "priority": "high",
       "proposition_id": "S-002",
-      "reason": "check_not_declared",
+      "reason": "complete_evidence_supports_intent",
       "statement": "Application containers run as non-root users with privilege escalation disabled and all Linux capabilities dropped.\n\nEvidence: [application Deployment](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/k8s/applications/load-harness/deployment.yaml)",
-      "status": "declared_unverified"
+      "status": "satisfied"
     },
     {
       "category": "security",
@@ -292,23 +326,64 @@
       "status": "declared_unverified"
     }
   ],
-  "new_count": 0,
+  "new_count": 2,
   "provenance": {
     "advisor_version": "0.1.0",
     "collector_versions": {
-      "fleet_lifecycle_collector": "1.2.0",
+      "fleet_lifecycle_collector": "1.3.0",
       "github_actions_workflow_collector": "1.3.0",
-      "kubernetes_deployment_collector": "1.0.0",
+      "kubernetes_deployment_collector": "1.1.0",
+      "terraform_cost_collector": "1.0.0",
       "terraform_iam_collector": "1.4.0"
     },
-    "intent_digest": "intent-md-v1:a06b3c0e55efcf7d02a9e3b19905de19c09a0c0c65a10daf17f836b7a030f0ae",
+    "intent_digest": "intent-md-v1:e9386fb7406828b843cb906fd839177e90e13867a69dd2fbda512028fa48549f",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.1",
-    "run_started_at": "2026-09-23T21:23:55.224699+00:00",
-    "source_commit_sha": "14deac3ae4f5898dc0c801725a4b77840c8a471e",
+    "run_started_at": "2026-09-23T23:21:15.416103+00:00",
+    "source_commit_sha": "f3c42956a63066568e7d7133f41b053cd58293ac",
     "source_label": "infra-fleet-public"
   },
   "recommendations": [
+    {
+      "category": "maintainability",
+      "concern_key": "fleet_aws_onboarding_incomplete",
+      "confidence": 0.9,
+      "confidence_explanation": "Derived from fixed, tracked shell text of the AWS strategy and onboarding coordinator without executing them.",
+      "evidence_ids": [
+        "fleet_lifecycle_collector:6d72cf725a3df7bb"
+      ],
+      "fingerprint": "fp_eacf27798e9b66973b4213b3",
+      "impact": "An adopter can mutate or destroy a billable AWS target without first seeing and confirming it, or leak a credential through process arguments.",
+      "owner_accepted_trade_off": null,
+      "priority": "high",
+      "rank": 1,
+      "rank_rationale": "priority=high, category_weight=8, confidence=0.90",
+      "status": "new",
+      "suggested_change": "Keep setup in plan mode unless --apply is given, print the AWS and GitHub targets before mutation, pipe secrets to gh secret set, print the next lifecycle command, and have down show its target and pass the operator's typed confirmation to the teardown workflow instead of a hard-coded one.",
+      "summary": "The aws-staging strategy or its onboarding coordinator does not show every static control: plan-by-default setup, reported targets, stdin-only secrets, a next command, and a teardown confirmation typed by the operator.",
+      "title": "AWS staging lifecycle lacks a declared onboarding or teardown control",
+      "trade_offs": "Interactive confirmation makes unattended teardown require an explicit, separately supplied confirmation value."
+    },
+    {
+      "category": "cost",
+      "concern_key": "staging_log_retention_unbounded",
+      "confidence": 0.9,
+      "confidence_explanation": "Read from literal Terraform attributes; module log groups use the published defaults of the pinned major version without downloading the module.",
+      "evidence_ids": [
+        "terraform_cost_collector:d2d6fa1dfde83257"
+      ],
+      "fingerprint": "fp_71b389eab950ffc8b4efa99c",
+      "impact": "Log storage grows with every rebuild cycle and is billed after the staging environment's usefulness for debugging has passed.",
+      "owner_accepted_trade_off": null,
+      "priority": "medium",
+      "rank": 2,
+      "rank_rationale": "priority=medium, category_weight=5, confidence=0.90",
+      "status": "new",
+      "suggested_change": "Declare an explicit retention of at most 30 days, for the EKS module via cloudwatch_log_group_retention_in_days, or document why longer retention is needed.",
+      "summary": "A staging log group declared directly or created by a pinned module retains events for more than 30 days or never expires them.",
+      "title": "Staging CloudWatch log group keeps logs longer than 30 days",
+      "trade_offs": "Shorter retention removes older control-plane audit trails that could help a late incident investigation."
+    },
     {
       "category": "maintainability",
       "concern_key": "fleet_profile_lifecycle_incomplete",
