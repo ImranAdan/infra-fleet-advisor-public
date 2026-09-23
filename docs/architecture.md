@@ -122,10 +122,35 @@ arbitrarily.
 
 Fleet lifecycle evidence uses one stable identity for the common profile
 dispatch contract. Its collector reads only the tracked `fleet` facade and
-fixed local strategy as bounded text. It recognizes a closed shell structure
-for the `local` and `aws-staging` routes and never sources or executes repository
-code. Unknown structure, exclusions, untracked files, links, and unreadable
-input make coverage partial instead of becoming a finding.
+fixed `local` and `aws-staging` strategy modules as bounded text. It recognizes
+a closed shell structure for both routes and never sources or executes
+repository code. The same evidence record supports separate M-001 lifecycle and
+M-002 local first-use evaluations, so one collector traversal cannot silently
+expand into a new execution boundary. Unknown structure, exclusions, untracked
+files, links, and unreadable input make coverage partial instead of becoming a
+finding.
+
+```mermaid
+flowchart LR
+    V[Verified Fleet snapshot] --> F[Tracked ./fleet facade]
+    V --> L[Fixed local strategy]
+    V --> A[Fixed aws-staging strategy]
+    F --> C[Lifecycle collector<br/>bounded text only]
+    L --> C
+    A --> C
+    C --> E[Typed lifecycle evidence]
+    E --> M1[M-001<br/>common lifecycle]
+    E --> M2[M-002<br/>local first-use controls]
+    M1 --> R[Intent evaluations and report]
+    M2 --> R
+    C -. never source or execute .-> X[Target code]
+```
+
+M-002 recognizes the fixed local installer invocation, Git-common-directory
+state, explicit kubectl and Flux context, and printed startup command. These
+facts can prove a declared control is absent. Their presence cannot prove that a
+download succeeded, Docker was available, or a real cluster became ready, so a
+structurally complete implementation remains `declared_unverified`.
 
 The Deployment collector reads only bounded, tracked YAML under `k8s/`. It
 resolves RollingUpdate percentage fenceposts against desired replicas, records

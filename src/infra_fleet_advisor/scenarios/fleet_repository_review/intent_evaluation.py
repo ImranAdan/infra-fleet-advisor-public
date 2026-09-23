@@ -12,6 +12,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
     CONCERN_CI_CREDENTIALS_WITHOUT_OIDC,
     CONCERN_DEPLOYMENT_ROLLOUT_CAPACITY,
     CONCERN_FLEET_LIFECYCLE_INCOMPLETE,
+    CONCERN_FLEET_LOCAL_FIRST_USE_INCOMPLETE,
     CONCERN_TEMPLATES,
     CONCERN_TRIVY_IGNORE_UNFIXED,
     CONCERN_WILDCARD_IAM_PERMISSIONS,
@@ -34,6 +35,7 @@ CHECK_PERSISTENT_IAM_AVOIDS_WILDCARDS = "persistent_iam_avoids_wildcards"
 CHECK_TRIVY_DOES_NOT_IGNORE_UNFIXED = "trivy_does_not_ignore_unfixed"
 CHECK_DEPLOYMENT_ROLLOUT_CAPACITY = "deployment_rollout_capacity"
 CHECK_FLEET_PROFILES_EXPOSE_LIFECYCLE = "fleet_profiles_expose_lifecycle"
+CHECK_FLEET_LOCAL_FIRST_USE = "fleet_local_first_use"
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,6 +130,20 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
             ),
             # Static parsing can prove the declared command surface is absent,
             # but cannot prove idempotence or runtime behavior from shell text.
+            can_prove_satisfaction=False,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_FLEET_LOCAL_FIRST_USE: IntentCheckDefinition(
+            concern_key=CONCERN_FLEET_LOCAL_FIRST_USE_INCOMPLETE,
+            rule=ConcernRule(
+                category="maintainability",
+                evidence_kind=EVIDENCE_KIND_FLEET_LIFECYCLE,
+                collector_id=FLEET_LIFECYCLE_COLLECTOR_ID,
+                source_path_prefixes=("fleet",),
+                required_facts={"local_first_use_complete": False},
+            ),
+            # Static source can prove a required control is absent, but cannot
+            # prove downloads, Docker, or a real cluster work on every host.
             can_prove_satisfaction=False,
             requires_relevant_evidence=True,
         ),

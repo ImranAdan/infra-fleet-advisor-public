@@ -47,9 +47,12 @@ The maintainability intent records the Fleet's local and AWS onboarding
 contract. M-001 registers a static check that can prove the common lifecycle
 surface is missing or inconsistent without executing Fleet-provided code. A
 structurally complete surface remains `declared_unverified` because static shell
-inspection cannot prove idempotence or runtime behavior. M-002 and M-003 remain
-unregistered until implementation provides specific local and AWS controls that
-trusted collectors can evaluate.
+inspection cannot prove idempotence or runtime behavior. M-002 registers a
+second static check for the pinned local tool installer, checkout-owned state,
+explicit Kubernetes context and printed next command. Complete controls remain
+`declared_unverified` because source inspection cannot prove downloads or a
+working cluster. M-003 remains unregistered until AWS onboarding exposes
+specific controls that a trusted collector can evaluate.
 
 The registered `deployment_rollout_capacity` check evaluates tracked `apps/v1`
 Deployment manifests under `k8s/applications/`. The collector still inventories

@@ -23,6 +23,7 @@ def _write_contract(
     facade_actions: str = "setup|up|down|status",
     local_actions: tuple[str, ...] = ("setup", "up", "down"),
     aws_actions: tuple[str, ...] = ("setup", "up", "down"),
+    local_first_use: bool = True,
 ) -> None:
     facade = root / "fleet"
     facade.write_text(
@@ -44,8 +45,29 @@ def _write_contract(
     strategies.mkdir(parents=True)
     for name, actions in (("local", local_actions), ("aws-staging", aws_actions)):
         cases = "\n".join(f"    {action}) command ;;" for action in actions)
+        first_use = ""
+        if name == "local" and local_first_use:
+            first_use = (
+                'kctl() { kubectl --kubeconfig "$FLEET_STATE/kubeconfig" '
+                '--context "$FLEET_CONTEXT" "$@"; }\n'
+                'fctl() { flux --kubeconfig "$FLEET_STATE/kubeconfig" '
+                '--context "$FLEET_CONTEXT" "$@"; }\n'
+                "local_init_state() {\n"
+                "  common_dir=$(git rev-parse --path-format=absolute --git-common-dir)\n"
+                '  FLEET_STATE="$common_dir/fleet/local"\n'
+                "}\n"
+                "local_setup() {\n"
+                '  "$fleet_root/scripts/install-profile-tools.sh" '
+                '"$FLEET_STATE/bin" --local\n'
+                '  export PATH="$FLEET_STATE/bin:$PATH"\n'
+                "  echo 'Next: ./fleet up --profile local'\n"
+                "}\n"
+                "local_prerequisites() {\n"
+                '  export PATH="$FLEET_STATE/bin:$PATH"\n'
+                "}\n"
+            )
         (strategies / f"{name}.sh").write_text(
-            f'profile_main() {{\n  case "$1" in\n{cases}\n  esac\n}}\n',
+            first_use + f'profile_main() {{\n  case "$1" in\n{cases}\n  esac\n}}\n',
             encoding="utf-8",
         )
 
@@ -63,6 +85,11 @@ def test_complete_lifecycle_surface_emits_bounded_typed_evidence(tmp_path: Path)
     assert evidence.fact["common_lifecycle_complete"] is True
     assert evidence.fact["local_lifecycle_complete"] is True
     assert evidence.fact["aws_lifecycle_complete"] is True
+    assert evidence.fact["local_first_use_complete"] is True
+    assert evidence.fact["local_installs_pinned_tools"] is True
+    assert evidence.fact["local_uses_checkout_state"] is True
+    assert evidence.fact["local_uses_explicit_context"] is True
+    assert evidence.fact["local_prints_next_command"] is True
 
 
 def test_missing_setup_is_a_stable_actionable_divergence(tmp_path: Path) -> None:
@@ -97,6 +124,17 @@ def test_profile_without_all_lifecycle_routes_is_divergent(tmp_path: Path) -> No
     assert evidence.fact["local_lifecycle_complete"] is True
     assert evidence.fact["aws_lifecycle_complete"] is False
     assert evidence.fact["common_lifecycle_complete"] is False
+
+
+def test_missing_local_first_use_controls_is_a_distinct_divergence(tmp_path: Path) -> None:
+    _write_contract(tmp_path, local_first_use=False)
+
+    evidence = collector.collect(tmp_path, LIMITS).evidence[0]
+
+    assert evidence.fact["common_lifecycle_complete"] is True
+    assert evidence.fact["local_first_use_complete"] is False
+    assert evidence.fact["local_installs_pinned_tools"] is False
+    assert "local first-use: false" in evidence.excerpt
 
 
 def test_unknown_shell_structure_is_partial_instead_of_a_false_finding(tmp_path: Path) -> None:
