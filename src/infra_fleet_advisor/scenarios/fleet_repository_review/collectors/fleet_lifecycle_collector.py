@@ -314,42 +314,72 @@ def collect(
             aws_teardown_operator_confirmed,
         )
     )
-    evidence = build_evidence(
-        collector_id=FLEET_LIFECYCLE_COLLECTOR_ID,
-        collector_version=FLEET_LIFECYCLE_COLLECTOR_VERSION,
-        kind=EVIDENCE_KIND_FLEET_LIFECYCLE,
-        source_path=_FACADE_PATH,
-        locator="profile lifecycle dispatch",
-        excerpt=(
+
+    # One record per check. Checks resolve and regress independently, and a
+    # report keys evidence by ID: a shared ID would let a new finding's current
+    # facts overwrite the historical facts a resolved finding still cites.
+    def record(
+        identity: str, source_path: str, locator: str, excerpt: str, fact: dict[str, bool]
+    ) -> Evidence:
+        return build_evidence(
+            collector_id=FLEET_LIFECYCLE_COLLECTOR_ID,
+            collector_version=FLEET_LIFECYCLE_COLLECTOR_VERSION,
+            kind=EVIDENCE_KIND_FLEET_LIFECYCLE,
+            source_path=source_path,
+            locator=locator,
+            excerpt=excerpt,
+            fact=fact,
+            identity_parts=(identity,),
+        )
+
+    evidence = (
+        record(
+            "profile-lifecycle-dispatch",
+            _FACADE_PATH,
+            "profile lifecycle dispatch",
             "lifecycle routed by facade/local/aws-staging: "
             f"{str(facade_complete).lower()}/"
             f"{str(local_complete).lower()}/"
-            f"{str(aws_complete).lower()}; "
-            f"local first-use: {str(local_first_use_complete).lower()}; "
-            f"aws onboarding: {str(aws_onboarding_complete).lower()}"
+            f"{str(aws_complete).lower()}",
+            {
+                "facade_executable": facade_executable,
+                "profiles_are_closed": True,
+                "facade_lifecycle_complete": facade_complete,
+                "local_lifecycle_complete": local_complete,
+                "aws_lifecycle_complete": aws_complete,
+                "common_lifecycle_complete": lifecycle_complete,
+            },
         ),
-        fact={
-            "facade_executable": facade_executable,
-            "profiles_are_closed": True,
-            "facade_lifecycle_complete": facade_complete,
-            "local_lifecycle_complete": local_complete,
-            "aws_lifecycle_complete": aws_complete,
-            "common_lifecycle_complete": lifecycle_complete,
-            "local_installs_pinned_tools": local_installs_pinned_tools,
-            "local_uses_checkout_state": local_uses_checkout_state,
-            "local_uses_explicit_context": local_uses_explicit_context,
-            "local_prints_next_command": local_prints_next_command,
-            "local_first_use_complete": local_first_use_complete,
-            "aws_setup_plans_by_default": aws_setup_plans_by_default,
-            "aws_setup_reports_targets": aws_setup_reports_targets,
-            "aws_secrets_from_stdin": aws_secrets_from_stdin,
-            "aws_prints_next_command": aws_prints_next_command,
-            "aws_teardown_operator_confirmed": aws_teardown_operator_confirmed,
-            "aws_onboarding_complete": aws_onboarding_complete,
-        },
-        identity_parts=("profile-lifecycle-dispatch",),
+        record(
+            "local-first-use",
+            _STRATEGY_PATHS["local"],
+            "local first-use controls",
+            f"local first-use: {str(local_first_use_complete).lower()}",
+            {
+                "local_installs_pinned_tools": local_installs_pinned_tools,
+                "local_uses_checkout_state": local_uses_checkout_state,
+                "local_uses_explicit_context": local_uses_explicit_context,
+                "local_prints_next_command": local_prints_next_command,
+                "local_first_use_complete": local_first_use_complete,
+            },
+        ),
+        record(
+            "aws-onboarding",
+            _STRATEGY_PATHS["aws-staging"],
+            "aws onboarding and teardown controls",
+            f"aws onboarding: {str(aws_onboarding_complete).lower()}",
+            {
+                "aws_lifecycle_complete": aws_complete,
+                "aws_setup_plans_by_default": aws_setup_plans_by_default,
+                "aws_setup_reports_targets": aws_setup_reports_targets,
+                "aws_secrets_from_stdin": aws_secrets_from_stdin,
+                "aws_prints_next_command": aws_prints_next_command,
+                "aws_teardown_operator_confirmed": aws_teardown_operator_confirmed,
+                "aws_onboarding_complete": aws_onboarding_complete,
+            },
+        ),
     )
     return CollectorResult(
-        evidence=(evidence,),
-        coverage=CollectorCoverage(FLEET_LIFECYCLE_COLLECTOR_ID, "ok", 1),
+        evidence=evidence,
+        coverage=CollectorCoverage(FLEET_LIFECYCLE_COLLECTOR_ID, "ok", len(evidence)),
     )
