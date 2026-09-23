@@ -1,0 +1,342 @@
+import re
+from dataclasses import dataclass
+from pathlib import Path, PurePosixPath
+from typing import Any
+
+from infra_fleet_advisor.core.errors import UnsafePathError
+from infra_fleet_advisor.core.evidence import Evidence, build_evidence
+from infra_fleet_advisor.core.limits import ExecutionLimits
+from infra_fleet_advisor.core.paths import validate_repo_relative_path
+from infra_fleet_advisor.core.report import CollectorCoverage
+from infra_fleet_advisor.scenarios.fleet_repository_review.collectors.terraform_iam_collector import (  # noqa: E501
+    _extract_policy_json,
+    _iter_resource_blocks,
+    _LiteralParser,
+    _mask_non_code,
+    _Traversal,
+)
+from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
+    EVIDENCE_KIND_ECR_LIFECYCLE,
+    EVIDENCE_KIND_LOG_RETENTION,
+    TF_COST_COLLECTOR_ID,
+    TF_COST_COLLECTOR_VERSION,
+)
+
+_RESOURCE_HEADER = re.compile(
+    r'resource\s+"(aws_cloudwatch_log_group|aws_ecr_repository|aws_ecr_lifecycle_policy)"'
+    r'\s+"([A-Za-z0-9_-]+)"\s*\{'
+)
+_MODULE_HEADER = re.compile(r'(module)\s+"([A-Za-z0-9_-]+)"\s*\{')
+_ECR_REFERENCE = re.compile(r"^aws_ecr_repository\.([A-Za-z0-9_-]+)\.(?:name|id)$")
+_MAX_RETENTION_DAYS = 30
+
+# The advisor never downloads modules, so a registry module's log group is
+# derived from its published defaults. Only majors whose defaults were checked
+# are trusted; any other version is an explicit coverage gap.
+_EKS_MODULE_SOURCE = "terraform-aws-modules/eks/aws"
+_EKS_MODULE_MAJORS = range(18, 22)
+_EKS_DEFAULT_RETENTION_DAYS = 90
+
+
+@dataclass(frozen=True, slots=True)
+class CollectorResult:
+    evidence: tuple[Evidence, ...]
+    coverage: CollectorCoverage
+
+
+def _attribute(body: str, name: str, default: Any = None) -> Any:
+    """Return a single-line top-level literal attribute, or `default` when absent.
+
+    Raises ValueError for duplicates and for values that are not bounded
+    literals, such as variables or multi-line expressions."""
+    code = _mask_non_code(body)
+    pattern = re.compile(rf"(?<![\w.]){re.escape(name)}\s*=")
+    hits = [
+        match
+        for match in pattern.finditer(code)
+        if code[: match.start()].count("{") - code[: match.start()].count("}") == 1
+    ]
+    if not hits:
+        return default
+    if len(hits) > 1:
+        raise ValueError(f"duplicate {name}")
+    line_end = body.find("\n", hits[0].end())
+    parser = _LiteralParser(
+        _mask_non_code(body[hits[0].end() : line_end if line_end >= 0 else None], strings=False)
+    )
+    value = parser.value()
+    if parser.index != len(parser.tokens):
+        raise ValueError(f"{name} is not a single literal")
+    return value
+
+
+def _retention_evidence(rel_path: str, locator: str, retention_days: int, excerpt: str) -> Evidence:
+    root_module = PurePosixPath(rel_path).parent.as_posix()
+    return build_evidence(
+        collector_id=TF_COST_COLLECTOR_ID,
+        collector_version=TF_COST_COLLECTOR_VERSION,
+        kind=EVIDENCE_KIND_LOG_RETENTION,
+        source_path=rel_path,
+        locator=locator,
+        excerpt=excerpt,
+        fact={
+            # 0 means CloudWatch never expires the events.
+            "retention_days": retention_days,
+            "bounded_retention": 0 < retention_days <= _MAX_RETENTION_DAYS,
+        },
+        identity_parts=(root_module, locator),
+    )
+
+
+def _log_group_evidence(rel_path: str, name: str, body: str) -> Evidence:
+    retention = _attribute(body, "retention_in_days", 0)
+    if isinstance(retention, bool) or not isinstance(retention, int) or retention < 0:
+        raise ValueError("retention_in_days is not a literal day count")
+    shown = f"{retention} days" if retention else "never expires"
+    return _retention_evidence(
+        rel_path,
+        f"resource.aws_cloudwatch_log_group.{name}",
+        retention,
+        f"aws_cloudwatch_log_group.{name}: retention {shown}",
+    )
+
+
+def _eks_module_evidence(rel_path: str, name: str, body: str) -> Evidence | None:
+    version = _attribute(body, "version")
+    major = re.search(r"[0-9]+", version) if isinstance(version, str) else None
+    if major is None or int(major.group()) not in _EKS_MODULE_MAJORS:
+        raise ValueError("EKS module version has no trusted log-group defaults")
+    log_types = _attribute(body, "enabled_log_types", ["audit", "api", "authenticator"])
+    create = _attribute(body, "create_cloudwatch_log_group", True)
+    retention = _attribute(
+        body, "cloudwatch_log_group_retention_in_days", _EKS_DEFAULT_RETENTION_DAYS
+    )
+    if (
+        not isinstance(log_types, list)
+        or not isinstance(create, bool)
+        or isinstance(retention, bool)
+        or not isinstance(retention, int)
+        or retention < 0
+    ):
+        raise ValueError("EKS module log settings are not literals")
+    if not log_types:
+        return None
+    locator = f"module.{name}.aws_cloudwatch_log_group.this"
+    if not create:
+        # EKS then creates /aws/eks/<cluster>/cluster itself, with no expiry.
+        return _retention_evidence(
+            rel_path,
+            locator,
+            0,
+            f"module.{name}: control-plane logging on, log group left to AWS (never expires)",
+        )
+    return _retention_evidence(
+        rel_path,
+        locator,
+        retention,
+        f"module.{name} ({_EKS_MODULE_SOURCE} {version}): control-plane log group "
+        f"retention {retention} days",
+    )
+
+
+def _lifecycle_rules(policy: dict[str, Any]) -> tuple[bool, bool]:
+    """Return (expires_untagged, bounds_retained_images) for an ECR lifecycle policy."""
+    rules = policy.get("rules")
+    if not isinstance(rules, list) or not rules:
+        raise ValueError("ECR lifecycle policy has no rules")
+    expires_untagged = False
+    bounds_all = False
+    for rule in rules:
+        action = rule.get("action") if isinstance(rule, dict) else None
+        selection = rule.get("selection") if isinstance(rule, dict) else None
+        if not isinstance(action, dict) or not isinstance(selection, dict):
+            raise ValueError("ECR lifecycle rule is malformed")
+        if action.get("type") != "expire":
+            continue
+        tag_status = selection.get("tagStatus")
+        count = selection.get("countNumber")
+        bounded = (
+            selection.get("countType") in {"imageCountMoreThan", "sinceImagePushed"}
+            and isinstance(count, int)
+            and not isinstance(count, bool)
+            and count > 0
+        )
+        expires_untagged = expires_untagged or tag_status in {"untagged", "any"}
+        covers_every_image = tag_status == "any" or (
+            tag_status == "tagged" and selection.get("tagPatternList") == ["*"]
+        )
+        bounds_all = bounds_all or (bounded and covers_every_image)
+    return expires_untagged, bounds_all
+
+
+def _ecr_evidence(
+    repositories: dict[tuple[str, str], tuple[str, str]],
+    policies: list[tuple[str, str, str]],
+) -> tuple[list[Evidence], int]:
+    """Join repositories to lifecycle policies within each root module."""
+    failures = 0
+    by_repository: dict[tuple[str, str], list[tuple[bool, bool]]] = {}
+    names_by_literal = {
+        (module, literal): name
+        for (module, name), (_path, literal) in repositories.items()
+        if literal
+    }
+    for module, policy_name, body in policies:
+        try:
+            reference = _attribute(body, "repository")
+            if isinstance(reference, _Traversal):
+                match = _ECR_REFERENCE.fullmatch(reference.value)
+                target = match.group(1) if match else None
+            elif isinstance(reference, str):
+                target = names_by_literal.get((module, reference))
+            else:
+                target = None
+            policy, _failed = _extract_policy_json(body)
+            if target is None or (module, target) not in repositories or policy is None:
+                raise ValueError(f"unresolved ECR lifecycle policy {policy_name}")
+            by_repository.setdefault((module, target), []).append(_lifecycle_rules(policy))
+        except ValueError:
+            failures += 1
+
+    evidence: list[Evidence] = []
+    for (module, name), (rel_path, _literal) in sorted(repositories.items()):
+        attached = by_repository.get((module, name), [])
+        if len(attached) > 1:
+            failures += 1
+            continue
+        expires_untagged, bounds_all = attached[0] if attached else (False, False)
+        locator = f"resource.aws_ecr_repository.{name}"
+        evidence.append(
+            build_evidence(
+                collector_id=TF_COST_COLLECTOR_ID,
+                collector_version=TF_COST_COLLECTOR_VERSION,
+                kind=EVIDENCE_KIND_ECR_LIFECYCLE,
+                source_path=rel_path,
+                locator=locator,
+                excerpt=(
+                    f"aws_ecr_repository.{name}: lifecycle policy "
+                    f"{'present' if attached else 'absent'}, expires untagged="
+                    f"{expires_untagged}, bounds retained images={bounds_all}"
+                ),
+                fact={
+                    "has_lifecycle_policy": bool(attached),
+                    "expires_untagged": expires_untagged,
+                    "bounds_retained_images": bounds_all,
+                    "bounded_lifecycle": expires_untagged and bounds_all,
+                },
+                identity_parts=(module, locator),
+            )
+        )
+    return evidence, failures
+
+
+def collect(
+    checkout_root: Path,
+    limits: ExecutionLimits,
+    excluded_paths: frozenset[str] = frozenset(),
+    tracked_paths: frozenset[str] | None = None,
+) -> CollectorResult:
+    checkout_real = checkout_root.resolve()
+    infra_dir = checkout_root / "infrastructure"
+    if not infra_dir.is_dir():
+        return CollectorResult((), CollectorCoverage(TF_COST_COLLECTOR_ID, "ok", 0))
+    if not infra_dir.resolve().is_relative_to(checkout_real):
+        return CollectorResult(
+            (),
+            CollectorCoverage(
+                TF_COST_COLLECTOR_ID,
+                "failed",
+                0,
+                "infrastructure directory escapes the verified checkout",
+            ),
+        )
+
+    eligible: list[Path] = []
+    excluded_count = 0
+    untracked_count = 0
+    for path in sorted(infra_dir.rglob("*.tf")):
+        rel_path = path.relative_to(checkout_root).as_posix()
+        if ".terraform" in path.relative_to(infra_dir).parts and (
+            tracked_paths is None or rel_path not in tracked_paths
+        ):
+            continue
+        if any(rel_path == ex or rel_path.startswith(f"{ex}/") for ex in excluded_paths):
+            excluded_count += 1
+        elif tracked_paths is not None and rel_path not in tracked_paths:
+            untracked_count += 1
+        else:
+            eligible.append(path)
+    files = eligible[: limits.max_workflow_files]
+    truncated_count = len(eligible) - len(files)
+
+    evidence: list[Evidence] = []
+    repositories: dict[tuple[str, str], tuple[str, str]] = {}
+    policies: list[tuple[str, str, str]] = []
+    failures = 0
+    for path in files:
+        rel_path = path.relative_to(checkout_root).as_posix()
+        module = PurePosixPath(rel_path).parent.as_posix()
+        try:
+            validate_repo_relative_path(rel_path)
+            if path.is_symlink() or not path.resolve().is_relative_to(checkout_real):
+                failures += 1
+                continue
+            if path.stat().st_size > limits.max_file_bytes:
+                failures += 1
+                continue
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError, UnsafePathError):
+            failures += 1
+            continue
+
+        resources, unbalanced = _iter_resource_blocks(text, _RESOURCE_HEADER)
+        modules, module_unbalanced = _iter_resource_blocks(text, _MODULE_HEADER)
+        failures += unbalanced + module_unbalanced
+        for resource_type, name, body in resources:
+            try:
+                if resource_type == "aws_cloudwatch_log_group":
+                    evidence.append(_log_group_evidence(rel_path, name, body))
+                elif resource_type == "aws_ecr_repository":
+                    literal = _attribute(body, "name")
+                    repositories[(module, name)] = (
+                        rel_path,
+                        literal if isinstance(literal, str) else "",
+                    )
+                else:
+                    policies.append((module, name, body))
+            except ValueError:
+                failures += 1
+        for _keyword, name, body in modules:
+            try:
+                if _attribute(body, "source") != _EKS_MODULE_SOURCE:
+                    continue
+                item = _eks_module_evidence(rel_path, name, body)
+            except ValueError:
+                failures += 1
+                continue
+            if item is not None:
+                evidence.append(item)
+
+    ecr_items, ecr_failures = _ecr_evidence(repositories, policies)
+    evidence.extend(ecr_items)
+    failures += ecr_failures
+
+    reasons = []
+    if failures:
+        reasons.append(f"{failures} Terraform cost resource(s) or file(s) could not be evaluated")
+    if truncated_count:
+        reasons.append(f"{truncated_count} Terraform file(s) omitted past max_workflow_files")
+    if excluded_count:
+        reasons.append(f"{excluded_count} Terraform file(s) excluded by policy")
+    if untracked_count:
+        reasons.append(f"{untracked_count} Terraform file(s) not part of the verified commit")
+    ordered = tuple(sorted(evidence, key=lambda item: item.evidence_id))
+    return CollectorResult(
+        evidence=ordered,
+        coverage=CollectorCoverage(
+            collector_id=TF_COST_COLLECTOR_ID,
+            status="partial" if failures or truncated_count or untracked_count else "ok",
+            evidence_count=len(ordered),
+            error_summary="; ".join(reasons) or None,
+        ),
+    )

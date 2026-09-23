@@ -8,6 +8,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
     kubernetes_deployment_collector as collector,
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
+    EVIDENCE_KIND_CONTAINER_HARDENING,
     EVIDENCE_KIND_DEPLOYMENT_ROLLOUT_CAPACITY,
 )
 
@@ -20,14 +21,91 @@ LIMITS = ExecutionLimits(
 )
 
 
+def _of_kind(result: collector.CollectorResult, kind: str) -> list[collector.Evidence]:
+    return [item for item in result.evidence if item.kind == kind]
+
+
+def _rollout(result: collector.CollectorResult) -> list[collector.Evidence]:
+    return _of_kind(result, EVIDENCE_KIND_DEPLOYMENT_ROLLOUT_CAPACITY)
+
+
+def _hardening(result: collector.CollectorResult) -> list[collector.Evidence]:
+    return _of_kind(result, EVIDENCE_KIND_CONTAINER_HARDENING)
+
+
+def test_hardened_containers_are_evidenced(git_checkout) -> None:
+    repo, _sha = git_checkout(kubernetes_files=("hardened.yaml",))
+
+    result = collector.collect(repo, LIMITS)
+
+    assert result.coverage.status == "ok"
+    [evidence] = _hardening(result)
+    assert evidence.fact == {"containers": 2, "all_containers_hardened": True}
+
+
+def test_each_missing_hardening_control_is_divergent(git_checkout) -> None:
+    repo, _sha = git_checkout(kubernetes_files=("hardened.yaml",))
+    path = repo / "k8s" / "applications" / "hardened.yaml"
+    base = yaml.safe_load(path.read_text(encoding="utf-8"))
+    weakenings = (
+        lambda pod: pod.pop("securityContext"),
+        lambda pod: pod["containers"][0]["securityContext"].pop("allowPrivilegeEscalation"),
+        lambda pod: pod["containers"][0]["securityContext"].update(privileged=True),
+        lambda pod: pod["containers"][0]["securityContext"]["capabilities"].update(
+            drop=["NET_RAW"]
+        ),
+        lambda pod: pod["containers"][0]["securityContext"]["capabilities"].update(
+            add=["NET_ADMIN"]
+        ),
+        lambda pod: pod["initContainers"][0].pop("securityContext"),
+    )
+    for weaken in weakenings:
+        document = yaml.safe_load(yaml.safe_dump(base))
+        weaken(document["spec"]["template"]["spec"])
+        path.write_text(yaml.safe_dump(document), encoding="utf-8")
+
+        [evidence] = _hardening(collector.collect(repo, LIMITS))
+
+        assert evidence.fact["all_containers_hardened"] is False
+
+
+def test_container_run_as_user_satisfies_non_root(git_checkout) -> None:
+    repo, _sha = git_checkout(kubernetes_files=("hardened.yaml",))
+    path = repo / "k8s" / "applications" / "hardened.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    pod = document["spec"]["template"]["spec"]
+    pod.pop("securityContext")
+    for container in (*pod["containers"], *pod["initContainers"]):
+        container["securityContext"]["runAsUser"] = 1000
+    path.write_text(yaml.safe_dump(document), encoding="utf-8")
+
+    [evidence] = _hardening(collector.collect(repo, LIMITS))
+
+    assert evidence.fact["all_containers_hardened"] is True
+
+
+def test_malformed_security_context_is_partial_not_hardened(git_checkout) -> None:
+    repo, _sha = git_checkout(kubernetes_files=("hardened.yaml",))
+    path = repo / "k8s" / "applications" / "hardened.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["spec"]["template"]["spec"]["containers"][0]["securityContext"] = "strict"
+    path.write_text(yaml.safe_dump(document), encoding="utf-8")
+
+    result = collector.collect(repo, LIMITS)
+
+    assert result.coverage.status == "partial"
+    assert _hardening(result) == []
+    assert len(_rollout(result)) == 1
+
+
 def test_single_replica_defaults_preserve_capacity(git_checkout) -> None:
     repo, _sha = git_checkout(kubernetes_files=("rollout_default_single.yaml",))
 
     result = collector.collect(repo, LIMITS)
 
     assert result.coverage.status == "ok"
-    assert len(result.evidence) == 1
-    evidence = result.evidence[0]
+    assert len(_rollout(result)) == 1
+    evidence = _rollout(result)[0]
     assert evidence.kind == EVIDENCE_KIND_DEPLOYMENT_ROLLOUT_CAPACITY
     assert evidence.fact["effective_max_unavailable"] == 0
     assert evidence.fact["effective_max_surge"] == 1
@@ -37,7 +115,7 @@ def test_single_replica_defaults_preserve_capacity(git_checkout) -> None:
 def test_explicit_zero_unavailable_preserves_multi_replica_capacity(git_checkout) -> None:
     repo, _sha = git_checkout(kubernetes_files=("rollout_explicit_safe.yaml",))
 
-    evidence = collector.collect(repo, LIMITS).evidence[0]
+    evidence = _rollout(collector.collect(repo, LIMITS))[0]
 
     assert evidence.fact["replicas"] == 4
     assert evidence.fact["retains_healthy_capacity"] is True
@@ -46,7 +124,7 @@ def test_explicit_zero_unavailable_preserves_multi_replica_capacity(git_checkout
 def test_default_fenceposts_can_reduce_multi_replica_capacity(git_checkout) -> None:
     repo, _sha = git_checkout(kubernetes_files=("rollout_default_unsafe.yaml",))
 
-    evidence = collector.collect(repo, LIMITS).evidence[0]
+    evidence = _rollout(collector.collect(repo, LIMITS))[0]
 
     assert evidence.fact["effective_max_unavailable"] == 1
     assert evidence.fact["retains_healthy_capacity"] is False
@@ -55,7 +133,7 @@ def test_default_fenceposts_can_reduce_multi_replica_capacity(git_checkout) -> N
 def test_missing_readiness_probe_is_not_treated_as_healthy_capacity(git_checkout) -> None:
     repo, _sha = git_checkout(kubernetes_files=("rollout_without_readiness.yaml",))
 
-    evidence = collector.collect(repo, LIMITS).evidence[0]
+    evidence = _rollout(collector.collect(repo, LIMITS))[0]
 
     assert evidence.fact["all_containers_have_readiness_probe"] is False
     assert evidence.fact["retains_healthy_capacity"] is False
@@ -64,7 +142,7 @@ def test_missing_readiness_probe_is_not_treated_as_healthy_capacity(git_checkout
 def test_recreate_strategy_cannot_preserve_active_capacity(git_checkout) -> None:
     repo, _sha = git_checkout(kubernetes_files=("rollout_recreate.yaml",))
 
-    evidence = collector.collect(repo, LIMITS).evidence[0]
+    evidence = _rollout(collector.collect(repo, LIMITS))[0]
 
     assert evidence.fact["strategy_type"] == "Recreate"
     assert evidence.fact["retains_healthy_capacity"] is False
@@ -79,7 +157,7 @@ def test_malformed_manifest_makes_coverage_partial_without_hiding_good_evidence(
 
     assert result.coverage.status == "partial"
     assert result.coverage.error_summary is not None
-    assert len(result.evidence) == 1
+    assert len(_rollout(result)) == 1
 
 
 def test_malformed_list_item_does_not_hide_valid_sibling(git_checkout) -> None:
@@ -96,7 +174,7 @@ def test_malformed_list_item_does_not_hide_valid_sibling(git_checkout) -> None:
     result = collector.collect(repo, LIMITS)
 
     assert result.coverage.status == "partial"
-    assert len(result.evidence) == 1
+    assert len(_rollout(result)) == 1
 
 
 def test_duplicate_resource_identity_is_unverified_not_arbitrarily_selected(git_checkout) -> None:
@@ -113,11 +191,11 @@ def test_duplicate_resource_identity_is_unverified_not_arbitrarily_selected(git_
 
 def test_resource_identity_survives_a_manifest_rename(git_checkout) -> None:
     repo, _sha = git_checkout(kubernetes_files=("rollout_default_single.yaml",))
-    before = collector.collect(repo, LIMITS).evidence[0]
+    before = _rollout(collector.collect(repo, LIMITS))[0]
     source = repo / "k8s" / "applications" / "rollout_default_single.yaml"
     source.rename(source.with_name("renamed.yaml"))
 
-    after = collector.collect(repo, LIMITS).evidence[0]
+    after = _rollout(collector.collect(repo, LIMITS))[0]
 
     assert before.source_path != after.source_path
     assert before.evidence_id == after.evidence_id
@@ -185,7 +263,7 @@ def test_manifest_file_limit_is_explicitly_partial(git_checkout) -> None:
     result = collector.collect(repo, replace(LIMITS, max_manifest_files=1))
 
     assert result.coverage.status == "partial"
-    assert len(result.evidence) == 1
+    assert len(_rollout(result)) == 1
     assert "omitted by safety limit" in (result.coverage.error_summary or "")
 
 
@@ -206,7 +284,7 @@ def test_ineligible_manifests_do_not_consume_file_limit(git_checkout) -> None:
         tracked_paths=frozenset({excluded_rel, source_rel}),
     )
 
-    assert len(result.evidence) == 1
+    assert len(_rollout(result)) == 1
     assert result.coverage.status == "partial"
     assert "excluded by policy" in (result.coverage.error_summary or "")
     assert "not part of the verified commit" in (result.coverage.error_summary or "")

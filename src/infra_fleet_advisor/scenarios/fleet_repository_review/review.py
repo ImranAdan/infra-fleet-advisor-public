@@ -28,6 +28,9 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
     kubernetes_deployment_collector as k8s_deployment_collector,
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
+    terraform_cost_collector as tf_cost_collector,
+)
+from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
     terraform_iam_collector as tf_iam_collector,
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import CONCERN_RULES
@@ -38,6 +41,8 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     GHA_COLLECTOR_VERSION,
     K8S_DEPLOYMENT_COLLECTOR_ID,
     K8S_DEPLOYMENT_COLLECTOR_VERSION,
+    TF_COST_COLLECTOR_ID,
+    TF_COST_COLLECTOR_VERSION,
     TF_IAM_COLLECTOR_ID,
     TF_IAM_COLLECTOR_VERSION,
 )
@@ -97,6 +102,12 @@ def run_review(
         tracked_paths=list_tracked_paths(checkout_root, "infrastructure/permanent"),
         included_path_prefixes=("infrastructure/permanent",),
     )
+    tf_cost_result = tf_cost_collector.collect(
+        checkout_root,
+        limits,
+        excluded_paths=excluded_paths,
+        tracked_paths=list_tracked_paths(checkout_root, "infrastructure"),
+    )
     k8s_result = k8s_deployment_collector.collect(
         checkout_root,
         limits,
@@ -113,12 +124,17 @@ def run_review(
         ),
     )
     all_evidence: tuple[Evidence, ...] = (
-        gha_result.evidence + tf_result.evidence + k8s_result.evidence + lifecycle_result.evidence
+        gha_result.evidence
+        + tf_result.evidence
+        + tf_cost_result.evidence
+        + k8s_result.evidence
+        + lifecycle_result.evidence
     )
     evidence_by_id = {e.evidence_id: e for e in all_evidence}
     coverage: list[CollectorCoverage] = [
         gha_result.coverage,
         tf_result.coverage,
+        tf_cost_result.coverage,
         k8s_result.coverage,
         lifecycle_result.coverage,
     ]
@@ -173,6 +189,7 @@ def run_review(
         collector_versions={
             GHA_COLLECTOR_ID: GHA_COLLECTOR_VERSION,
             TF_IAM_COLLECTOR_ID: TF_IAM_COLLECTOR_VERSION,
+            TF_COST_COLLECTOR_ID: TF_COST_COLLECTOR_VERSION,
             K8S_DEPLOYMENT_COLLECTOR_ID: K8S_DEPLOYMENT_COLLECTOR_VERSION,
             FLEET_LIFECYCLE_COLLECTOR_ID: FLEET_LIFECYCLE_COLLECTOR_VERSION,
         },

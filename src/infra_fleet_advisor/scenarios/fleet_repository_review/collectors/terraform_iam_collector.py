@@ -88,19 +88,21 @@ def _extract_balanced(text: str, open_at: int, open_char: str, close_char: str) 
     raise _UnbalancedError(f"unbalanced {open_char}{close_char}")
 
 
-def _iter_resource_blocks(text: str) -> tuple[list[tuple[str, str, str]], int]:
-    """Returns (resource_type, resource_name, block_body) for every
-    aws_iam_policy/aws_iam_role_policy resource block in the file, plus a
-    count of resource headers whose braces never balanced (a real parse
-    failure — worth surfacing, not silently dropping).
+def _iter_resource_blocks(
+    text: str, header: re.Pattern[str] = _RESOURCE_HEADER
+) -> tuple[list[tuple[str, str, str]], int]:
+    """Returns (group 1, group 2, block_body) for every block whose header
+    matches — by default (resource_type, resource_name) of IAM policy
+    resources — plus a count of headers whose braces never balanced (a real
+    parse failure — worth surfacing, not silently dropping).
 
-    Comments and quoted text cannot introduce resource declarations."""
+    Comments and quoted text cannot introduce block declarations."""
     text = _mask_non_code(text, strings=False)
     code = _mask_non_code(text)
     blocks = []
     unbalanced = 0
-    for m in _RESOURCE_HEADER.finditer(text):
-        if code[m.start() : m.start() + len("resource")] != "resource":
+    for m in header.finditer(text):
+        if code[m.start()] != text[m.start()]:
             continue
         brace_at = m.end() - 1  # the header regex consumes the opening `{`
         try:

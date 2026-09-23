@@ -10,6 +10,7 @@ from infra_fleet_advisor.core.evidence import Evidence, build_evidence
 from infra_fleet_advisor.core.limits import ExecutionLimits
 from infra_fleet_advisor.core.report import CollectorCoverage
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
+    EVIDENCE_KIND_CONTAINER_HARDENING,
     EVIDENCE_KIND_DEPLOYMENT_ROLLOUT_CAPACITY,
     K8S_DEPLOYMENT_COLLECTOR_ID,
     K8S_DEPLOYMENT_COLLECTOR_VERSION,
@@ -172,6 +173,70 @@ def _build_deployment_evidence(
     )
 
 
+def _is_hardened(container: Mapping[Any, Any], pod_context: Mapping[Any, Any]) -> bool | None:
+    """Non-root, no privilege escalation, all capabilities dropped; None if malformed."""
+    context = container.get("securityContext", {})
+    if not isinstance(context, Mapping):
+        return None
+    capabilities = context.get("capabilities", {})
+    if not isinstance(capabilities, Mapping):
+        return None
+    run_as_non_root = context.get("runAsNonRoot", pod_context.get("runAsNonRoot"))
+    run_as_user = context.get("runAsUser", pod_context.get("runAsUser"))
+    non_root = run_as_non_root is True or (
+        isinstance(run_as_user, int) and not isinstance(run_as_user, bool) and run_as_user > 0
+    )
+    drop = capabilities.get("drop", [])
+    return (
+        non_root
+        and context.get("allowPrivilegeEscalation") is False
+        and context.get("privileged") is not True
+        and isinstance(drop, list)
+        and "ALL" in drop
+        and not capabilities.get("add")
+    )
+
+
+def _build_hardening_evidence(
+    resource: Mapping[Any, Any], rel_path: str
+) -> tuple[Evidence | None, bool]:
+    """Assumes the rollout evidence for this Deployment already validated its shape."""
+    metadata = resource["metadata"]
+    name = metadata["name"]
+    namespace = metadata.get("namespace", "default")
+    pod_spec = resource["spec"]["template"]["spec"]
+    pod_context = pod_spec.get("securityContext", {})
+    init_containers = pod_spec.get("initContainers", [])
+    if not isinstance(pod_context, Mapping) or not isinstance(init_containers, list):
+        return None, True
+    containers = [*pod_spec["containers"], *init_containers]
+    weak: list[str] = []
+    for container in containers:
+        hardened = _is_hardened(container, pod_context) if isinstance(container, Mapping) else None
+        if hardened is None:
+            return None, True
+        if not hardened:
+            weak.append(str(container.get("name", "?")))
+    resource_name = f"{namespace}/{name}"
+    return (
+        build_evidence(
+            collector_id=K8S_DEPLOYMENT_COLLECTOR_ID,
+            collector_version=K8S_DEPLOYMENT_COLLECTOR_VERSION,
+            kind=EVIDENCE_KIND_CONTAINER_HARDENING,
+            source_path=rel_path,
+            locator=f"Deployment/{resource_name}/securityContext",
+            excerpt=(
+                f"Deployment {resource_name}: {len(containers) - len(weak)}/{len(containers)} "
+                "containers non-root, no privilege escalation, all capabilities dropped"
+                + (f"; not hardened: {', '.join(weak[:10])}" if weak else "")
+            ),
+            fact={"containers": len(containers), "all_containers_hardened": not weak},
+            identity_parts=("apps/v1", "Deployment", namespace, name, "securityContext"),
+        ),
+        False,
+    )
+
+
 def collect(
     checkout_root: Path,
     limits: ExecutionLimits,
@@ -244,19 +309,24 @@ def collect(
             resources, list_failed = _list_items(document)
             failures += int(list_failed)
             for resource in resources:
-                item, item_failed = _build_deployment_evidence(resource, rel_path)
+                rollout, item_failed = _build_deployment_evidence(resource, rel_path)
                 failures += int(item_failed)
-                if item is None:
+                if rollout is None:
                     continue
-                if item.evidence_id in seen_ids:
-                    duplicate_ids.add(item.evidence_id)
-                    evidence_by_id.pop(item.evidence_id, None)
-                    continue
-                seen_ids.add(item.evidence_id)
-                if len(evidence_by_id) >= _MAX_DEPLOYMENT_EVIDENCE:
-                    deployment_limit_reached = True
-                    continue
-                evidence_by_id[item.evidence_id] = item
+                hardening, item_failed = _build_hardening_evidence(resource, rel_path)
+                failures += int(item_failed)
+                for item in (rollout, hardening):
+                    if item is None:
+                        continue
+                    if item.evidence_id in seen_ids:
+                        duplicate_ids.add(item.evidence_id)
+                        evidence_by_id.pop(item.evidence_id, None)
+                        continue
+                    seen_ids.add(item.evidence_id)
+                    if len(evidence_by_id) >= _MAX_DEPLOYMENT_EVIDENCE:
+                        deployment_limit_reached = True
+                        continue
+                    evidence_by_id[item.evidence_id] = item
 
     failures += len(duplicate_ids)
 

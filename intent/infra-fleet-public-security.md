@@ -2,7 +2,7 @@
 
 - Format: `1`
 - Intent ID: `infra_fleet_public_security`
-- Version: `1.1`
+- Version: `1.2`
 - Category: `security`
 
 Source: [`infra-fleet-public@d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0`](https://github.com/ImranAdan/infra-fleet-public/tree/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0)
@@ -35,6 +35,11 @@ version is live in AWS.
 Application containers run as non-root users with privilege escalation disabled and all Linux capabilities dropped.
 
 Evidence: [application Deployment](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/k8s/applications/load-harness/deployment.yaml)
+
+### Evaluation
+
+- Check: `application_containers_hardened`
+- Priority: `high`
 
 ## S-003 · Network ingress
 

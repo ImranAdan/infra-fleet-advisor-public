@@ -10,23 +10,30 @@ from infra_fleet_advisor.core.intent import IntentEvaluation, IntentEvaluationSt
 from infra_fleet_advisor.core.report import CollectorCoverage
 from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
     CONCERN_CI_CREDENTIALS_WITHOUT_OIDC,
+    CONCERN_CONTAINER_HARDENING_INCOMPLETE,
     CONCERN_DEPLOYMENT_ROLLOUT_CAPACITY,
+    CONCERN_ECR_RETENTION_UNBOUNDED,
     CONCERN_FLEET_LIFECYCLE_INCOMPLETE,
     CONCERN_FLEET_LOCAL_FIRST_USE_INCOMPLETE,
+    CONCERN_LOG_RETENTION_UNBOUNDED,
     CONCERN_TEMPLATES,
     CONCERN_TRIVY_IGNORE_UNFIXED,
     CONCERN_WILDCARD_IAM_PERMISSIONS,
     candidate_from_template,
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
+    EVIDENCE_KIND_CONTAINER_HARDENING,
     EVIDENCE_KIND_CREDENTIAL_METHOD,
     EVIDENCE_KIND_DEPLOYMENT_ROLLOUT_CAPACITY,
+    EVIDENCE_KIND_ECR_LIFECYCLE,
     EVIDENCE_KIND_FLEET_LIFECYCLE,
     EVIDENCE_KIND_IAM_WILDCARD,
+    EVIDENCE_KIND_LOG_RETENTION,
     EVIDENCE_KIND_TRIVY_GATE,
     FLEET_LIFECYCLE_COLLECTOR_ID,
     GHA_COLLECTOR_ID,
     K8S_DEPLOYMENT_COLLECTOR_ID,
+    TF_COST_COLLECTOR_ID,
     TF_IAM_COLLECTOR_ID,
 )
 
@@ -36,6 +43,9 @@ CHECK_TRIVY_DOES_NOT_IGNORE_UNFIXED = "trivy_does_not_ignore_unfixed"
 CHECK_DEPLOYMENT_ROLLOUT_CAPACITY = "deployment_rollout_capacity"
 CHECK_FLEET_PROFILES_EXPOSE_LIFECYCLE = "fleet_profiles_expose_lifecycle"
 CHECK_FLEET_LOCAL_FIRST_USE = "fleet_local_first_use"
+CHECK_APPLICATION_CONTAINERS_HARDENED = "application_containers_hardened"
+CHECK_STAGING_LOG_RETENTION_BOUNDED = "staging_log_retention_bounded"
+CHECK_ECR_LIFECYCLE_BOUNDED = "ecr_lifecycle_bounded"
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,6 +155,42 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
             # Static source can prove a required control is absent, but cannot
             # prove downloads, Docker, or a real cluster work on every host.
             can_prove_satisfaction=False,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_APPLICATION_CONTAINERS_HARDENED: IntentCheckDefinition(
+            concern_key=CONCERN_CONTAINER_HARDENING_INCOMPLETE,
+            rule=ConcernRule(
+                category="security",
+                evidence_kind=EVIDENCE_KIND_CONTAINER_HARDENING,
+                collector_id=K8S_DEPLOYMENT_COLLECTOR_ID,
+                source_path_prefixes=("k8s/applications",),
+                required_facts={"all_containers_hardened": False},
+            ),
+            can_prove_satisfaction=True,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_STAGING_LOG_RETENTION_BOUNDED: IntentCheckDefinition(
+            concern_key=CONCERN_LOG_RETENTION_UNBOUNDED,
+            rule=ConcernRule(
+                category="cost",
+                evidence_kind=EVIDENCE_KIND_LOG_RETENTION,
+                collector_id=TF_COST_COLLECTOR_ID,
+                source_path_prefixes=("infrastructure/staging",),
+                required_facts={"bounded_retention": False},
+            ),
+            # AWS services and unrecognised modules can create log groups the
+            # repository never declares, so absence of a long one proves nothing.
+            can_prove_satisfaction=False,
+        ),
+        CHECK_ECR_LIFECYCLE_BOUNDED: IntentCheckDefinition(
+            concern_key=CONCERN_ECR_RETENTION_UNBOUNDED,
+            rule=ConcernRule(
+                category="cost",
+                evidence_kind=EVIDENCE_KIND_ECR_LIFECYCLE,
+                collector_id=TF_COST_COLLECTOR_ID,
+                required_facts={"bounded_lifecycle": False},
+            ),
+            can_prove_satisfaction=True,
             requires_relevant_evidence=True,
         ),
     }
