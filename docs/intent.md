@@ -51,8 +51,8 @@ inspection cannot prove idempotence or runtime behavior. M-002 registers a
 second static check for the pinned local tool installer, checkout-owned state,
 explicit Kubernetes context and printed next command. Complete controls remain
 `declared_unverified` because source inspection cannot prove downloads or a
-working cluster. M-003 remains unregistered until AWS onboarding exposes
-specific controls that a trusted collector can evaluate.
+working cluster. M-003 registers `fleet_aws_onboarding`, a divergence-only check
+of the AWS setup and teardown controls; see [scope and coverage](status.md).
 
 The registered `deployment_rollout_capacity` check evaluates tracked `apps/v1`
 Deployment manifests under `k8s/applications/`. The collector still inventories

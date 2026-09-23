@@ -19,6 +19,7 @@ CONCERN_WILDCARD_IAM_PERMISSIONS = "wildcard_iam_permissions"
 CONCERN_DEPLOYMENT_ROLLOUT_CAPACITY = "deployment_rollout_capacity_loss"
 CONCERN_FLEET_LIFECYCLE_INCOMPLETE = "fleet_profile_lifecycle_incomplete"
 CONCERN_FLEET_LOCAL_FIRST_USE_INCOMPLETE = "fleet_local_first_use_incomplete"
+CONCERN_FLEET_AWS_ONBOARDING_INCOMPLETE = "fleet_aws_onboarding_incomplete"
 CONCERN_CONTAINER_HARDENING_INCOMPLETE = "container_hardening_incomplete"
 CONCERN_LOG_RETENTION_UNBOUNDED = "staging_log_retention_unbounded"
 CONCERN_ECR_RETENTION_UNBOUNDED = "ecr_image_retention_unbounded"
@@ -221,6 +222,35 @@ CONCERN_TEMPLATES: dict[str, ConcernTemplate] = {
         confidence=0.95,
         confidence_explanation=(
             "Derived from bounded, tracked local-strategy source without executing Fleet code."
+        ),
+    ),
+    CONCERN_FLEET_AWS_ONBOARDING_INCOMPLETE: ConcernTemplate(
+        category="maintainability",
+        priority="high",
+        title="AWS staging lifecycle lacks a declared onboarding or teardown control",
+        summary=(
+            "The aws-staging strategy or its onboarding coordinator does not show every static "
+            "control: plan-by-default setup, reported targets, stdin-only secrets, a next "
+            "command, and a teardown confirmation typed by the operator."
+        ),
+        impact=(
+            "An adopter can mutate or destroy a billable AWS target without first seeing and "
+            "confirming it, or leak a credential through process arguments."
+        ),
+        suggested_change=(
+            "Keep setup in plan mode unless --apply is given, print the AWS and GitHub targets "
+            "before mutation, pipe secrets to gh secret set, print the next lifecycle command, "
+            "and have down show its target and pass the operator's typed confirmation to the "
+            "teardown workflow instead of a hard-coded one."
+        ),
+        trade_offs=(
+            "Interactive confirmation makes unattended teardown require an explicit, "
+            "separately supplied confirmation value."
+        ),
+        confidence=0.9,
+        confidence_explanation=(
+            "Derived from fixed, tracked shell text of the AWS strategy and onboarding "
+            "coordinator without executing them."
         ),
     ),
     CONCERN_CONTAINER_HARDENING_INCOMPLETE: ConcernTemplate(

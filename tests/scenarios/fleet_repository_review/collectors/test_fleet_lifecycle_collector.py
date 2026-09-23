@@ -17,6 +17,15 @@ LIMITS = ExecutionLimits(
 )
 
 
+ONBOARDING = (
+    "mode=${1:-plan}\n"
+    'echo "AWS target: $arn"\n'
+    'echo "GitHub target: $GITHUB_REPOSITORY"\n'
+    'printf \'%s\' "$value" | gh secret set "$name" --repo "$GITHUB_REPOSITORY"\n'
+    "echo 'Next: ./fleet up --profile aws-staging'\n"
+)
+
+
 def _write_contract(
     root: Path,
     *,
@@ -24,6 +33,8 @@ def _write_contract(
     local_actions: tuple[str, ...] = ("setup", "up", "down"),
     aws_actions: tuple[str, ...] = ("setup", "up", "down"),
     local_first_use: bool = True,
+    aws_onboarding: str = ONBOARDING,
+    aws_teardown: str = 'aws_dispatch nightly-destroy.yml --field "confirm_destroy=$typed"',
 ) -> None:
     facade = root / "fleet"
     facade.write_text(
@@ -66,10 +77,16 @@ def _write_contract(
                 '  export PATH="$FLEET_STATE/bin:$PATH"\n'
                 "}\n"
             )
+        if name == "aws-staging":
+            first_use = (
+                'setup_plan() {\n  exec "$fleet_root/scripts/onboard-aws-profile.sh" plan ;;\n}\n'
+                f"aws_down() {{\n  {aws_teardown}\n}}\n"
+            )
         (strategies / f"{name}.sh").write_text(
             first_use + f'profile_main() {{\n  case "$1" in\n{cases}\n  esac\n}}\n',
             encoding="utf-8",
         )
+    (root / "scripts" / "onboard-aws-profile.sh").write_text(aws_onboarding, encoding="utf-8")
 
 
 def test_complete_lifecycle_surface_emits_bounded_typed_evidence(tmp_path: Path) -> None:
@@ -90,6 +107,7 @@ def test_complete_lifecycle_surface_emits_bounded_typed_evidence(tmp_path: Path)
     assert evidence.fact["local_uses_checkout_state"] is True
     assert evidence.fact["local_uses_explicit_context"] is True
     assert evidence.fact["local_prints_next_command"] is True
+    assert evidence.fact["aws_onboarding_complete"] is True
 
 
 def test_missing_setup_is_a_stable_actionable_divergence(tmp_path: Path) -> None:
@@ -211,3 +229,39 @@ def test_missing_facade_leaves_the_intent_unverified(tmp_path: Path) -> None:
 
     assert result.coverage.status == "ok"
     assert result.evidence == ()
+
+
+def test_each_missing_aws_onboarding_control_is_divergent(tmp_path: Path) -> None:
+    weakened = {
+        "aws_setup_plans_by_default": {"aws_onboarding": ONBOARDING.replace(":-plan", ":---apply")},
+        "aws_setup_reports_targets": {"aws_onboarding": ONBOARDING.replace("GitHub target", "Hi")},
+        "aws_secrets_from_stdin": {
+            "aws_onboarding": ONBOARDING.replace('--repo "', '--body "$value" --repo "')
+        },
+        "aws_prints_next_command": {"aws_onboarding": ONBOARDING.replace("Next:", "Then")},
+        "aws_teardown_operator_confirmed": {
+            "aws_teardown": (
+                "aws_dispatch nightly-destroy.yml --field 'confirm_destroy=destroy staging'"
+            )
+        },
+    }
+    for index, (fact, overrides) in enumerate(weakened.items()):
+        root = tmp_path / str(index)
+        root.mkdir()
+        _write_contract(root, **overrides)
+
+        evidence = collector.collect(root, LIMITS).evidence[0]
+
+        assert evidence.fact[fact] is False, fact
+        assert evidence.fact["aws_onboarding_complete"] is False
+        assert evidence.fact["common_lifecycle_complete"] is True
+
+
+def test_missing_onboarding_coordinator_is_divergent_not_partial(tmp_path: Path) -> None:
+    _write_contract(tmp_path)
+    (tmp_path / "scripts" / "onboard-aws-profile.sh").unlink()
+
+    result = collector.collect(tmp_path, LIMITS)
+
+    assert result.coverage.status == "ok"
+    assert result.evidence[0].fact["aws_onboarding_complete"] is False

@@ -121,6 +121,7 @@ def run_review(
         tracked_paths=(
             list_tracked_paths(checkout_root, "fleet")
             | list_tracked_paths(checkout_root, "scripts/fleet-profiles")
+            | list_tracked_paths(checkout_root, "scripts/onboard-aws-profile.sh")
         ),
     )
     all_evidence: tuple[Evidence, ...] = (
