@@ -1,10 +1,10 @@
 # Infra Fleet Advisor report
 
-- Source: `infra-fleet-public` @ `d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0`
+- Source: `infra-fleet-public` @ `f885fa843d38bf8e3ddaa7137be6294d304bde3b`
 - Advisor version: `0.1.0` · Policy version: `1.1`
-- Model: `stub-synthesizer-v1` · Run started: `2026-09-15T18:51:17.786400+00:00`
+- Model: `stub-synthesizer-v1` · Run started: `2026-09-23T20:54:33.754038+00:00`
 - Intent catalog: `intent-md-v1:5781fb4fa3f59562c1eeb63d3b3212499a519a53bac6daef94f8fe225ac29481`
-- Lifecycle: 1 new, 0 unchanged, 2 resolved, 0 suppressed (0 rejected)
+- Lifecycle: 0 new, 0 unchanged, 3 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
 
@@ -35,7 +35,7 @@
   environment, service, and owner tags so billed usage can be attributed. Any
   resource that cannot carry these tags is reported as an explicit coverage gap.
   - Category: `cost` · Priority: `medium` · Check: `not_declared` · Reason: `check_not_declared`
-- `divergent` `infra_fleet_public_maintainability/M-001` — Every supported deployment profile exposes the same three lifecycle commands:
+- `declared_unverified` `infra_fleet_public_maintainability/M-001` — Every supported deployment profile exposes the same three lifecycle commands:
   \`./fleet setup --profile \<profile\>\` prepares and validates the target,
   \`./fleet up --profile \<profile\>\` brings the platform to a ready state, and
   \`./fleet down --profile \<profile\>\` removes the resources owned by that profile.
@@ -43,8 +43,7 @@
   before mutation, and ends with either a clear success state or an actionable
   failure. Successful setup and startup print the next command needed by the
   adopter.
-  - Category: `maintainability` · Priority: `high` · Check: `fleet_profiles_expose_lifecycle` · Reason: `evidence_conflicts_with_intent`
-  - Evidence: `fleet_lifecycle_collector:6d72cf725a3df7bb`
+  - Category: `maintainability` · Priority: `high` · Check: `fleet_profiles_expose_lifecycle` · Reason: `collector_cannot_prove_satisfaction`
 - `declared_unverified` `infra_fleet_public_maintainability/M-002` — From a clean clone on a supported workstation, an adopter can prepare the
   pinned local toolchain with one \`./fleet setup --profile local\` command, start
   the complete local platform with one \`./fleet up --profile local\` command, and
@@ -154,7 +153,7 @@
 
 ## Recommendations
 
-### #1 [new] Fleet profiles lack the declared lifecycle command surface
+### [resolved] Fleet profiles lack the declared lifecycle command surface
 
 - Category: `maintainability` · Priority: `high` · Confidence: 0.95
 - Fingerprint: `fp_04b6e8f53c02c6a25eb3abe6`

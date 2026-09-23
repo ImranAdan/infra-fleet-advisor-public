@@ -130,14 +130,12 @@
       "category": "maintainability",
       "check_key": "fleet_profiles_expose_lifecycle",
       "document_id": "infra_fleet_public_maintainability",
-      "evidence_ids": [
-        "fleet_lifecycle_collector:6d72cf725a3df7bb"
-      ],
+      "evidence_ids": [],
       "priority": "high",
       "proposition_id": "M-001",
-      "reason": "evidence_conflicts_with_intent",
+      "reason": "collector_cannot_prove_satisfaction",
       "statement": "Every supported deployment profile exposes the same three lifecycle commands:\n`./fleet setup --profile <profile>` prepares and validates the target,\n`./fleet up --profile <profile>` brings the platform to a ready state, and\n`./fleet down --profile <profile>` removes the resources owned by that profile.\nEach phase is safe to repeat and resume after partial failure, reports its target\nbefore mutation, and ends with either a clear success state or an actionable\nfailure. Successful setup and startup print the next command needed by the\nadopter.",
-      "status": "divergent"
+      "status": "declared_unverified"
     },
     {
       "category": "maintainability",
@@ -294,11 +292,11 @@
       "status": "declared_unverified"
     }
   ],
-  "new_count": 1,
+  "new_count": 0,
   "provenance": {
     "advisor_version": "0.1.0",
     "collector_versions": {
-      "fleet_lifecycle_collector": "1.0.0",
+      "fleet_lifecycle_collector": "1.1.0",
       "github_actions_workflow_collector": "1.3.0",
       "kubernetes_deployment_collector": "1.0.0",
       "terraform_iam_collector": "1.4.0"
@@ -306,8 +304,8 @@
     "intent_digest": "intent-md-v1:5781fb4fa3f59562c1eeb63d3b3212499a519a53bac6daef94f8fe225ac29481",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.1",
-    "run_started_at": "2026-09-15T18:51:17.786400+00:00",
-    "source_commit_sha": "d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0",
+    "run_started_at": "2026-09-23T20:54:33.754038+00:00",
+    "source_commit_sha": "f885fa843d38bf8e3ddaa7137be6294d304bde3b",
     "source_label": "infra-fleet-public"
   },
   "recommendations": [
@@ -323,9 +321,9 @@
       "impact": "A new adopter must leave the common interface and complete profile-specific manual steps before the platform can be used.",
       "owner_accepted_trade_off": null,
       "priority": "high",
-      "rank": 1,
-      "rank_rationale": "priority=high, category_weight=8, confidence=0.95",
-      "status": "new",
+      "rank": null,
+      "rank_rationale": null,
+      "status": "resolved",
       "suggested_change": "Add setup to the fixed ./fleet action surface and implement it for local and aws-staging. Local setup should prepare and validate pinned tools; AWS setup should validate adopter configuration and sessions, configure GitHub and HCP Terraform, and bootstrap the OIDC foundation. Preserve the existing bounded teardown behavior.",
       "summary": "The tracked Fleet facade does not route setup, up, and down through both the local and AWS staging profile strategies.",
       "title": "Fleet profiles lack the declared lifecycle command surface",
@@ -374,7 +372,7 @@
   ],
   "rejected": [],
   "rejected_count": 0,
-  "resolved_count": 2,
+  "resolved_count": 3,
   "suppressed_count": 0,
   "unchanged_count": 0
 }
