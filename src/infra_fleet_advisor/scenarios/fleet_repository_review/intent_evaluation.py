@@ -151,7 +151,7 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
                 category="maintainability",
                 evidence_kind=EVIDENCE_KIND_FLEET_LIFECYCLE,
                 collector_id=FLEET_LIFECYCLE_COLLECTOR_ID,
-                source_path_prefixes=("fleet",),
+                source_path_prefixes=("scripts/fleet-profiles/local.sh",),
                 required_facts={"local_first_use_complete": False},
             ),
             # Static source can prove a required control is absent, but cannot
@@ -165,7 +165,7 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
                 category="maintainability",
                 evidence_kind=EVIDENCE_KIND_FLEET_LIFECYCLE,
                 collector_id=FLEET_LIFECYCLE_COLLECTOR_ID,
-                source_path_prefixes=("fleet",),
+                source_path_prefixes=("scripts/fleet-profiles/aws-staging.sh",),
                 required_facts={"aws_onboarding_complete": False},
             ),
             # Static text cannot prove AWS, HCP Terraform or GitHub calls succeed.

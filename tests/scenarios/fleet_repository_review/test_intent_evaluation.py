@@ -259,7 +259,7 @@ def test_local_first_use_detects_missing_controls_without_claiming_runtime_proof
     incomplete = _evidence(
         collector_id=FLEET_LIFECYCLE_COLLECTOR_ID,
         kind=EVIDENCE_KIND_FLEET_LIFECYCLE,
-        path="fleet",
+        path="scripts/fleet-profiles/local.sh",
         fact={"local_first_use_complete": False},
     )
     divergent = compile_intents(
@@ -275,7 +275,7 @@ def test_local_first_use_detects_missing_controls_without_claiming_runtime_proof
     complete = _evidence(
         collector_id=FLEET_LIFECYCLE_COLLECTOR_ID,
         kind=EVIDENCE_KIND_FLEET_LIFECYCLE,
-        path="fleet",
+        path="scripts/fleet-profiles/local.sh",
         fact={"local_first_use_complete": True},
     )
     unverified = compile_intents(

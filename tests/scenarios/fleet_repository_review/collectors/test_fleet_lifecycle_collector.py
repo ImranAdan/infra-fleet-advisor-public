@@ -89,25 +89,51 @@ def _write_contract(
     (root / "scripts" / "onboard-aws-profile.sh").write_text(aws_onboarding, encoding="utf-8")
 
 
+def _record(result: collector.CollectorResult, source_path: str) -> collector.Evidence:
+    [evidence] = [item for item in result.evidence if item.source_path == source_path]
+    return evidence
+
+
+def _local(result: collector.CollectorResult) -> collector.Evidence:
+    return _record(result, "scripts/fleet-profiles/local.sh")
+
+
+def _aws(result: collector.CollectorResult) -> collector.Evidence:
+    return _record(result, "scripts/fleet-profiles/aws-staging.sh")
+
+
+def test_each_check_has_its_own_evidence_identity(tmp_path: Path) -> None:
+    _write_contract(tmp_path)
+
+    result = collector.collect(tmp_path, LIMITS)
+
+    assert result.coverage.evidence_count == 3
+    assert len({item.evidence_id for item in result.evidence}) == 3
+    assert {item.source_path for item in result.evidence} == {
+        "fleet",
+        "scripts/fleet-profiles/local.sh",
+        "scripts/fleet-profiles/aws-staging.sh",
+    }
+
+
 def test_complete_lifecycle_surface_emits_bounded_typed_evidence(tmp_path: Path) -> None:
     _write_contract(tmp_path)
 
     result = collector.collect(tmp_path, LIMITS)
 
     assert result.coverage.status == "ok"
-    assert result.coverage.evidence_count == 1
-    evidence = result.evidence[0]
+    evidence = _record(result, "fleet")
     assert evidence.kind == EVIDENCE_KIND_FLEET_LIFECYCLE
-    assert evidence.source_path == "fleet"
     assert evidence.fact["common_lifecycle_complete"] is True
     assert evidence.fact["local_lifecycle_complete"] is True
     assert evidence.fact["aws_lifecycle_complete"] is True
-    assert evidence.fact["local_first_use_complete"] is True
-    assert evidence.fact["local_installs_pinned_tools"] is True
-    assert evidence.fact["local_uses_checkout_state"] is True
-    assert evidence.fact["local_uses_explicit_context"] is True
-    assert evidence.fact["local_prints_next_command"] is True
-    assert evidence.fact["aws_onboarding_complete"] is True
+    local = _local(result)
+    assert local.fact["local_first_use_complete"] is True
+    assert local.fact["local_installs_pinned_tools"] is True
+    assert local.fact["local_uses_checkout_state"] is True
+    assert local.fact["local_uses_explicit_context"] is True
+    assert local.fact["local_prints_next_command"] is True
+    assert _aws(result).fact["aws_onboarding_complete"] is True
 
 
 def test_missing_setup_is_a_stable_actionable_divergence(tmp_path: Path) -> None:
@@ -147,9 +173,10 @@ def test_profile_without_all_lifecycle_routes_is_divergent(tmp_path: Path) -> No
 def test_missing_local_first_use_controls_is_a_distinct_divergence(tmp_path: Path) -> None:
     _write_contract(tmp_path, local_first_use=False)
 
-    evidence = collector.collect(tmp_path, LIMITS).evidence[0]
+    result = collector.collect(tmp_path, LIMITS)
 
-    assert evidence.fact["common_lifecycle_complete"] is True
+    assert _record(result, "fleet").fact["common_lifecycle_complete"] is True
+    evidence = _local(result)
     assert evidence.fact["local_first_use_complete"] is False
     assert evidence.fact["local_installs_pinned_tools"] is False
     assert "local first-use: false" in evidence.excerpt
@@ -250,11 +277,12 @@ def test_each_missing_aws_onboarding_control_is_divergent(tmp_path: Path) -> Non
         root.mkdir()
         _write_contract(root, **overrides)
 
-        evidence = collector.collect(root, LIMITS).evidence[0]
+        result = collector.collect(root, LIMITS)
 
+        evidence = _aws(result)
         assert evidence.fact[fact] is False, fact
         assert evidence.fact["aws_onboarding_complete"] is False
-        assert evidence.fact["common_lifecycle_complete"] is True
+        assert _record(result, "fleet").fact["common_lifecycle_complete"] is True
 
 
 def test_missing_onboarding_coordinator_is_divergent_not_partial(tmp_path: Path) -> None:
@@ -264,4 +292,4 @@ def test_missing_onboarding_coordinator_is_divergent_not_partial(tmp_path: Path)
     result = collector.collect(tmp_path, LIMITS)
 
     assert result.coverage.status == "ok"
-    assert result.evidence[0].fact["aws_onboarding_complete"] is False
+    assert _aws(result).fact["aws_onboarding_complete"] is False
