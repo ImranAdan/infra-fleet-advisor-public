@@ -16,6 +16,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.intent_evaluation import (
     CHECK_DEPLOYMENT_ROLLOUT_CAPACITY,
+    CHECK_FLEET_LOCAL_FIRST_USE,
     CHECK_FLEET_PROFILES_EXPOSE_LIFECYCLE,
     CHECK_GITHUB_ACTIONS_USES_OIDC,
     CHECK_PERSISTENT_IAM_AVOIDS_WILDCARDS,
@@ -245,6 +246,40 @@ def test_lifecycle_surface_detects_divergence_without_claiming_runtime_proof() -
     )
     unverified = compile_intents(
         _catalog(CHECK_FLEET_PROFILES_EXPOSE_LIFECYCLE, category="maintainability"),
+        enabled_categories=frozenset({"maintainability"}),
+        evidence=(complete,),
+        coverage=_coverage(FLEET_LIFECYCLE_COLLECTOR_ID),
+    )
+
+    assert unverified.evaluations[0].status == "declared_unverified"
+    assert unverified.evaluations[0].reason == "collector_cannot_prove_satisfaction"
+
+
+def test_local_first_use_detects_missing_controls_without_claiming_runtime_proof() -> None:
+    incomplete = _evidence(
+        collector_id=FLEET_LIFECYCLE_COLLECTOR_ID,
+        kind=EVIDENCE_KIND_FLEET_LIFECYCLE,
+        path="fleet",
+        fact={"local_first_use_complete": False},
+    )
+    divergent = compile_intents(
+        _catalog(CHECK_FLEET_LOCAL_FIRST_USE, category="maintainability"),
+        enabled_categories=frozenset({"maintainability"}),
+        evidence=(incomplete,),
+        coverage=_coverage(FLEET_LIFECYCLE_COLLECTOR_ID),
+    )
+
+    assert divergent.evaluations[0].status == "divergent"
+    assert divergent.divergence_candidates[0].concern_key == "fleet_local_first_use_incomplete"
+
+    complete = _evidence(
+        collector_id=FLEET_LIFECYCLE_COLLECTOR_ID,
+        kind=EVIDENCE_KIND_FLEET_LIFECYCLE,
+        path="fleet",
+        fact={"local_first_use_complete": True},
+    )
+    unverified = compile_intents(
+        _catalog(CHECK_FLEET_LOCAL_FIRST_USE, category="maintainability"),
         enabled_categories=frozenset({"maintainability"}),
         evidence=(complete,),
         coverage=_coverage(FLEET_LIFECYCLE_COLLECTOR_ID),

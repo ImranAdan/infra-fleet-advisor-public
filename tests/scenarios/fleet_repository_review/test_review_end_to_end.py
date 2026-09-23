@@ -121,9 +121,10 @@ def test_authoritative_markdown_drives_the_production_review(git_checkout) -> No
         assert evaluations[proposition_id].reason == "check_not_declared"
     assert evaluations["M-001"].status == "declared_unverified"
     assert evaluations["M-001"].reason == "no_relevant_evidence"
-    for proposition_id in ("M-002", "M-003"):
-        assert evaluations[proposition_id].status == "declared_unverified"
-        assert evaluations[proposition_id].reason == "check_not_declared"
+    assert evaluations["M-002"].status == "declared_unverified"
+    assert evaluations["M-002"].reason == "no_relevant_evidence"
+    assert evaluations["M-003"].status == "declared_unverified"
+    assert evaluations["M-003"].reason == "check_not_declared"
     assert {item.status for key, item in evaluations.items() if key not in {"S-001", "S-007"}} == {
         "declared_unverified"
     }
@@ -154,8 +155,30 @@ def test_production_lifecycle_intent_requires_one_fleet_surface_fix(git_checkout
     strategies = repo / "scripts" / "fleet-profiles"
     strategies.mkdir(parents=True)
     for profile in ("local", "aws-staging"):
+        first_use_controls = ""
+        if profile == "local":
+            first_use_controls = (
+                'kctl() { kubectl --kubeconfig "$FLEET_STATE/kubeconfig" '
+                '--context "$FLEET_CONTEXT" "$@"; }\n'
+                'fctl() { flux --kubeconfig "$FLEET_STATE/kubeconfig" '
+                '--context "$FLEET_CONTEXT" "$@"; }\n'
+                "local_init_state() {\n"
+                "  common_dir=$(git rev-parse --path-format=absolute --git-common-dir)\n"
+                '  FLEET_STATE="$common_dir/fleet/local"\n'
+                "}\n"
+                "local_setup() {\n"
+                '  "$fleet_root/scripts/install-profile-tools.sh" '
+                '"$FLEET_STATE/bin" --local\n'
+                '  export PATH="$FLEET_STATE/bin:$PATH"\n'
+                "  echo 'Next: ./fleet up --profile local'\n"
+                "}\n"
+                "local_prerequisites() {\n"
+                '  export PATH="$FLEET_STATE/bin:$PATH"\n'
+                "}\n"
+            )
         (strategies / f"{profile}.sh").write_text(
-            (
+            first_use_controls
+            + (
                 "profile_main() {\n"
                 '  case "$1" in\n'
                 "    up) command ;;\n"
@@ -201,6 +224,77 @@ def test_production_lifecycle_intent_requires_one_fleet_surface_fix(git_checkout
     assert len(issue_plan.actions) == 1
     assert issue_plan.actions[0].action == "active"
     assert issue_plan.actions[0].intent_proposition_id == "M-001"
+
+
+def test_production_local_first_use_intent_requires_declared_controls(git_checkout) -> None:
+    repo, _sha = git_checkout()
+    facade = repo / "fleet"
+    facade.write_text(
+        (
+            "#!/usr/bin/env bash\n"
+            'action=${1:-help}\nprofile=""\n'
+            "case \"$profile\" in local|aws-staging) ;; *) echo 'Choose --profile' ;; esac\n"
+            'case "$action" in setup|up|down|status) ;; *) echo "Unknown action: $action" ;; esac\n'
+            'case "$profile" in\n'
+            '  local) source "$fleet_root/scripts/fleet-profiles/local.sh" ;;\n'
+            '  aws-staging) source "$fleet_root/scripts/fleet-profiles/aws-staging.sh" ;;\n'
+            "esac\n"
+            'profile_main "$action" "$revision" "$service" "$apply"\n'
+        ),
+        encoding="utf-8",
+    )
+    facade.chmod(0o755)
+    strategies = repo / "scripts" / "fleet-profiles"
+    strategies.mkdir(parents=True)
+    for profile in ("local", "aws-staging"):
+        (strategies / f"{profile}.sh").write_text(
+            (
+                "profile_main() {\n"
+                '  case "$1" in\n'
+                "    setup) command ;;\n"
+                "    up) command ;;\n"
+                "    down) command ;;\n"
+                "  esac\n"
+                "}\n"
+            ),
+            encoding="utf-8",
+        )
+    _git("git", "add", "fleet", "scripts/fleet-profiles", cwd=repo)
+    _git("git", "commit", "-q", "-m", "add local profile without first-use controls", cwd=repo)
+    sha = subprocess.run(  # fixed argv, test-only
+        ["git", "rev-parse", "HEAD"],  # noqa: S603,S607
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    report = run_review(
+        checkout_root=repo,
+        policy=load_policy(PRODUCTION_POLICY_PATH, TAXONOMY),
+        source=verify_snapshot(repo, sha, "infra-fleet-public"),
+        synthesizer=_EmptySynthesizer(),
+        limits=LIMITS,
+        prior=None,
+        run_started_at="2026-08-26T00:00:00+00:00",
+        intent_catalog=load_intent_catalog(PRODUCTION_INTENT_PATH, TAXONOMY),
+    )
+
+    evaluations = {item.proposition_id: item for item in report.intent_evaluations}
+    assert evaluations["M-001"].status == "declared_unverified"
+    assert evaluations["M-002"].status == "divergent"
+    assert [item.concern_key for item in report.recommendations] == [
+        "fleet_local_first_use_incomplete"
+    ]
+    published, _markdown = write_report(report, repo.parent / "first-use-report")
+    issue_plan = build_issue_plan(
+        published,
+        PRODUCTION_POLICY_PATH,
+        PRODUCTION_INTENT_PATH,
+    )
+    assert len(issue_plan.actions) == 1
+    assert issue_plan.actions[0].action == "active"
+    assert issue_plan.actions[0].intent_proposition_id == "M-002"
 
 
 def test_reliability_intent_produces_required_advice_for_unsafe_rollout(git_checkout) -> None:

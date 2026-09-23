@@ -52,6 +52,26 @@ _PROFILE_DISPATCH = re.compile(
     r'^\s*profile_main\s+"\$action"\s+"\$revision"\s+"\$service"\s+"\$apply"\s*$',
     re.MULTILINE,
 )
+_LOCAL_TOOL_INSTALL = re.compile(
+    r'^\s*"\$fleet_root/scripts/install-profile-tools\.sh"\s+'
+    r'"\$FLEET_STATE/bin"\s+--local\s*$',
+    re.MULTILINE,
+)
+_LOCAL_TOOL_PATH = re.compile(r'^\s*export\s+PATH="\$FLEET_STATE/bin:\$PATH"\s*$', re.MULTILINE)
+_LOCAL_GIT_STATE = re.compile(
+    r"git\s+rev-parse\s+--path-format=absolute\s+--git-common-dir.*?"
+    r'^\s*FLEET_STATE="\$common_dir/fleet/local"\s*$',
+    re.MULTILINE | re.DOTALL,
+)
+_LOCAL_KUBECTL_CONTEXT = re.compile(
+    r'kubectl\s+--kubeconfig\s+"\$FLEET_STATE/kubeconfig"\s+'
+    r'--context\s+"\$FLEET_CONTEXT"'
+)
+_LOCAL_FLUX_CONTEXT = re.compile(
+    r'flux\s+--kubeconfig\s+"\$FLEET_STATE/kubeconfig"\s+'
+    r'--context\s+"\$FLEET_CONTEXT"'
+)
+_LOCAL_NEXT_COMMAND = re.compile(r"Next:\s+\./fleet up --profile local")
 
 
 @dataclass(frozen=True, slots=True)
@@ -230,6 +250,25 @@ def collect(
     local_complete = _LIFECYCLE_ACTIONS <= (strategy_actions["local"] or frozenset())
     aws_complete = _LIFECYCLE_ACTIONS <= (strategy_actions["aws-staging"] or frozenset())
     lifecycle_complete = facade_executable and facade_complete and local_complete and aws_complete
+    local_source = strategy_sources["local"] or ""
+    local_installs_pinned_tools = _LOCAL_TOOL_INSTALL.search(local_source) is not None
+    local_uses_checkout_state = (
+        _LOCAL_GIT_STATE.search(local_source) is not None
+        and len(_LOCAL_TOOL_PATH.findall(local_source)) >= 2
+    )
+    local_uses_explicit_context = (
+        _LOCAL_KUBECTL_CONTEXT.search(local_source) is not None
+        and _LOCAL_FLUX_CONTEXT.search(local_source) is not None
+    )
+    local_prints_next_command = _LOCAL_NEXT_COMMAND.search(local_source) is not None
+    local_first_use_complete = all(
+        (
+            local_installs_pinned_tools,
+            local_uses_checkout_state,
+            local_uses_explicit_context,
+            local_prints_next_command,
+        )
+    )
     evidence = build_evidence(
         collector_id=FLEET_LIFECYCLE_COLLECTOR_ID,
         collector_version=FLEET_LIFECYCLE_COLLECTOR_VERSION,
@@ -240,7 +279,8 @@ def collect(
             "lifecycle routed by facade/local/aws-staging: "
             f"{str(facade_complete).lower()}/"
             f"{str(local_complete).lower()}/"
-            f"{str(aws_complete).lower()}"
+            f"{str(aws_complete).lower()}; "
+            f"local first-use: {str(local_first_use_complete).lower()}"
         ),
         fact={
             "facade_executable": facade_executable,
@@ -249,6 +289,11 @@ def collect(
             "local_lifecycle_complete": local_complete,
             "aws_lifecycle_complete": aws_complete,
             "common_lifecycle_complete": lifecycle_complete,
+            "local_installs_pinned_tools": local_installs_pinned_tools,
+            "local_uses_checkout_state": local_uses_checkout_state,
+            "local_uses_explicit_context": local_uses_explicit_context,
+            "local_prints_next_command": local_prints_next_command,
+            "local_first_use_complete": local_first_use_complete,
         },
         identity_parts=("profile-lifecycle-dispatch",),
     )

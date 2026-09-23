@@ -2,7 +2,7 @@
 
 - Format: `1`
 - Intent ID: `infra_fleet_public_maintainability`
-- Version: `1.1`
+- Version: `1.2`
 - Category: `maintainability`
 
 This document declares the fleet owner's adoption experience for the public
@@ -41,6 +41,7 @@ the user's default Kubernetes context.
 
 ### Evaluation
 
+- Check: `fleet_local_first_use`
 - Priority: `high`
 
 ## M-003 · AWS account onboarding and teardown

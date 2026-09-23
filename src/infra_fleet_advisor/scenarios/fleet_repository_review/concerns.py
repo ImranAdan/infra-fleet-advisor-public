@@ -18,6 +18,7 @@ CONCERN_TRIVY_IGNORE_UNFIXED = "trivy_ignore_unfixed"
 CONCERN_WILDCARD_IAM_PERMISSIONS = "wildcard_iam_permissions"
 CONCERN_DEPLOYMENT_ROLLOUT_CAPACITY = "deployment_rollout_capacity_loss"
 CONCERN_FLEET_LIFECYCLE_INCOMPLETE = "fleet_profile_lifecycle_incomplete"
+CONCERN_FLEET_LOCAL_FIRST_USE_INCOMPLETE = "fleet_local_first_use_incomplete"
 
 # The deterministic support conditions for each concern: which evidence kind
 # can back it, and which collector-derived facts must hold. A collector emits
@@ -191,6 +192,32 @@ CONCERN_TEMPLATES: dict[str, ConcernTemplate] = {
         confidence=0.95,
         confidence_explanation=(
             "Derived from the closed action allowlist and fixed local and AWS dispatch branches."
+        ),
+    ),
+    CONCERN_FLEET_LOCAL_FIRST_USE_INCOMPLETE: ConcernTemplate(
+        category="maintainability",
+        priority="high",
+        title="Local setup lacks the declared first-use controls",
+        summary=(
+            "The tracked local profile does not expose the complete static contract for "
+            "checkout-owned pinned tools, an explicit Kubernetes context, and a next command."
+        ),
+        impact=(
+            "A new contributor can be left to assemble version-sensitive tooling manually or "
+            "risk operating on an unrelated default Kubernetes context."
+        ),
+        suggested_change=(
+            "Have local setup install checksum-verified kind, kubectl, and Flux binaries into "
+            "checkout-owned state; prefer that tool directory for later commands, bind kubectl "
+            "and Flux to the owned kubeconfig and context, and print the next lifecycle command."
+        ),
+        trade_offs=(
+            "Setup needs network access for the first verified download and the repository must "
+            "maintain checksums for each supported operating-system and architecture pair."
+        ),
+        confidence=0.95,
+        confidence_explanation=(
+            "Derived from bounded, tracked local-strategy source without executing Fleet code."
         ),
     ),
 }

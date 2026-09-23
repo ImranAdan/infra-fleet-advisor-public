@@ -13,6 +13,8 @@ flowchart TD
     subgraph Advisor[Advisor repository]
         I[Owner intent and policy] --> E[Evaluate registered checks]
         S[Verified fleet Git commit] --> C[Deterministic collectors]
+        S --> L[Bounded Fleet facade and profile strategies]
+        L --> C
         C --> E
         E --> W[Recommendation wording: stub or optional model]
         W --> V[Validate evidence, limits and lifecycle]
@@ -72,11 +74,11 @@ are listed in the [documentation index](docs/README.md).
 ## Current scope
 
 The advisor reviews one public fleet repository. Twenty declared positions span
-security, reliability, cost, and maintainability. Four registered checks cover
+security, reliability, cost, and maintainability. Five registered checks cover
 workflow settings, literal Terraform IAM policies, Kubernetes Deployment
-rollouts, and the Fleet profile lifecycle command surface. Positions without a
-trusted check remain explicitly unverified. Repository analysis does not
-establish live infrastructure health.
+rollouts, the Fleet profile lifecycle, and the local first-use controls.
+Positions without a trusted check remain explicitly unverified. Repository
+analysis does not establish live infrastructure health.
 
 ## License
 

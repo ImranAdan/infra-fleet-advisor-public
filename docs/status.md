@@ -22,12 +22,12 @@ issue-creation decision record. See the [workflow](WORKFLOW.md) and
 | GitHub Actions | Tracked workflow settings, including Trivy scanning configuration | Repository configuration only; exclusions and malformed or truncated input can leave coverage incomplete |
 | Terraform IAM | Persistent-stack policies under `infrastructure/permanent/`; bounded JSON/HCL objects, local condition traversals and fixed-prefix resource ARN interpolation | Referenced policy documents and unknown decision fields remain partial within the persistent scope; no policy URL fetch or Terraform execution |
 | Kubernetes Deployments | Tracked raw `apps/v1` Deployment manifests under `k8s/`; the reliability check evaluates owner-managed workloads under `k8s/applications/` | Does not render Helm or inspect a live cluster; missing, malformed, duplicate or truncated evidence remains unverified |
-| Fleet lifecycle | The tracked `fleet` facade and fixed local strategy; closed profile and action dispatch for `setup`, `up`, and `down` | Static shell structure only; it detects an absent or inconsistent command surface but cannot prove idempotence, runtime readiness, credential behavior, or teardown effects |
+| Fleet lifecycle | The tracked `fleet` facade and fixed local and AWS strategy modules; closed lifecycle dispatch plus local pinned-tool, checkout-state, explicit-context, and next-command controls | Static shell structure only; it detects absent controls but cannot prove downloads, idempotence, runtime readiness, credential behavior, or teardown effects |
 
 The security, reliability, cost and maintainability catalogs contain twenty
-positions. Four have registered checks. Unsupported positions and incomplete
+positions. Five have registered checks. Unsupported positions and incomplete
 evaluation remain explicit report coverage; the cost catalog has no registered
-checks and the maintainability catalog has one divergence-only check. They do
+checks and the maintainability catalog has two divergence-only checks. They do
 not automatically create issues in either repository. The
 [coverage review](COVERAGE-REVIEW.md) preserves the retired generated backlog.
 
@@ -44,13 +44,16 @@ scoped to owner-managed application manifests. Platform evidence remains
 available for future platform-specific intent without generating application
 rollout advice.
 
-The lifecycle collector never executes Fleet code. It reads two fixed, bounded,
-tracked files and recognizes only the closed `local` and `aws-staging` dispatch
-shape. M-001 becomes divergent when either profile lacks `setup`, `up`, or
-`down`. A complete surface remains unverified because static shell inspection
-cannot establish the proposition's repeatability and failure behavior. M-002
-and M-003 remain declared without checks until their implementation exposes
-specific controls that trusted collectors can evaluate.
+The lifecycle collector never executes Fleet code. It reads the fixed, bounded,
+tracked `fleet` facade and the two named strategy modules, and recognizes only
+the closed `local` and `aws-staging` dispatch shape. M-001 becomes divergent
+when either profile lacks `setup`, `up`, or `down`. M-002 becomes divergent when
+the local strategy lacks the pinned-tool installer, checkout-owned state,
+explicit kubectl and Flux context, or the next startup command. Structurally
+complete controls remain unverified because static shell inspection cannot
+establish downloads, repeatability, runtime behavior, or successful teardown.
+M-003 remains declared without a check until the AWS onboarding implementation
+exposes specific controls that a trusted collector can evaluate.
 
 ## Model support
 
