@@ -30,12 +30,12 @@
       "collector_id": "fleet_lifecycle_collector",
       "collector_version": "1.0.0",
       "evidence_id": "fleet_lifecycle_collector:6d72cf725a3df7bb",
-      "excerpt": "setup routed by facade/local/aws-staging: false/false/false; up/down complete: true",
+      "excerpt": "setup routed by facade/local/aws-staging: true/false/true; up/down complete: false",
       "fact": {
         "aws_lifecycle_complete": false,
         "common_lifecycle_complete": false,
         "facade_executable": true,
-        "facade_lifecycle_complete": false,
+        "facade_lifecycle_complete": true,
         "local_lifecycle_complete": false,
         "profiles_are_closed": true
       },
@@ -294,7 +294,7 @@
       "status": "declared_unverified"
     }
   ],
-  "new_count": 1,
+  "new_count": 0,
   "provenance": {
     "advisor_version": "0.1.0",
     "collector_versions": {
@@ -306,8 +306,8 @@
     "intent_digest": "intent-md-v1:5781fb4fa3f59562c1eeb63d3b3212499a519a53bac6daef94f8fe225ac29481",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.1",
-    "run_started_at": "2026-09-15T18:51:17.786400+00:00",
-    "source_commit_sha": "d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0",
+    "run_started_at": "2026-09-23T09:21:48.500747+00:00",
+    "source_commit_sha": "184d3687dc5bf3e1461053fa94d95567ef1bb912",
     "source_label": "infra-fleet-public"
   },
   "recommendations": [
@@ -325,7 +325,7 @@
       "priority": "high",
       "rank": 1,
       "rank_rationale": "priority=high, category_weight=8, confidence=0.95",
-      "status": "new",
+      "status": "unchanged",
       "suggested_change": "Add setup to the fixed ./fleet action surface and implement it for local and aws-staging. Local setup should prepare and validate pinned tools; AWS setup should validate adopter configuration and sessions, configure GitHub and HCP Terraform, and bootstrap the OIDC foundation. Preserve the existing bounded teardown behavior.",
       "summary": "The tracked Fleet facade does not route setup, up, and down through both the local and AWS staging profile strategies.",
       "title": "Fleet profiles lack the declared lifecycle command surface",
@@ -376,5 +376,5 @@
   "rejected_count": 0,
   "resolved_count": 2,
   "suppressed_count": 0,
-  "unchanged_count": 0
+  "unchanged_count": 1
 }

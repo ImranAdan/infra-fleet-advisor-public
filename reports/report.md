@@ -1,10 +1,10 @@
 # Infra Fleet Advisor report
 
-- Source: `infra-fleet-public` @ `d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0`
+- Source: `infra-fleet-public` @ `184d3687dc5bf3e1461053fa94d95567ef1bb912`
 - Advisor version: `0.1.0` · Policy version: `1.1`
-- Model: `stub-synthesizer-v1` · Run started: `2026-09-15T18:51:17.786400+00:00`
+- Model: `stub-synthesizer-v1` · Run started: `2026-09-23T09:21:48.500747+00:00`
 - Intent catalog: `intent-md-v1:5781fb4fa3f59562c1eeb63d3b3212499a519a53bac6daef94f8fe225ac29481`
-- Lifecycle: 1 new, 0 unchanged, 2 resolved, 0 suppressed (0 rejected)
+- Lifecycle: 0 new, 1 unchanged, 2 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
 
@@ -154,7 +154,7 @@
 
 ## Recommendations
 
-### #1 [new] Fleet profiles lack the declared lifecycle command surface
+### #1 [unchanged] Fleet profiles lack the declared lifecycle command surface
 
 - Category: `maintainability` · Priority: `high` · Confidence: 0.95
 - Fingerprint: `fp_04b6e8f53c02c6a25eb3abe6`
