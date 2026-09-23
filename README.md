@@ -74,9 +74,10 @@ are listed in the [documentation index](docs/README.md).
 ## Current scope
 
 The advisor reviews one public fleet repository. Twenty declared positions span
-security, reliability, cost, and maintainability. Five registered checks cover
+security, reliability, cost, and maintainability. Eight registered checks cover
 workflow settings, literal Terraform IAM policies, Kubernetes Deployment
-rollouts, the Fleet profile lifecycle, and the local first-use controls.
+rollouts and container hardening, staging log retention, ECR image lifecycle,
+the Fleet profile lifecycle, and the local first-use controls.
 Positions without a trusted check remain explicitly unverified. Repository
 analysis does not establish live infrastructure health.
 

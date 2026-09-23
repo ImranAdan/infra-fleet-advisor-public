@@ -19,6 +19,9 @@ CONCERN_WILDCARD_IAM_PERMISSIONS = "wildcard_iam_permissions"
 CONCERN_DEPLOYMENT_ROLLOUT_CAPACITY = "deployment_rollout_capacity_loss"
 CONCERN_FLEET_LIFECYCLE_INCOMPLETE = "fleet_profile_lifecycle_incomplete"
 CONCERN_FLEET_LOCAL_FIRST_USE_INCOMPLETE = "fleet_local_first_use_incomplete"
+CONCERN_CONTAINER_HARDENING_INCOMPLETE = "container_hardening_incomplete"
+CONCERN_LOG_RETENTION_UNBOUNDED = "staging_log_retention_unbounded"
+CONCERN_ECR_RETENTION_UNBOUNDED = "ecr_image_retention_unbounded"
 
 # The deterministic support conditions for each concern: which evidence kind
 # can back it, and which collector-derived facts must hold. A collector emits
@@ -218,6 +221,81 @@ CONCERN_TEMPLATES: dict[str, ConcernTemplate] = {
         confidence=0.95,
         confidence_explanation=(
             "Derived from bounded, tracked local-strategy source without executing Fleet code."
+        ),
+    ),
+    CONCERN_CONTAINER_HARDENING_INCOMPLETE: ConcernTemplate(
+        category="security",
+        priority="high",
+        title="Application container runs without the declared hardening",
+        summary=(
+            "A Deployment under k8s/applications has a container that is not constrained to "
+            "a non-root user, with privilege escalation disabled and all capabilities dropped."
+        ),
+        impact=(
+            "A compromised process keeps root or kernel capabilities it does not need, widening "
+            "what an attacker can do inside the node."
+        ),
+        suggested_change=(
+            "Set runAsNonRoot (or a non-zero runAsUser), allowPrivilegeEscalation: false and "
+            "capabilities.drop: [ALL] on every container and init container, adding back no "
+            "capabilities."
+        ),
+        trade_offs=(
+            "Images that bind low ports or write as root need rebuilding or a documented, "
+            "narrow capability exception."
+        ),
+        confidence=0.95,
+        confidence_explanation=(
+            "Derived from pod and container securityContext fields in repository desired state; "
+            "admission mutation and live pods are not inspected."
+        ),
+    ),
+    CONCERN_LOG_RETENTION_UNBOUNDED: ConcernTemplate(
+        category="cost",
+        priority="medium",
+        title="Staging CloudWatch log group keeps logs longer than 30 days",
+        summary=(
+            "A staging log group declared directly or created by a pinned module retains events "
+            "for more than 30 days or never expires them."
+        ),
+        impact=(
+            "Log storage grows with every rebuild cycle and is billed after the staging "
+            "environment's usefulness for debugging has passed."
+        ),
+        suggested_change=(
+            "Declare an explicit retention of at most 30 days, for the EKS module via "
+            "cloudwatch_log_group_retention_in_days, or document why longer retention is needed."
+        ),
+        trade_offs=(
+            "Shorter retention removes older control-plane audit trails that could help a late "
+            "incident investigation."
+        ),
+        confidence=0.9,
+        confidence_explanation=(
+            "Read from literal Terraform attributes; module log groups use the published defaults "
+            "of the pinned major version without downloading the module."
+        ),
+    ),
+    CONCERN_ECR_RETENTION_UNBOUNDED: ConcernTemplate(
+        category="cost",
+        priority="medium",
+        title="ECR repository retains images without a bounded lifecycle",
+        summary=(
+            "A Terraform-managed ECR repository has no lifecycle policy that both expires "
+            "untagged images and bounds the number or age of every retained image."
+        ),
+        impact="Image storage grows with every build and is billed indefinitely.",
+        suggested_change=(
+            "Attach an aws_ecr_lifecycle_policy with an expire rule for tagStatus any (or "
+            "untagged plus all tagged images) using imageCountMoreThan or sinceImagePushed."
+        ),
+        trade_offs=(
+            "Expired images can no longer be used for rollback; retain the rollback window "
+            "explicitly."
+        ),
+        confidence=0.9,
+        confidence_explanation=(
+            "Joined from literal repository and lifecycle-policy resources in one root module."
         ),
     ),
 }

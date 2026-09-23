@@ -2,7 +2,7 @@
 
 - Format: `1`
 - Intent ID: `infra_fleet_public_cost`
-- Version: `1.0`
+- Version: `1.1`
 - Category: `cost`
 
 This document declares the fleet owner's initial AWS cost position. It does not
@@ -44,6 +44,7 @@ operational or compliance reason.
 
 ### Evaluation
 
+- Check: `staging_log_retention_bounded`
 - Priority: `medium`
 
 ## C-004 · Container image lifecycle
@@ -56,6 +57,7 @@ for rollback or audit have an explicit exception.
 
 ### Evaluation
 
+- Check: `ecr_lifecycle_bounded`
 - Priority: `medium`
 
 ## C-005 · Cost allocation tags
