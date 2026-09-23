@@ -183,9 +183,11 @@ def _is_hardened(container: Mapping[Any, Any], pod_context: Mapping[Any, Any]) -
         return None
     run_as_non_root = context.get("runAsNonRoot", pod_context.get("runAsNonRoot"))
     run_as_user = context.get("runAsUser", pod_context.get("runAsUser"))
-    non_root = run_as_non_root is True or (
-        isinstance(run_as_user, int) and not isinstance(run_as_user, bool) and run_as_user > 0
+    uid = (
+        run_as_user if isinstance(run_as_user, int) and not isinstance(run_as_user, bool) else None
     )
+    # An explicit UID 0 contradicts runAsNonRoot; Kubernetes refuses to start it.
+    non_root = uid != 0 and (run_as_non_root is True or (uid is not None and uid > 0))
     drop = capabilities.get("drop", [])
     return (
         non_root
