@@ -2,9 +2,9 @@
 
 - Source: `infra-fleet-public` @ `f3c42956a63066568e7d7133f41b053cd58293ac`
 - Advisor version: `0.1.0` · Policy version: `1.1`
-- Model: `stub-synthesizer-v1` · Run started: `2026-09-23T23:21:15.416103+00:00`
+- Model: `stub-synthesizer-v1` · Run started: `2026-09-23T23:26:58.767965+00:00`
 - Intent catalog: `intent-md-v1:e9386fb7406828b843cb906fd839177e90e13867a69dd2fbda512028fa48549f`
-- Lifecycle: 2 new, 0 unchanged, 3 resolved, 0 suppressed (0 rejected)
+- Lifecycle: 1 new, 1 unchanged, 2 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
 
@@ -12,7 +12,7 @@
 - `terraform_iam_collector`: ok (0 evidence)
 - `terraform_cost_collector`: ok (2 evidence)
 - `kubernetes_deployment_collector`: ok (14 evidence)
-- `fleet_lifecycle_collector`: ok (1 evidence)
+- `fleet_lifecycle_collector`: ok (3 evidence)
 
 ## Intent evaluation
 
@@ -73,7 +73,7 @@
   not remove. Destroying permanent bootstrap resources remains a separate,
   deliberate operation.
   - Category: `maintainability` · Priority: `high` · Check: `fleet_aws_onboarding` · Reason: `evidence_conflicts_with_intent`
-  - Evidence: `fleet_lifecycle_collector:6d72cf725a3df7bb`
+  - Evidence: `fleet_lifecycle_collector:9fe9dbe2d300812e`
 - `satisfied` `infra_fleet_public_reliability/R-001` — Owner-managed application Deployments under \`k8s/applications/\` retain enough
   healthy capacity during rollout. Temporary capacity cost is acceptable when it
   prevents user-visible interruption.
@@ -161,8 +161,8 @@
 ### #1 [new] AWS staging lifecycle lacks a declared onboarding or teardown control
 
 - Category: `maintainability` · Priority: `high` · Confidence: 0.90
-- Fingerprint: `fp_eacf27798e9b66973b4213b3`
-- Evidence: `fleet_lifecycle_collector:6d72cf725a3df7bb`
+- Fingerprint: `fp_1b74b45b8223503fca7d7a49`
+- Evidence: `fleet_lifecycle_collector:9fe9dbe2d300812e`
 
 The aws-staging strategy or its onboarding coordinator does not show every static control: plan-by-default setup, reported targets, stdin-only secrets, a next command, and a teardown confirmation typed by the operator.
 
@@ -172,7 +172,7 @@ The aws-staging strategy or its onboarding coordinator does not show every stati
 
 **Trade-offs:** Interactive confirmation makes unattended teardown require an explicit, separately supplied confirmation value.
 
-### #2 [new] Staging CloudWatch log group keeps logs longer than 30 days
+### #2 [unchanged] Staging CloudWatch log group keeps logs longer than 30 days
 
 - Category: `cost` · Priority: `medium` · Confidence: 0.90
 - Fingerprint: `fp_71b389eab950ffc8b4efa99c`
@@ -185,20 +185,6 @@ A staging log group declared directly or created by a pinned module retains even
 **Suggested change:** Declare an explicit retention of at most 30 days, for the EKS module via cloudwatch_log_group_retention_in_days, or document why longer retention is needed.
 
 **Trade-offs:** Shorter retention removes older control-plane audit trails that could help a late incident investigation.
-
-### [resolved] Fleet profiles lack the declared lifecycle command surface
-
-- Category: `maintainability` · Priority: `high` · Confidence: 0.95
-- Fingerprint: `fp_04b6e8f53c02c6a25eb3abe6`
-- Evidence: `fleet_lifecycle_collector:6d72cf725a3df7bb`
-
-The tracked Fleet facade does not route setup, up, and down through both the local and AWS staging profile strategies.
-
-**Impact:** A new adopter must leave the common interface and complete profile-specific manual steps before the platform can be used.
-
-**Suggested change:** Add setup to the fixed ./fleet action surface and implement it for local and aws-staging. Local setup should prepare and validate pinned tools; AWS setup should validate adopter configuration and sessions, configure GitHub and HCP Terraform, and bootstrap the OIDC foundation. Preserve the existing bounded teardown behavior.
-
-**Trade-offs:** Automated AWS onboarding expands the facade's credential and provider API surface, so target validation and explicit confirmation must precede mutations.
 
 ### [resolved] IAM policy grants a wildcard action on all resources
 
