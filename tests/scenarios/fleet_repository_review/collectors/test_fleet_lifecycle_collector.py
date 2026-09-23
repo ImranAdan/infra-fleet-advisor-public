@@ -24,7 +24,6 @@ def _write_contract(
     local_actions: tuple[str, ...] = ("setup", "up", "down"),
     aws_actions: tuple[str, ...] = ("setup", "up", "down"),
 ) -> None:
-    aws_cases = "\n".join(f"    {action}) command ;;" for action in aws_actions)
     facade = root / "fleet"
     facade.write_text(
         (
@@ -32,23 +31,23 @@ def _write_contract(
             'action=${1:-help}\nprofile=""\n'
             "case \"$profile\" in local|aws-staging) ;; *) echo 'Choose --profile' ;; esac\n"
             f'case "$action" in {facade_actions}) ;; *) echo "Unknown action: $action" ;; esac\n'
-            'if [ "$profile" = aws-staging ]; then\n'
-            '  case "$action" in\n'
-            f"{aws_cases}\n"
-            "  esac\n"
-            "fi\n"
-            'local_main "$action"\n'
+            'case "$profile" in\n'
+            '  local) source "$fleet_root/scripts/fleet-profiles/local.sh" ;;\n'
+            '  aws-staging) source "$fleet_root/scripts/fleet-profiles/aws-staging.sh" ;;\n'
+            "esac\n"
+            'profile_main "$action" "$revision" "$service" "$apply"\n'
         ),
         encoding="utf-8",
     )
     facade.chmod(0o755)
-    local = root / "scripts" / "fleet-profiles" / "local.sh"
-    local.parent.mkdir(parents=True)
-    local_cases = "\n".join(f"    {action}) command ;;" for action in local_actions)
-    local.write_text(
-        f'local_main() {{\n  case "$1" in\n{local_cases}\n  esac\n}}\n',
-        encoding="utf-8",
-    )
+    strategies = root / "scripts" / "fleet-profiles"
+    strategies.mkdir(parents=True)
+    for name, actions in (("local", local_actions), ("aws-staging", aws_actions)):
+        cases = "\n".join(f"    {action}) command ;;" for action in actions)
+        (strategies / f"{name}.sh").write_text(
+            f'profile_main() {{\n  case "$1" in\n{cases}\n  esac\n}}\n',
+            encoding="utf-8",
+        )
 
 
 def test_complete_lifecycle_surface_emits_bounded_typed_evidence(tmp_path: Path) -> None:
@@ -113,6 +112,23 @@ def test_unknown_shell_structure_is_partial_instead_of_a_false_finding(tmp_path:
     assert "could not be parsed" in (result.coverage.error_summary or "")
 
 
+def test_profile_strategy_mapping_must_be_exact(tmp_path: Path) -> None:
+    _write_contract(tmp_path)
+    facade = tmp_path / "fleet"
+    facade.write_text(
+        facade.read_text(encoding="utf-8").replace(
+            "scripts/fleet-profiles/aws-staging.sh", "scripts/fleet-profiles/local.sh"
+        ),
+        encoding="utf-8",
+    )
+
+    result = collector.collect(tmp_path, LIMITS)
+
+    assert result.coverage.status == "partial"
+    assert result.evidence == ()
+    assert "outside the registered" in (result.coverage.error_summary or "")
+
+
 def test_new_profile_requires_a_collector_update_instead_of_a_false_finding(
     tmp_path: Path,
 ) -> None:
@@ -135,13 +151,14 @@ def test_new_profile_requires_a_collector_update_instead_of_a_false_finding(
 def test_untracked_or_excluded_source_cannot_be_evidence(tmp_path: Path) -> None:
     _write_contract(tmp_path)
     local_path = "scripts/fleet-profiles/local.sh"
+    aws_path = "scripts/fleet-profiles/aws-staging.sh"
 
     untracked = collector.collect(tmp_path, LIMITS, tracked_paths=frozenset({"fleet"}))
     excluded = collector.collect(
         tmp_path,
         LIMITS,
         excluded_paths=frozenset({local_path}),
-        tracked_paths=frozenset({"fleet", local_path}),
+        tracked_paths=frozenset({"fleet", local_path, aws_path}),
     )
 
     assert untracked.coverage.status == "partial"

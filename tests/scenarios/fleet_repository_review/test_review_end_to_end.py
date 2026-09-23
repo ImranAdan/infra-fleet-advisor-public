@@ -142,24 +142,30 @@ def test_production_lifecycle_intent_requires_one_fleet_surface_fix(git_checkout
             'action=${1:-help}\nprofile=""\n'
             "case \"$profile\" in local|aws-staging) ;; *) echo 'Choose --profile' ;; esac\n"
             'case "$action" in up|down|status) ;; *) echo "Unknown action: $action" ;; esac\n'
-            'if [ "$profile" = aws-staging ]; then\n'
-            '  case "$action" in\n'
-            "    up) command ;;\n"
-            "    down) command ;;\n"
-            "  esac\n"
-            "fi\n"
-            'local_main "$action"\n'
+            'case "$profile" in\n'
+            '  local) source "$fleet_root/scripts/fleet-profiles/local.sh" ;;\n'
+            '  aws-staging) source "$fleet_root/scripts/fleet-profiles/aws-staging.sh" ;;\n'
+            "esac\n"
+            'profile_main "$action" "$revision" "$service" "$apply"\n'
         ),
         encoding="utf-8",
     )
     facade.chmod(0o755)
-    local = repo / "scripts" / "fleet-profiles" / "local.sh"
-    local.parent.mkdir(parents=True)
-    local.write_text(
-        'local_main() {\n  case "$1" in\n    up) command ;;\n    down) command ;;\n  esac\n}\n',
-        encoding="utf-8",
-    )
-    _git("git", "add", "fleet", "scripts/fleet-profiles/local.sh", cwd=repo)
+    strategies = repo / "scripts" / "fleet-profiles"
+    strategies.mkdir(parents=True)
+    for profile in ("local", "aws-staging"):
+        (strategies / f"{profile}.sh").write_text(
+            (
+                "profile_main() {\n"
+                '  case "$1" in\n'
+                "    up) command ;;\n"
+                "    down) command ;;\n"
+                "  esac\n"
+                "}\n"
+            ),
+            encoding="utf-8",
+        )
+    _git("git", "add", "fleet", "scripts/fleet-profiles", cwd=repo)
     _git("git", "commit", "-q", "-m", "add incomplete fleet lifecycle", cwd=repo)
     sha = subprocess.run(  # fixed argv, test-only
         ["git", "rev-parse", "HEAD"],  # noqa: S603,S607

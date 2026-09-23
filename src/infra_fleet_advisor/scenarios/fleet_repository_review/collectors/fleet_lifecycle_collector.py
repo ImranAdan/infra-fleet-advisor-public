@@ -13,8 +13,11 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
 )
 
 _FACADE_PATH = "fleet"
-_LOCAL_STRATEGY_PATH = "scripts/fleet-profiles/local.sh"
-_EXPECTED_PROFILES = frozenset({"local", "aws-staging"})
+_STRATEGY_PATHS = {
+    "local": "scripts/fleet-profiles/local.sh",
+    "aws-staging": "scripts/fleet-profiles/aws-staging.sh",
+}
+_EXPECTED_PROFILES = frozenset(_STRATEGY_PATHS)
 _LIFECYCLE_ACTIONS = frozenset({"setup", "up", "down"})
 _SAFE_CASE_VALUE = re.compile(r"^[a-z][a-z0-9-]*$")
 _ACTION_ALLOWLIST = re.compile(
@@ -27,20 +30,28 @@ _PROFILE_ALLOWLIST = re.compile(
     r"\*\)\s+echo\s+'Choose --profile",
     re.MULTILINE,
 )
-_AWS_STRATEGY = re.compile(
-    r'^\s*if\s+\[\s+"\$profile"\s+=\s+aws-staging\s+\];\s+then\s*$'
+_STRATEGY_SELECTION = re.compile(
+    r'^\s*case\s+"\$profile"\s+in\s*$'
     r"(?P<body>.*?)"
-    r"^\s*fi\s*$",
+    r"^\s*esac\s*$",
     re.MULTILINE | re.DOTALL,
 )
-_LOCAL_MAIN = re.compile(
-    r"^\s*local_main\(\)\s*\{\s*$"
+_STRATEGY_SOURCE = re.compile(
+    r'^\s*(?P<profile>[a-z][a-z0-9-]*)\)\s+source\s+"\$fleet_root/'
+    r'(?P<path>scripts/fleet-profiles/[a-z][a-z0-9-]*\.sh)"\s+;;\s*$',
+    re.MULTILINE,
+)
+_PROFILE_MAIN = re.compile(
+    r"^\s*profile_main\(\)\s*\{\s*$"
     r"(?P<body>.*?)"
     r"^\s*\}\s*$",
     re.MULTILINE | re.DOTALL,
 )
 _CASE_LABEL = re.compile(r"^\s*(?P<label>[a-z][a-z0-9-]*)\)", re.MULTILINE)
-_LOCAL_DISPATCH = re.compile(r'^\s*local_main\s+"\$action"(?:\s|$)', re.MULTILINE)
+_PROFILE_DISPATCH = re.compile(
+    r'^\s*profile_main\s+"\$action"\s+"\$revision"\s+"\$service"\s+"\$apply"\s*$',
+    re.MULTILINE,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,15 +103,27 @@ def _case_labels(block: re.Match[str] | None) -> frozenset[str] | None:
     return frozenset(match.group("label") for match in _CASE_LABEL.finditer(block.group("body")))
 
 
+def _strategy_sources(facade: str) -> dict[str, str] | None:
+    selection = _STRATEGY_SELECTION.search(facade)
+    if selection is None:
+        return None
+    mappings = tuple(
+        (match.group("profile"), match.group("path"))
+        for match in _STRATEGY_SOURCE.finditer(selection.group("body"))
+    )
+    if len(mappings) != len(dict(mappings)):
+        return None
+    return dict(mappings)
+
+
 def collect(
     checkout_root: Path,
     limits: ExecutionLimits,
     excluded_paths: frozenset[str] = frozenset(),
     tracked_paths: frozenset[str] | None = None,
 ) -> CollectorResult:
-    if _is_excluded(_FACADE_PATH, excluded_paths) or _is_excluded(
-        _LOCAL_STRATEGY_PATH, excluded_paths
-    ):
+    lifecycle_paths = (_FACADE_PATH, *_STRATEGY_PATHS.values())
+    if any(_is_excluded(path, excluded_paths) for path in lifecycle_paths):
         return CollectorResult(
             evidence=(),
             coverage=CollectorCoverage(
@@ -112,10 +135,14 @@ def collect(
         )
 
     facade, facade_error = _read_bounded_file(checkout_root, _FACADE_PATH, limits, tracked_paths)
-    local_strategy, local_error = _read_bounded_file(
-        checkout_root, _LOCAL_STRATEGY_PATH, limits, tracked_paths
-    )
-    errors = tuple(error for error in (facade_error, local_error) if error is not None)
+    strategy_sources: dict[str, str | None] = {}
+    strategy_errors: list[str] = []
+    for profile, path in _STRATEGY_PATHS.items():
+        source, error = _read_bounded_file(checkout_root, path, limits, tracked_paths)
+        strategy_sources[profile] = source
+        if error is not None:
+            strategy_errors.append(error)
+    errors = tuple(error for error in (facade_error, *strategy_errors) if error is not None)
     if errors:
         return CollectorResult(
             evidence=(),
@@ -132,11 +159,31 @@ def collect(
             coverage=CollectorCoverage(FLEET_LIFECYCLE_COLLECTOR_ID, "ok", 0),
         )
 
+    if any(source is None for source in strategy_sources.values()):
+        return CollectorResult(
+            evidence=(),
+            coverage=CollectorCoverage(
+                FLEET_LIFECYCLE_COLLECTOR_ID,
+                "partial",
+                0,
+                "lifecycle strategy file is missing",
+            ),
+        )
+
     profiles = _values(_PROFILE_ALLOWLIST.search(facade))
     facade_actions = _values(_ACTION_ALLOWLIST.search(facade))
-    aws_actions = _case_labels(_AWS_STRATEGY.search(facade))
-    local_actions = _case_labels(_LOCAL_MAIN.search(local_strategy or ""))
-    if profiles is None or facade_actions is None or aws_actions is None or local_actions is None:
+    selected_strategies = _strategy_sources(facade)
+    profile_dispatch = _PROFILE_DISPATCH.search(facade) is not None
+    strategy_actions = {
+        profile: _case_labels(_PROFILE_MAIN.search(source or ""))
+        for profile, source in strategy_sources.items()
+    }
+    if (
+        profiles is None
+        or facade_actions is None
+        or selected_strategies is None
+        or any(actions is None for actions in strategy_actions.values())
+    ):
         return CollectorResult(
             evidence=(),
             coverage=CollectorCoverage(
@@ -156,6 +203,16 @@ def collect(
                 "profile set is outside the registered lifecycle collector scope",
             ),
         )
+    if selected_strategies != _STRATEGY_PATHS or not profile_dispatch:
+        return CollectorResult(
+            evidence=(),
+            coverage=CollectorCoverage(
+                FLEET_LIFECYCLE_COLLECTOR_ID,
+                "partial",
+                0,
+                "profile strategy selection is outside the registered lifecycle contract",
+            ),
+        )
 
     try:
         facade_executable = bool((checkout_root / _FACADE_PATH).stat().st_mode & stat.S_IXUSR)
@@ -169,16 +226,10 @@ def collect(
                 "fleet mode could not be read",
             ),
         )
-    local_dispatch = _LOCAL_DISPATCH.search(facade) is not None
     facade_complete = _LIFECYCLE_ACTIONS <= facade_actions
-    local_complete = local_dispatch and _LIFECYCLE_ACTIONS <= local_actions
-    aws_complete = _LIFECYCLE_ACTIONS <= aws_actions
+    local_complete = _LIFECYCLE_ACTIONS <= (strategy_actions["local"] or frozenset())
+    aws_complete = _LIFECYCLE_ACTIONS <= (strategy_actions["aws-staging"] or frozenset())
     lifecycle_complete = facade_executable and facade_complete and local_complete and aws_complete
-    up_down_complete = all(
-        action in actions
-        for actions in (facade_actions, local_actions, aws_actions)
-        for action in ("up", "down")
-    )
     evidence = build_evidence(
         collector_id=FLEET_LIFECYCLE_COLLECTOR_ID,
         collector_version=FLEET_LIFECYCLE_COLLECTOR_VERSION,
@@ -186,11 +237,10 @@ def collect(
         source_path=_FACADE_PATH,
         locator="profile lifecycle dispatch",
         excerpt=(
-            "setup routed by facade/local/aws-staging: "
-            f"{str('setup' in facade_actions).lower()}/"
-            f"{str(local_dispatch and 'setup' in local_actions).lower()}/"
-            f"{str('setup' in aws_actions).lower()}; "
-            f"up/down complete: {str(up_down_complete).lower()}"
+            "lifecycle routed by facade/local/aws-staging: "
+            f"{str(facade_complete).lower()}/"
+            f"{str(local_complete).lower()}/"
+            f"{str(aws_complete).lower()}"
         ),
         fact={
             "facade_executable": facade_executable,
