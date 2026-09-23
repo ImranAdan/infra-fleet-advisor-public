@@ -117,14 +117,12 @@
       "category": "cost",
       "check_key": "staging_log_retention_bounded",
       "document_id": "infra_fleet_public_cost",
-      "evidence_ids": [
-        "terraform_cost_collector:d2d6fa1dfde83257"
-      ],
+      "evidence_ids": [],
       "priority": "medium",
       "proposition_id": "C-003",
-      "reason": "evidence_conflicts_with_intent",
+      "reason": "collector_cannot_prove_satisfaction",
       "statement": "Every staging CloudWatch log group managed by the fleet has an explicit\nretention period of no more than 30 days. Longer retention requires a documented\noperational or compliance reason.",
-      "status": "divergent"
+      "status": "declared_unverified"
     },
     {
       "category": "cost",
@@ -174,14 +172,12 @@
       "category": "maintainability",
       "check_key": "fleet_aws_onboarding",
       "document_id": "infra_fleet_public_maintainability",
-      "evidence_ids": [
-        "fleet_lifecycle_collector:9fe9dbe2d300812e"
-      ],
+      "evidence_ids": [],
       "priority": "high",
       "proposition_id": "M-003",
-      "reason": "evidence_conflicts_with_intent",
+      "reason": "collector_cannot_prove_satisfaction",
       "statement": "An adopter with an AWS account, an HCP Terraform organization, and a GitHub\nrepository supplies account-specific configuration through a non-committed\ninput file and existing local AWS, HCP Terraform, and GitHub CLI sessions. One\n`./fleet setup --profile aws-staging` command validates the selected account,\nregion, organization, repository, and protected environment; configures the\nrequired repository and HCP Terraform settings; and bootstraps the permanent\nAWS foundation used for GitHub OIDC deployment. It never stores long-lived AWS\naccess keys in GitHub.\n\nAfter setup, one `./fleet up --profile aws-staging` command deploys the reviewed\nstaging platform into that account through the protected GitHub environment and\nshort-lived AWS credentials. One `./fleet down --profile aws-staging` command\nremoves billable staging resources, preserves the permanent bootstrap foundation,\nrequires explicit confirmation of the target, and reports any resource it could\nnot remove. Destroying permanent bootstrap resources remains a separate,\ndeliberate operation.",
-      "status": "divergent"
+      "status": "declared_unverified"
     },
     {
       "category": "reliability",
@@ -316,7 +312,7 @@
       "status": "declared_unverified"
     }
   ],
-  "new_count": 1,
+  "new_count": 0,
   "provenance": {
     "advisor_version": "0.1.0",
     "collector_versions": {
@@ -329,8 +325,8 @@
     "intent_digest": "intent-md-v1:e9386fb7406828b843cb906fd839177e90e13867a69dd2fbda512028fa48549f",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.1",
-    "run_started_at": "2026-09-23T23:26:58.767965+00:00",
-    "source_commit_sha": "f3c42956a63066568e7d7133f41b053cd58293ac",
+    "run_started_at": "2026-09-23T23:31:10.212127+00:00",
+    "source_commit_sha": "fdf43d351709c8fde6affe03892a331a20909e56",
     "source_label": "infra-fleet-public"
   },
   "recommendations": [
@@ -346,9 +342,9 @@
       "impact": "An adopter can mutate or destroy a billable AWS target without first seeing and confirming it, or leak a credential through process arguments.",
       "owner_accepted_trade_off": null,
       "priority": "high",
-      "rank": 1,
-      "rank_rationale": "priority=high, category_weight=8, confidence=0.90",
-      "status": "new",
+      "rank": null,
+      "rank_rationale": null,
+      "status": "resolved",
       "suggested_change": "Keep setup in plan mode unless --apply is given, print the AWS and GitHub targets before mutation, pipe secrets to gh secret set, print the next lifecycle command, and have down show its target and pass the operator's typed confirmation to the teardown workflow instead of a hard-coded one.",
       "summary": "The aws-staging strategy or its onboarding coordinator does not show every static control: plan-by-default setup, reported targets, stdin-only secrets, a next command, and a teardown confirmation typed by the operator.",
       "title": "AWS staging lifecycle lacks a declared onboarding or teardown control",
@@ -366,9 +362,9 @@
       "impact": "Log storage grows with every rebuild cycle and is billed after the staging environment's usefulness for debugging has passed.",
       "owner_accepted_trade_off": null,
       "priority": "medium",
-      "rank": 2,
-      "rank_rationale": "priority=medium, category_weight=5, confidence=0.90",
-      "status": "unchanged",
+      "rank": null,
+      "rank_rationale": null,
+      "status": "resolved",
       "suggested_change": "Declare an explicit retention of at most 30 days, for the EKS module via cloudwatch_log_group_retention_in_days, or document why longer retention is needed.",
       "summary": "A staging log group declared directly or created by a pinned module retains events for more than 30 days or never expires them.",
       "title": "Staging CloudWatch log group keeps logs longer than 30 days",
@@ -417,7 +413,7 @@
   ],
   "rejected": [],
   "rejected_count": 0,
-  "resolved_count": 2,
+  "resolved_count": 4,
   "suppressed_count": 0,
-  "unchanged_count": 1
+  "unchanged_count": 0
 }
