@@ -109,7 +109,7 @@ def run_review(
         excluded_paths=excluded_paths,
         tracked_paths=(
             list_tracked_paths(checkout_root, "fleet")
-            | list_tracked_paths(checkout_root, "scripts/fleet-profiles/local.sh")
+            | list_tracked_paths(checkout_root, "scripts/fleet-profiles")
         ),
     )
     all_evidence: tuple[Evidence, ...] = (
