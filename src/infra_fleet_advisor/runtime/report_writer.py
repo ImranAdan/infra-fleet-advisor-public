@@ -129,6 +129,18 @@ def to_markdown(report: Report) -> str:
     lines += ["", "## Intent evaluation", ""]
     if not report.intent_evaluations:
         lines.append("- No intent catalog was supplied.")
+    else:
+        evaluations = report.intent_evaluations
+        checked = [item for item in evaluations if item.check_key is not None]
+        satisfied = sum(item.status == "satisfied" for item in checked)
+        divergent = sum(item.status == "divergent" for item in checked)
+        lines += [
+            f"**Coverage:** {len(checked)} of {len(evaluations)} positions have a check — "
+            f"{satisfied} satisfied, {divergent} divergent, "
+            f"{len(checked) - satisfied - divergent} checked but unproven; "
+            f"{len(evaluations) - len(checked)} declared without a check.",
+            "",
+        ]
     for evaluation in report.intent_evaluations:
         identity = f"{evaluation.document_id}/{evaluation.proposition_id}"
         statement = _safe_markdown_text(evaluation.statement).replace("\n", "\n  ")
