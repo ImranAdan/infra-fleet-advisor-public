@@ -232,3 +232,33 @@ def test_intent_evaluations_reach_both_formats_as_inert_text() -> None:
     assert "  &#32;&#32;&#32;&#32;Deeply indented prose." in markdown
     assert "\n      Deeply indented prose." not in markdown
     assert "https&#58;//example.invalid" in markdown
+
+
+def test_markdown_summarises_intent_coverage() -> None:
+    def evaluation(proposition_id: str, check_key: str | None, status: str) -> IntentEvaluation:
+        return IntentEvaluation(
+            document_id="d",
+            proposition_id=proposition_id,
+            category="security",
+            priority="high",
+            statement="Declared.",
+            check_key=check_key,
+            status=status,  # type: ignore[arg-type]
+            evidence_ids=(),
+            reason="r",
+        )
+
+    report = replace(
+        REPORT,
+        intent_evaluations=(
+            evaluation("S-001", "a", "satisfied"),
+            evaluation("S-002", "b", "divergent"),
+            evaluation("S-003", "c", "declared_unverified"),
+            evaluation("S-004", None, "declared_unverified"),
+        ),
+    )
+
+    assert (
+        "**Coverage:** 3 of 4 positions have a check — 1 satisfied, 1 divergent, "
+        "1 checked but unproven; 1 declared without a check."
+    ) in to_markdown(report)
