@@ -1,10 +1,10 @@
 # Infra Fleet Advisor report
 
-- Source: `infra-fleet-public` @ `f3c42956a63066568e7d7133f41b053cd58293ac`
+- Source: `infra-fleet-public` @ `fdf43d351709c8fde6affe03892a331a20909e56`
 - Advisor version: `0.1.0` · Policy version: `1.1`
-- Model: `stub-synthesizer-v1` · Run started: `2026-09-23T23:26:58.767965+00:00`
+- Model: `stub-synthesizer-v1` · Run started: `2026-09-23T23:31:10.212127+00:00`
 - Intent catalog: `intent-md-v1:e9386fb7406828b843cb906fd839177e90e13867a69dd2fbda512028fa48549f`
-- Lifecycle: 1 new, 1 unchanged, 2 resolved, 0 suppressed (0 rejected)
+- Lifecycle: 0 new, 0 unchanged, 4 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
 
@@ -16,7 +16,7 @@
 
 ## Intent evaluation
 
-**Coverage:** 9 of 20 positions have a check — 3 satisfied, 2 divergent, 4 checked but unproven; 11 declared without a check.
+**Coverage:** 9 of 20 positions have a check — 3 satisfied, 0 divergent, 6 checked but unproven; 11 declared without a check.
 
 - `declared_unverified` `infra_fleet_public_cost/C-001` — Staging application worker capacity scales to zero outside an owner-defined
   usage window. A delayed startup of up to 30 minutes is acceptable when it avoids
@@ -26,11 +26,10 @@
   minimum where its workloads permit it and an explicit bounded maximum. Any
   always-on baseline must name the workload that requires it.
   - Category: `cost` · Priority: `high` · Check: `not_declared` · Reason: `check_not_declared`
-- `divergent` `infra_fleet_public_cost/C-003` — Every staging CloudWatch log group managed by the fleet has an explicit
+- `declared_unverified` `infra_fleet_public_cost/C-003` — Every staging CloudWatch log group managed by the fleet has an explicit
   retention period of no more than 30 days. Longer retention requires a documented
   operational or compliance reason.
-  - Category: `cost` · Priority: `medium` · Check: `staging_log_retention_bounded` · Reason: `evidence_conflicts_with_intent`
-  - Evidence: `terraform_cost_collector:d2d6fa1dfde83257`
+  - Category: `cost` · Priority: `medium` · Check: `staging_log_retention_bounded` · Reason: `collector_cannot_prove_satisfaction`
 - `satisfied` `infra_fleet_public_cost/C-004` — Every ECR repository managed by the fleet has a lifecycle policy that removes
   untagged images and bounds the number or age of retained images. Images retained
   for rollback or audit have an explicit exception.
@@ -56,7 +55,7 @@
   HCP Terraform account, GitHub write credential, repository edit, or mutation of
   the user's default Kubernetes context.
   - Category: `maintainability` · Priority: `high` · Check: `fleet_local_first_use` · Reason: `collector_cannot_prove_satisfaction`
-- `divergent` `infra_fleet_public_maintainability/M-003` — An adopter with an AWS account, an HCP Terraform organization, and a GitHub
+- `declared_unverified` `infra_fleet_public_maintainability/M-003` — An adopter with an AWS account, an HCP Terraform organization, and a GitHub
   repository supplies account-specific configuration through a non-committed
   input file and existing local AWS, HCP Terraform, and GitHub CLI sessions. One
   \`./fleet setup --profile aws-staging\` command validates the selected account,
@@ -72,8 +71,7 @@
   requires explicit confirmation of the target, and reports any resource it could
   not remove. Destroying permanent bootstrap resources remains a separate,
   deliberate operation.
-  - Category: `maintainability` · Priority: `high` · Check: `fleet_aws_onboarding` · Reason: `evidence_conflicts_with_intent`
-  - Evidence: `fleet_lifecycle_collector:9fe9dbe2d300812e`
+  - Category: `maintainability` · Priority: `high` · Check: `fleet_aws_onboarding` · Reason: `collector_cannot_prove_satisfaction`
 - `satisfied` `infra_fleet_public_reliability/R-001` — Owner-managed application Deployments under \`k8s/applications/\` retain enough
   healthy capacity during rollout. Temporary capacity cost is acceptable when it
   prevents user-visible interruption.
@@ -158,7 +156,7 @@
 
 ## Recommendations
 
-### #1 [new] AWS staging lifecycle lacks a declared onboarding or teardown control
+### [resolved] AWS staging lifecycle lacks a declared onboarding or teardown control
 
 - Category: `maintainability` · Priority: `high` · Confidence: 0.90
 - Fingerprint: `fp_1b74b45b8223503fca7d7a49`
@@ -172,7 +170,7 @@ The aws-staging strategy or its onboarding coordinator does not show every stati
 
 **Trade-offs:** Interactive confirmation makes unattended teardown require an explicit, separately supplied confirmation value.
 
-### #2 [unchanged] Staging CloudWatch log group keeps logs longer than 30 days
+### [resolved] Staging CloudWatch log group keeps logs longer than 30 days
 
 - Category: `cost` · Priority: `medium` · Confidence: 0.90
 - Fingerprint: `fp_71b389eab950ffc8b4efa99c`
