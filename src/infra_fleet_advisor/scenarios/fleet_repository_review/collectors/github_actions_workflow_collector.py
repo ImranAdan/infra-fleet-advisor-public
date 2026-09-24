@@ -297,11 +297,12 @@ def _local_action_steps(
 ) -> tuple[str, list[dict[str, Any]]] | None:
     """Steps of a tracked local composite action a workflow step calls.
 
-    Credentials obtained inside `./.github/actions/...` are as real as ones in
-    the workflow. Returns None for a non-local `uses:`; raises ValueError when a
-    local action cannot be read from the verified commit.
-    ponytail: one level only; a composite calling another local composite is
-    not followed, add recursion with a visited set if the fleet grows one."""
+    Credentials obtained inside a `./` action are as real as ones in the
+    workflow. Returns None for a non-local `uses:`; raises ValueError when a
+    local action cannot be read from the verified commit, or when it calls a
+    further local action, which is not followed and so leaves coverage partial.
+    ponytail: one level only; add recursion with a visited set if the fleet
+    grows nested local actions."""
     match = _LOCAL_ACTION.fullmatch(uses)
     if match is None:
         return None
@@ -325,7 +326,14 @@ def _local_action_steps(
         if not isinstance(runs, dict) or runs.get("using") != "composite":
             return rel_path, []
         steps = runs.get("steps")
-        return rel_path, [step for step in steps or [] if isinstance(step, dict)]
+        if not isinstance(steps, list) or not all(isinstance(step, dict) for step in steps):
+            raise ValueError("local composite action steps are malformed")
+        if any(
+            isinstance(step.get("uses"), str) and _LOCAL_ACTION.fullmatch(step["uses"])
+            for step in steps
+        ):
+            raise ValueError("nested local action is not followed")
+        return rel_path, steps
     raise ValueError("local action has no action.yml")
 
 

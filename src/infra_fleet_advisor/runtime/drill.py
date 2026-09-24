@@ -104,7 +104,10 @@ def run_drills(
                 inside = not target.is_symlink() and target.resolve().is_relative_to(
                     worktree.resolve()
                 )
-                text = target.read_text(encoding="utf-8") if inside and target.is_file() else ""
+                try:
+                    text = target.read_text(encoding="utf-8") if inside and target.is_file() else ""
+                except UnicodeDecodeError:
+                    text = ""  # the fleet changed the file beyond what the drill targets
                 if drill.find not in text:
                     results.append(DrillResult(drill, "stale"))
                     continue

@@ -96,8 +96,8 @@ def run_review(
         checkout_root,
         limits,
         excluded_paths=excluded_paths,
-        # Local composite actions under .github/ are followed from workflow steps.
-        tracked_paths=list_tracked_paths(checkout_root, ".github"),
+        # Local composite actions may live anywhere in the repository.
+        tracked_paths=list_tracked_paths(checkout_root, "."),
     )
     tf_result = tf_iam_collector.collect(
         checkout_root,

@@ -379,3 +379,42 @@ def test_excluded_local_action_is_never_evidence(tmp_path: Path) -> None:
     result = gha_collector.collect(tmp_path, LIMITS, excluded_paths=frozenset({".github/actions"}))
 
     assert [item for item in result.evidence if item.kind == "gha_credential_method"] == []
+
+
+CALLER = "on: push\njobs:\n  a:\n    runs-on: x\n    steps:\n      - uses: ./.github/actions/aws\n"
+
+
+def test_malformed_or_nested_local_actions_make_coverage_partial(tmp_path: Path) -> None:
+    for action in (
+        "runs:\n  using: composite\n  steps: 1\n",
+        "runs:\n  using: composite\n  steps:\n    - uses: ./.github/actions/inner\n",
+    ):
+        (tmp_path / ".github" / "workflows").mkdir(parents=True, exist_ok=True)
+        (tmp_path / ".github" / "actions" / "aws").mkdir(parents=True, exist_ok=True)
+        (tmp_path / ".github" / "workflows" / "apply.yml").write_text(CALLER, encoding="utf-8")
+        (tmp_path / ".github" / "actions" / "aws" / "action.yml").write_text(
+            action, encoding="utf-8"
+        )
+
+        assert gha_collector.collect(tmp_path, LIMITS).coverage.status == "partial", action
+
+
+def test_local_action_outside_github_directory_is_followed(tmp_path: Path) -> None:
+    (tmp_path / ".github" / "workflows").mkdir(parents=True)
+    (tmp_path / "actions" / "aws").mkdir(parents=True)
+    (tmp_path / ".github" / "workflows" / "apply.yml").write_text(
+        "on: push\njobs:\n  a:\n    runs-on: x\n    permissions:\n      id-token: write\n"
+        "    steps:\n      - uses: ./actions/aws\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "actions" / "aws" / "action.yml").write_text(COMPOSITE, encoding="utf-8")
+
+    result = gha_collector.collect(
+        tmp_path,
+        LIMITS,
+        tracked_paths=frozenset({".github/workflows/apply.yml", "actions/aws/action.yml"}),
+    )
+
+    assert result.coverage.status == "ok"
+    [item] = [e for e in result.evidence if e.kind == "gha_credential_method"]
+    assert item.source_path == "actions/aws/action.yml"

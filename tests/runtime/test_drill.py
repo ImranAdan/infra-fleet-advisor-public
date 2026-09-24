@@ -138,3 +138,19 @@ def test_drill_cli_refuses_output_inside_the_fleet(tmp_path: Path) -> None:
 
     assert code == EXIT_UNSAFE_OUTPUT_ERROR
     assert not (fleet / "out").exists()
+
+
+def test_undecodable_drill_target_is_stale(tmp_path: Path) -> None:
+    fleet = tmp_path / "fleet"
+    fleet.mkdir()
+    _git(fleet, "init", "-q")
+    (fleet / "eks.tf").write_text("retention = 14\n", encoding="utf-8")
+    (fleet / "binary.tf").write_bytes(b"\xff\xfe\x00retention")
+    _git(fleet, "add", "-A")
+    _git(fleet, "commit", "-qm", "base")
+
+    [result] = run_drills(
+        fleet, (Drill("C-001", "binary.tf", "retention", "x"),), _fake_review, tmp_path / "out"
+    )
+
+    assert result.outcome == "stale"
