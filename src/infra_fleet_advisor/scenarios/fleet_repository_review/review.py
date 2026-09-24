@@ -20,6 +20,7 @@ from infra_fleet_advisor.core.report import (
 from infra_fleet_advisor.provenance.source_verification import SourceProvenance, list_tracked_paths
 from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
     application_config_collector,
+    application_contract_collector,
     dependency_update_collector,
     fleet_lifecycle_collector,
 )
@@ -42,6 +43,8 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import CONCE
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     APP_CONFIG_COLLECTOR_ID,
     APP_CONFIG_COLLECTOR_VERSION,
+    APP_CONTRACT_COLLECTOR_ID,
+    APP_CONTRACT_COLLECTOR_VERSION,
     DEPENDENCY_UPDATE_COLLECTOR_ID,
     DEPENDENCY_UPDATE_COLLECTOR_VERSION,
     FLEET_LIFECYCLE_COLLECTOR_ID,
@@ -160,6 +163,12 @@ def run_review(
         excluded_paths=excluded_paths,
         tracked_paths=list_tracked_paths(checkout_root, "applications"),
     )
+    app_contract_result = application_contract_collector.collect(
+        checkout_root,
+        limits,
+        excluded_paths=excluded_paths,
+        tracked_paths=list_tracked_paths(checkout_root, "."),
+    )
     all_evidence: tuple[Evidence, ...] = (
         gha_result.evidence
         + tf_result.evidence
@@ -169,6 +178,7 @@ def run_review(
         + lifecycle_result.evidence
         + dependency_result.evidence
         + app_config_result.evidence
+        + app_contract_result.evidence
     )
     evidence_by_id = {e.evidence_id: e for e in all_evidence}
     coverage: list[CollectorCoverage] = [
@@ -180,6 +190,7 @@ def run_review(
         lifecycle_result.coverage,
         dependency_result.coverage,
         app_config_result.coverage,
+        app_contract_result.coverage,
     ]
 
     if intent_catalog is None:
@@ -238,6 +249,7 @@ def run_review(
             FLEET_LIFECYCLE_COLLECTOR_ID: FLEET_LIFECYCLE_COLLECTOR_VERSION,
             DEPENDENCY_UPDATE_COLLECTOR_ID: DEPENDENCY_UPDATE_COLLECTOR_VERSION,
             APP_CONFIG_COLLECTOR_ID: APP_CONFIG_COLLECTOR_VERSION,
+            APP_CONTRACT_COLLECTOR_ID: APP_CONTRACT_COLLECTOR_VERSION,
         },
         model_identifier=synthesis_response.model_identifier,
         run_started_at=run_started_at,

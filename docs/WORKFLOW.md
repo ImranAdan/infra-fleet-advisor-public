@@ -51,6 +51,11 @@ issue links back to the report PR and approved report commit. Incomplete relevan
 collection, suppression and accepted trade-offs do not produce fresh fix
 requests.
 
+Merging also updates `reports/report.json` on `main`, which the fleet's Grafana
+reads: the **Declared intent** row of its Fleet Application dashboard shows the
+approved counts, the reviewed fleet commit and the divergent positions beside
+the live golden signals. A declined or unmerged report never appears there.
+
 ## Select fleet issues for an agent
 
 In the fleet project, ask the agent to inspect advisor-labelled issues and

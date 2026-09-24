@@ -34,6 +34,7 @@ CONCERN_IDLE_CAPACITY_UNSCHEDULED = "staging_capacity_never_released_on_schedule
 CONCERN_WORKER_SCALING_STATIC = "worker_group_not_demand_scaled"
 CONCERN_COST_TAGS_MISSING = "cost_allocation_tags_missing"
 CONCERN_ECR_PUBLICATION_UNGATED = "ecr_publication_not_scan_gated"
+CONCERN_PLATFORM_NAMES_APPLICATION = "platform_names_an_application"
 
 # The deterministic support conditions for each concern: which evidence kind
 # can back it, and which collector-derived facts must hold. A collector emits
@@ -576,6 +577,31 @@ CONCERN_TEMPLATES: dict[str, ConcernTemplate] = {
         confidence=0.9,
         confidence_explanation=(
             "Derived from workflow job dependencies, conditions and Trivy step inputs."
+        ),
+    ),
+    CONCERN_PLATFORM_NAMES_APPLICATION: ConcernTemplate(
+        category="maintainability",
+        priority="medium",
+        title="The platform is tied to a specific application",
+        summary=(
+            "Platform files name an application directly, the app contract is missing, or "
+            "fewer than two applications ship a contract, so swapping the app is not a "
+            "contract change."
+        ),
+        impact=(
+            "Replacing the application means editing platform manifests, scripts or "
+            "policies, and nothing keeps a second application working."
+        ),
+        suggested_change=(
+            "Read the application from k8s/fleet-app (Flux substitutes ${APP_*}; scripts "
+            "read the file) instead of naming it, and keep at least two applications with "
+            "contracts under k8s/applications/<name>/fleet-app.yaml."
+        ),
+        trade_offs="Indirection through the contract makes one-app edits slightly less direct.",
+        confidence=0.9,
+        confidence_explanation=(
+            "Read from the tracked app contracts and a whole-word search of tracked platform "
+            "files; nothing was executed."
         ),
     ),
 }

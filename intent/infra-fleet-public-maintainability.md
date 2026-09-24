@@ -2,7 +2,7 @@
 
 - Format: `1`
 - Intent ID: `infra_fleet_public_maintainability`
-- Version: `1.3`
+- Version: `1.4`
 - Category: `maintainability`
 
 This document declares the fleet owner's adoption experience for the public
@@ -69,3 +69,21 @@ deliberate operation.
 
 - Check: `fleet_aws_onboarding`
 - Priority: `high`
+
+## M-004 · Swappable application
+
+### Intent
+
+The platform runs whichever application its contract,
+`k8s/fleet-app/fleet-app.yaml`, selects, and names none of its own. Routing,
+progressive delivery, autoscaling, network policy, admission, the local build
+and the acceptance test read the application from that contract, so replacing
+the application is a contract change rather than a platform migration. At
+least two applications ship contracts, so the swap stays exercised rather than
+theoretical. Per-application AWS resources (its ECR repository, release
+workflow and secrets) are outside this position.
+
+### Evaluation
+
+- Check: `fleet_application_swappable`
+- Priority: `medium`

@@ -79,8 +79,8 @@ are listed in the [documentation index](docs/README.md).
 
 ## Current scope
 
-The advisor reviews one public fleet repository. Twenty declared positions span
-security, reliability, cost, and maintainability. Twenty registered checks, one per declared position, cover
+The advisor reviews one public fleet repository. Twenty-one declared positions span
+security, reliability, cost, and maintainability. Twenty-one registered checks, one per declared position, cover
 workflow credentials (including local composite actions), scan-gated ECR
 publication, Dependabot coverage, literal Terraform IAM policies, Kubernetes
 rollouts, container hardening, ingress restriction, bounded egress, HTTPS on
@@ -88,7 +88,8 @@ public ingress, service-account token privilege, staging-only public EKS
 endpoints, the session-cookie CSRF control, scheduled release of idle staging
 capacity, staging log retention, ECR
 image lifecycle, cost-allocation tags, demand-driven worker scaling, the Fleet
-profile lifecycle, local first use, and AWS onboarding and teardown. Accepted
+profile lifecycle, local first use, AWS onboarding and teardown, and whether the
+platform names no application of its own. Accepted
 risks are checked as guardrails: the check proves the conditions that made the
 risk acceptable still hold.
 Positions without a trusted check remain explicitly unverified. Repository
