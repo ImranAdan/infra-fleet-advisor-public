@@ -82,6 +82,22 @@ def to_json(report: Report) -> str:
     return json.dumps(asdict(report), sort_keys=True, indent=2)
 
 
+def intent_coverage_summary(report: Report) -> str | None:
+    """Return the one-line intent score shown in reports and local output."""
+    if not report.intent_evaluations:
+        return None
+    evaluations = report.intent_evaluations
+    checked = [item for item in evaluations if item.check_key is not None]
+    satisfied = sum(item.status == "satisfied" for item in checked)
+    divergent = sum(item.status == "divergent" for item in checked)
+    return (
+        f"{len(checked)} of {len(evaluations)} positions have a check — "
+        f"{satisfied} satisfied, {divergent} divergent, "
+        f"{len(checked) - satisfied - divergent} checked but unproven; "
+        f"{len(evaluations) - len(checked)} declared without a check."
+    )
+
+
 def _safe_markdown_text(value: str) -> str:
     escaped = value.replace("\\", "\\\\")
     for character in "`*_{}[]<>#":
@@ -130,17 +146,7 @@ def to_markdown(report: Report) -> str:
     if not report.intent_evaluations:
         lines.append("- No intent catalog was supplied.")
     else:
-        evaluations = report.intent_evaluations
-        checked = [item for item in evaluations if item.check_key is not None]
-        satisfied = sum(item.status == "satisfied" for item in checked)
-        divergent = sum(item.status == "divergent" for item in checked)
-        lines += [
-            f"**Coverage:** {len(checked)} of {len(evaluations)} positions have a check — "
-            f"{satisfied} satisfied, {divergent} divergent, "
-            f"{len(checked) - satisfied - divergent} checked but unproven; "
-            f"{len(evaluations) - len(checked)} declared without a check.",
-            "",
-        ]
+        lines += [f"**Coverage:** {intent_coverage_summary(report)}", ""]
     for evaluation in report.intent_evaluations:
         identity = f"{evaluation.document_id}/{evaluation.proposition_id}"
         statement = _safe_markdown_text(evaluation.statement).replace("\n", "\n  ")
