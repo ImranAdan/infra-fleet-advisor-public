@@ -15,7 +15,7 @@ checks guard the fleet at three moments:
 flowchart LR
     Intent["Owner intent<br/>20 declared positions"] --> Checks["Deterministic checks"]
     Checks -->|before merge| Gate["Intent gate<br/>on fleet pull requests"]
-    Checks -->|after merge| Report["Nightly report PR<br/>then approved fleet issues"]
+    Checks -->|after merge| Report["Nightly report when it changes<br/>then approved fleet issues"]
     Drills["Check drills"] -.->|prove each check still fires| Checks
 ```
 
@@ -23,15 +23,17 @@ flowchart LR
   runs the checks on each fleet pull request. It fails a change that would newly
   break a declared position, or make one impossible to evaluate. Try it locally:
   `./scripts/intent-gate.sh ../infra-fleet-public BASE_SHA HEAD_SHA /tmp/intent-gate`.
-- **After merge:** a nightly review opens a report PR. Merging it is the decision
-  to publish eligible findings as fleet issues, and the owner picks which get
-  fixed. See the [end-to-end workflow](docs/WORKFLOW.md).
+- **After merge:** a nightly review opens or updates a report PR whenever the
+  report changes. Merging it is the decision to publish eligible findings as
+  fleet issues, and the owner picks which get fixed. See the [end-to-end workflow](docs/WORKFLOW.md).
 - **On the advisor itself:** every check has a [drill](drills/fleet-mutations.yaml),
   a one-line violation of the real fleet that must make it fire. A check that
   stops seeing the fleet goes red instead of inflating coverage.
 
-Kubernetes checks evaluate what each deployment profile actually applies: the
-advisor renders the profiles itself, without running kustomize or fleet code.
+The Kubernetes security checks evaluate what each deployment profile actually
+applies: the advisor renders the profiles itself, without running kustomize or
+fleet code. Rollout capacity and container hardening still read the raw
+manifests; see [scope and coverage](docs/status.md).
 
 ## Run a local review
 
