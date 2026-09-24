@@ -28,13 +28,18 @@ flowchart LR
   fleet issues, and the owner picks which get fixed. See the [end-to-end workflow](docs/WORKFLOW.md).
 - **On the advisor itself:** every check has a [drill](drills/fleet-mutations.yaml),
   a one-line violation of the real fleet that must make it fire. A check that
-  stops seeing the fleet goes red instead of inflating coverage.
+  stops seeing the fleet goes red instead of inflating coverage. The
+  [ratchet guard](docs/status.md#ratchet-guard) reviews the same fleet commit with
+  the base advisor and the proposed one, so a change that loses proof, a check or
+  a finding shows up on its pull request.
 
 The Kubernetes workload and security checks evaluate what each deployment
 profile actually applies. The S-006 EKS endpoint check reads Terraform
 configuration. The advisor renders the profiles itself, without running
 kustomize or fleet code. A control must hold in every rendered profile; see
-[scope and coverage](docs/status.md).
+[scope and coverage](docs/status.md). The fleet's application is a plug-in
+named by a contract ConfigMap, and the renderer substitutes it, so the checks
+follow whichever app the fleet runs.
 
 ## Run a local review
 

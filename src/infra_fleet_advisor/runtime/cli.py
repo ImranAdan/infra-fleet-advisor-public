@@ -37,6 +37,8 @@ from infra_fleet_advisor.runtime.issue_publication import (
     build_issue_plan,
     write_issue_plan,
 )
+from infra_fleet_advisor.runtime.ratchet import compare_advisors
+from infra_fleet_advisor.runtime.ratchet import to_markdown as ratchet_markdown
 from infra_fleet_advisor.runtime.report_approval import (
     read_report_approval,
     verify_report_approval,
@@ -67,6 +69,7 @@ EXIT_PIPELINE_ERROR = 4
 EXIT_UNSAFE_OUTPUT_ERROR = 5
 EXIT_INTENT_REGRESSION = 6
 EXIT_DRILL_FAILED = 7
+EXIT_RATCHET_SLIPPED = 8
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -88,6 +91,12 @@ def _build_parser() -> argparse.ArgumentParser:
     gate.add_argument("--base-report", required=True, type=Path)
     gate.add_argument("--head-report", required=True, type=Path)
     gate.add_argument("--summary", type=Path, default=None)
+    ratchet = sub.add_parser(
+        "ratchet", help="Fail when an advisor change loses proof on an unchanged fleet"
+    )
+    ratchet.add_argument("--base-report", required=True, type=Path)
+    ratchet.add_argument("--head-report", required=True, type=Path)
+    ratchet.add_argument("--summary", type=Path, default=None)
     drill = sub.add_parser(
         "drill", help="Apply canary violations to the fleet and confirm each check fires"
     )
@@ -262,6 +271,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             with args.summary.open("a", encoding="utf-8") as handle:
                 handle.write(summary)
         return EXIT_OK if gate_result.passed else EXIT_INTENT_REGRESSION
+
+    if args.command == "ratchet":
+        try:
+            ratchet_result = compare_advisors(args.base_report, args.head_report)
+        except PolicyError as exc:
+            print(f"policy error: {exc}", file=sys.stderr)
+            return EXIT_POLICY_ERROR
+        ratchet_summary = ratchet_markdown(ratchet_result)
+        print(ratchet_summary)
+        if args.summary is not None:
+            with args.summary.open("a", encoding="utf-8") as handle:
+                handle.write(ratchet_summary)
+        return EXIT_OK if ratchet_result.passed else EXIT_RATCHET_SLIPPED
 
     if args.command == "drill":
 

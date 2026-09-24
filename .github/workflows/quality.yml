@@ -124,6 +124,46 @@ jobs:
             --policy policy.yaml --intent-dir intent \
             --output-dir "$RUNNER_TEMP/drills" --summary "$GITHUB_STEP_SUMMARY"
 
+  ratchet-guard:
+    name: Ratchet guard
+    # Review the same fleet commit with the base advisor and with this change.
+    # The fleet is held constant, so lost proof, lost checks or vanished
+    # findings are this change's doing. Read-only: the fleet is cloned, never written.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out the fleet
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ImranAdan/infra-fleet-public
+          path: target
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Install locked dependencies
+        run: make setup
+
+      - name: Compare the base advisor with this change
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: scripts/ratchet-guard.sh target "$BASE_SHA" "$RUNNER_TEMP/ratchet"
+
   workflows:
     name: Workflow lint
     runs-on: ubuntu-latest
