@@ -204,3 +204,57 @@ def test_untracked_terraform_downloads_are_not_evidence(tmp_path) -> None:
 
     assert result.coverage.status == "ok"
     assert result.evidence == ()
+
+
+PROVIDER = 'provider "aws" {\n  region = "eu-west-2"\n%s\n}\n'
+
+
+def test_provider_default_tags_must_carry_cost_allocation_keys(tmp_path) -> None:
+    cases = {
+        "": (False, "environment, owner, service"),
+        '  default_tags {\n    tags = {\n      Environment = "staging"\n'
+        '      Service     = "fleet"\n      Owner       = "platform"\n    }\n  }': (True, ""),
+        '  default_tags {\n    tags = { environment = "staging", service = "fleet" }\n  }': (
+            False,
+            "owner",
+        ),
+    }
+    for block, (declared, missing) in cases.items():
+        result = _collect(tmp_path, {"infrastructure/staging/main.tf": PROVIDER % block})
+        assert result.coverage.status == "ok"
+        [fact] = _facts(result, collector.EVIDENCE_KIND_COST_TAGS)
+        assert fact["declares_cost_allocation_tags"] is declared
+        assert fact["missing_cost_tags"] == missing
+
+
+def test_default_tags_resolve_one_local_reference(tmp_path) -> None:
+    locals_tf = (
+        'locals {\n  region = "eu-west-2"\n  cost_tags = {\n'
+        '    Environment = local.environment\n    Service = "fleet"\n'
+        '    Owner = "platform"\n  }\n}\n'
+    )
+    result = _collect(
+        tmp_path,
+        {
+            "infrastructure/staging/locals.tf": locals_tf,
+            "infrastructure/staging/main.tf": PROVIDER
+            % "  default_tags {\n    tags = local.cost_tags\n  }",
+        },
+    )
+
+    assert result.coverage.status == "ok"
+    [fact] = _facts(result, collector.EVIDENCE_KIND_COST_TAGS)
+    assert fact["declares_cost_allocation_tags"] is True
+
+
+def test_computed_default_tags_are_partial_not_assumed(tmp_path) -> None:
+    result = _collect(
+        tmp_path,
+        {
+            "infrastructure/staging/main.tf": PROVIDER
+            % "  default_tags {\n    tags = merge(local.a, local.b)\n  }"
+        },
+    )
+
+    assert result.coverage.status == "partial"
+    assert _facts(result, collector.EVIDENCE_KIND_COST_TAGS) == []

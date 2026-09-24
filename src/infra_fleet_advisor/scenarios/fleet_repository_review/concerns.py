@@ -23,6 +23,8 @@ CONCERN_FLEET_AWS_ONBOARDING_INCOMPLETE = "fleet_aws_onboarding_incomplete"
 CONCERN_CONTAINER_HARDENING_INCOMPLETE = "container_hardening_incomplete"
 CONCERN_LOG_RETENTION_UNBOUNDED = "staging_log_retention_unbounded"
 CONCERN_ECR_RETENTION_UNBOUNDED = "ecr_image_retention_unbounded"
+CONCERN_COST_TAGS_MISSING = "cost_allocation_tags_missing"
+CONCERN_ECR_PUBLICATION_UNGATED = "ecr_publication_not_scan_gated"
 
 # The deterministic support conditions for each concern: which evidence kind
 # can back it, and which collector-derived facts must hold. A collector emits
@@ -326,6 +328,51 @@ CONCERN_TEMPLATES: dict[str, ConcernTemplate] = {
         confidence=0.9,
         confidence_explanation=(
             "Joined from literal repository and lifecycle-policy resources in one root module."
+        ),
+    ),
+    CONCERN_COST_TAGS_MISSING: ConcernTemplate(
+        category="cost",
+        priority="medium",
+        title="AWS provider does not apply cost-allocation tags by default",
+        summary=(
+            "An AWS provider block has no default_tags carrying environment, service and owner "
+            "keys, so billed resources in that root module cannot be attributed consistently."
+        ),
+        impact=(
+            "Cost Explorer cannot split the bill by environment, service or owner, and "
+            "resources that forget a per-resource tag map go unattributed."
+        ),
+        suggested_change=(
+            "Add default_tags { tags = { Environment, Service, Owner } } to every aws provider, "
+            "for example from a shared local, and activate the keys as cost-allocation tags."
+        ),
+        trade_offs=(
+            "Changing default tags updates every taggable resource on the next apply; some "
+            "resources, such as instances launched by node groups, still need tag propagation."
+        ),
+        confidence=0.9,
+        confidence_explanation=(
+            "Read from literal provider default_tags, resolving one level of local reference."
+        ),
+    ),
+    CONCERN_ECR_PUBLICATION_UNGATED: ConcernTemplate(
+        category="security",
+        priority="high",
+        title="ECR publication is not gated by a blocking Critical/High scan",
+        summary=(
+            "A workflow job that logs in to ECR is not preceded, in its own steps or through "
+            "needs, by a Trivy step that fails on Critical or High findings."
+        ),
+        impact="An image with a known, fixable Critical or High vulnerability can be published.",
+        suggested_change=(
+            "Run Trivy with severity CRITICAL,HIGH and a non-zero exit-code before the ECR login, "
+            "or in a job the publishing job needs, without always(), failure() or cancelled() "
+            "overriding that dependency."
+        ),
+        trade_offs="A new upstream CVE can block an otherwise unchanged release until triaged.",
+        confidence=0.9,
+        confidence_explanation=(
+            "Derived from workflow job dependencies, conditions and Trivy step inputs."
         ),
     ),
 }

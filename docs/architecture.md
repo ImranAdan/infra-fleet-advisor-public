@@ -180,6 +180,19 @@ coverage partial rather than assuming a value. C-003 projects log retention only
 under `infrastructure/staging/` and cannot prove satisfaction, because AWS
 services create log groups the repository never declares.
 
+The same collector records, per `provider "aws"` block, which of the
+environment, service and owner keys its `default_tags` apply, resolving one
+level of `local.name` from the same root module. Computed tags such as `merge()`
+make coverage partial. C-005 is divergence-only because provider defaults do
+not reach every billed resource.
+
+For S-011 the workflow collector emits one record per job that logs in to ECR
+(`amazon-ecr-login`, `docker/login-action` with an ECR registry, or
+`aws ecr get-login-password`). The job is gated when an unconditional Trivy step
+with `CRITICAL,HIGH` and a non-zero `exit-code` runs earlier in the job, or in a
+job reached through `needs` where no job on the path uses `always()`,
+`failure()` or `cancelled()` in its condition.
+
 Workflow and Terraform source-file budgets apply after policy exclusions and
 tracked-path filtering. Downloaded `.terraform` files are local tool state and
 are ignored unless explicitly tracked, so initialized checkouts retain the same

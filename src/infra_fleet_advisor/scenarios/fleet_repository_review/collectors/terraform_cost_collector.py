@@ -9,6 +9,7 @@ from infra_fleet_advisor.core.limits import ExecutionLimits
 from infra_fleet_advisor.core.paths import validate_repo_relative_path
 from infra_fleet_advisor.core.report import CollectorCoverage
 from infra_fleet_advisor.scenarios.fleet_repository_review.collectors.terraform_iam_collector import (  # noqa: E501
+    _extract_balanced,
     _extract_policy_json,
     _iter_resource_blocks,
     _LiteralParser,
@@ -16,6 +17,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.collectors.terraform_
     _Traversal,
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
+    EVIDENCE_KIND_COST_TAGS,
     EVIDENCE_KIND_ECR_LIFECYCLE,
     EVIDENCE_KIND_LOG_RETENTION,
     TF_COST_COLLECTOR_ID,
@@ -27,6 +29,11 @@ _RESOURCE_HEADER = re.compile(
     r'\s+"([A-Za-z0-9_-]+)"\s*\{'
 )
 _MODULE_HEADER = re.compile(r'(module)\s+"([A-Za-z0-9_-]+)"\s*\{')
+_PROVIDER_HEADER = re.compile(r'(provider)\s+"(aws)"\s*\{')
+_LOCALS_HEADER = re.compile(r"(locals)\s*()\{")
+_DEFAULT_TAGS_HEADER = re.compile(r"(default_tags)\s*()\{")
+_LOCAL_REFERENCE = re.compile(r"^local\.([A-Za-z_][A-Za-z0-9_]*)$")
+_COST_TAG_KEYS = frozenset({"environment", "service", "owner"})
 _ECR_REFERENCE = re.compile(r"^aws_ecr_repository\.([A-Za-z0-9_-]+)\.(?:name|id)$")
 _MAX_RETENTION_DAYS = 30
 
@@ -69,6 +76,72 @@ def _attribute(body: str, name: str, default: Any = None) -> Any:
     if parser.index != len(parser.tokens):
         raise ValueError(f"{name} is not a single literal")
     return value
+
+
+def _object_attribute(body: str, name: str) -> Any:
+    """Like `_attribute`, but also reads a multi-line `{ ... }` object literal."""
+    code = _mask_non_code(body)
+    pattern = re.compile(rf"(?<![\w.]){re.escape(name)}\s*=\s*")
+    hits = [
+        match
+        for match in pattern.finditer(code)
+        if code[: match.start()].count("{") - code[: match.start()].count("}") == 1
+    ]
+    if len(hits) != 1 or code[hits[0].end() : hits[0].end() + 1] != "{":
+        return _attribute(body, name)
+    literal, _ = _extract_balanced(body, hits[0].end(), "{", "}")
+    parser = _LiteralParser(_mask_non_code(literal, strings=False))
+    value = parser.value()
+    if parser.index != len(parser.tokens):
+        raise ValueError(f"{name} is not a single literal")
+    return value
+
+
+def _tag_evidence(rel_path: str, provider_body: str, locals_bodies: list[str]) -> Evidence:
+    """Record which cost-allocation keys one AWS provider applies by default."""
+    alias = _attribute(provider_body, "alias")
+    locator = "provider.aws" + (f".{alias}" if isinstance(alias, str) else "")
+    blocks, unbalanced = _iter_resource_blocks(provider_body, _DEFAULT_TAGS_HEADER)
+    if unbalanced or len(blocks) > 1:
+        raise ValueError("default_tags is malformed")
+    tags: Any = {}
+    if blocks:
+        tags = _object_attribute(blocks[0][2], "tags")
+        if isinstance(tags, _Traversal):
+            # Resolve one level of `local.name`, the usual home for shared tags.
+            reference = _LOCAL_REFERENCE.fullmatch(tags.value)
+            if reference is None:
+                raise ValueError("default tags reference a non-local value")
+            found = [
+                value
+                for body in locals_bodies
+                if (value := _object_attribute(body, reference.group(1))) is not None
+            ]
+            if len(found) != 1:
+                raise ValueError("default tags reference an unresolved value")
+            tags = found[0]
+    if not isinstance(tags, dict):
+        raise ValueError("default tags are not a literal object")
+    keys = sorted(str(key) for key in tags)
+    missing = sorted(_COST_TAG_KEYS - {key.lower() for key in keys})
+    root_module = PurePosixPath(rel_path).parent.as_posix()
+    return build_evidence(
+        collector_id=TF_COST_COLLECTOR_ID,
+        collector_version=TF_COST_COLLECTOR_VERSION,
+        kind=EVIDENCE_KIND_COST_TAGS,
+        source_path=rel_path,
+        locator=locator,
+        excerpt=(
+            f"{locator} default_tags: {', '.join(keys[:10]) or 'none'}"
+            + (f"; missing {', '.join(missing)}" if missing else "")
+        ),
+        fact={
+            "has_default_tags": bool(blocks),
+            "missing_cost_tags": ", ".join(missing),
+            "declares_cost_allocation_tags": not missing,
+        },
+        identity_parts=(root_module, locator),
+    )
 
 
 def _retention_evidence(rel_path: str, locator: str, retention_days: int, excerpt: str) -> Evidence:
@@ -272,6 +345,8 @@ def collect(
     evidence: list[Evidence] = []
     repositories: dict[tuple[str, str], tuple[str, str]] = {}
     policies: list[tuple[str, str, str]] = []
+    providers: list[tuple[str, str, str]] = []
+    locals_by_module: dict[str, list[str]] = {}
     failures = 0
     for path in files:
         rel_path = path.relative_to(checkout_root).as_posix()
@@ -291,7 +366,11 @@ def collect(
 
         resources, unbalanced = _iter_resource_blocks(text, _RESOURCE_HEADER)
         modules, module_unbalanced = _iter_resource_blocks(text, _MODULE_HEADER)
-        failures += unbalanced + module_unbalanced
+        provider_blocks, provider_unbalanced = _iter_resource_blocks(text, _PROVIDER_HEADER)
+        locals_blocks, locals_unbalanced = _iter_resource_blocks(text, _LOCALS_HEADER)
+        failures += unbalanced + module_unbalanced + provider_unbalanced + locals_unbalanced
+        providers.extend((rel_path, module, body) for _kw, _name, body in provider_blocks)
+        locals_by_module.setdefault(module, []).extend(body for _kw, _n, body in locals_blocks)
         for resource_type, name, body in resources:
             try:
                 if resource_type == "aws_cloudwatch_log_group":
@@ -316,6 +395,12 @@ def collect(
                 continue
             if item is not None:
                 evidence.append(item)
+
+    for rel_path, module, body in providers:
+        try:
+            evidence.append(_tag_evidence(rel_path, body, locals_by_module.get(module, [])))
+        except ValueError:
+            failures += 1
 
     ecr_items, ecr_failures = _ecr_evidence(repositories, policies)
     evidence.extend(ecr_items)

@@ -1,6 +1,7 @@
 """Tests for the GitHub Actions workflow evidence collector."""
 
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -211,3 +212,67 @@ def test_tracked_symlink_cannot_read_ignored_workflow_content(git_checkout) -> N
     )
     assert result.evidence == ()
     assert result.coverage.status == "partial"
+
+
+SCAN = (
+    "      - uses: aquasecurity/trivy-action@v0\n"
+    "        with:\n          severity: CRITICAL,HIGH\n          exit-code: %s\n"
+)
+LOGIN = "      - uses: aws-actions/amazon-ecr-login@v2\n"
+
+
+def _gate(tmp_path: Path, workflow: str) -> list[bool]:
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True, exist_ok=True)
+    (workflows / "publish.yml").write_text(workflow, encoding="utf-8")
+    result = gha_collector.collect(tmp_path, LIMITS)
+    assert result.coverage.status == "ok"
+    return [
+        bool(item.fact["gated_by_blocking_scan"])
+        for item in result.evidence
+        if item.kind == "gha_ecr_publication_gate"
+    ]
+
+
+def test_ecr_publication_is_gated_by_a_blocking_scan_through_needs(tmp_path: Path) -> None:
+    workflow = (
+        "on: push\njobs:\n"
+        "  scan:\n    runs-on: x\n    steps:\n"
+        + SCAN
+        % "1"
+        + "  configure:\n    runs-on: x\n    needs: scan\n    steps:\n      - run: echo\n"
+        "  push:\n    runs-on: x\n    needs: [configure]\n    steps:\n" + LOGIN
+    )
+
+    assert _gate(tmp_path, workflow) == [True]
+
+
+def test_ecr_publication_gate_rejects_weak_or_bypassed_scans(tmp_path: Path) -> None:
+    ungated = {
+        "no scan": "  push:\n    runs-on: x\n    steps:\n" + LOGIN,
+        "non-blocking exit code": "  push:\n    runs-on: x\n    steps:\n" + SCAN % "0" + LOGIN,
+        "scan after login": "  push:\n    runs-on: x\n    steps:\n" + LOGIN + SCAN % "1",
+        "status override": (
+            "  scan:\n    runs-on: x\n    steps:\n"
+            + SCAN % "1"
+            + "  push:\n    runs-on: x\n    needs: scan\n    if: always()\n    steps:\n"
+            + LOGIN
+        ),
+        "docker login to ECR": (
+            "  push:\n    runs-on: x\n    steps:\n"
+            "      - uses: docker/login-action@v3\n        with:\n"
+            "          registry: 123456789012.dkr.ecr.eu-west-2.amazonaws.com\n"
+        ),
+        "CLI login": (
+            "  push:\n    runs-on: x\n    steps:\n"
+            "      - run: aws ecr get-login-password | docker login --password-stdin x\n"
+        ),
+    }
+    for name, jobs in ungated.items():
+        assert _gate(tmp_path, "on: push\njobs:\n" + jobs) == [False], name
+
+
+def test_scan_earlier_in_the_publishing_job_gates_it(tmp_path: Path) -> None:
+    workflow = "on: push\njobs:\n  push:\n    runs-on: x\n    steps:\n" + SCAN % "1" + LOGIN
+
+    assert _gate(tmp_path, workflow) == [True]
