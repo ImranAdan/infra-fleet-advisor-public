@@ -334,10 +334,10 @@ CONCERN_TEMPLATES: dict[str, ConcernTemplate] = {
     CONCERN_DEPENDENCY_UPDATES_MISSING: ConcernTemplate(
         category="security",
         priority="medium",
-        title="Tracked dependency manifests have no Dependabot update entry",
+        title="Tracked dependency manifests lack monthly Dependabot updates",
         summary=(
-            "A tracked manifest directory (a Dockerfile, Python requirements, Terraform "
-            "providers, workflows) has no matching Dependabot package-ecosystem entry."
+            "A tracked manifest directory (a Dockerfile, Python requirements, pinned Terraform, "
+            "workflows) has no matching Dependabot entry, or its entry is not scheduled monthly."
         ),
         impact=(
             "Pinned versions and image digests in that directory never receive routine or "

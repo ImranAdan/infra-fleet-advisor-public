@@ -34,7 +34,7 @@ def _coverage(tmp_path: Path, files: dict[str, str]) -> dict[str, bool]:
         path.write_text(text, encoding="utf-8")
     result = collector.collect(tmp_path, LIMITS, tracked_paths=frozenset(files))
     assert result.coverage.status == "ok"
-    return {item.locator: bool(item.fact["covered_by_dependabot"]) for item in result.evidence}
+    return {item.locator: bool(item.fact["updated_monthly"]) for item in result.evidence}
 
 
 def test_each_manifest_directory_is_matched_to_an_update_entry(tmp_path: Path) -> None:
@@ -46,8 +46,17 @@ def test_each_manifest_directory_is_matched_to_an_update_entry(tmp_path: Path) -
             "app/requirements.txt": "flask==3.0\n",
             "app/Dockerfile": "FROM python:3.12\n",
             "requirements-dev.txt": "gitlint==0.19.1\n",
-            "infra/staging/main.tf": "terraform {\n  required_providers {}\n}\n",
+            "infra/staging/main.tf": (
+                'terraform {\n  required_providers {\n    aws = { source = "hashicorp/aws", '
+                'version = ">= 6" }\n  }\n}\n'
+            ),
+            "infra/prod/main.tf": 'module "m" {\n  source  = "x/y/aws"\n  version = "1.0.0"\n}\n',
             "infra/staging/modules/role/main.tf": 'resource "x" "y" {}\n',
+            "infra/unpinned/main.tf": (
+                '# version = "1.0" is only a comment\n'
+                'terraform {\n  required_version = ">= 1.14"\n'
+                '  required_providers {\n    aws = { source = "hashicorp/aws" }\n  }\n}\n'
+            ),
         },
     )
 
@@ -56,7 +65,9 @@ def test_each_manifest_directory_is_matched_to_an_update_entry(tmp_path: Path) -
         "pip:app": True,
         "docker:app": False,
         "pip:/": False,
-        "terraform:infra/staging": True,
+        # Covered, but weekly rather than the declared monthly cadence.
+        "terraform:infra/staging": False,
+        "terraform:infra/prod": False,
     }
 
 

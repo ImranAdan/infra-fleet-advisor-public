@@ -224,7 +224,7 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
                 category="security",
                 evidence_kind=EVIDENCE_KIND_DEPENDENCY_UPDATES,
                 collector_id=DEPENDENCY_UPDATE_COLLECTOR_ID,
-                required_facts={"covered_by_dependabot": False},
+                required_facts={"updated_monthly": False},
             ),
             # Alerts and security updates are repository settings the template
             # cannot declare, so full configuration still cannot prove S-010.

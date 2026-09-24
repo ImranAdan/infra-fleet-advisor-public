@@ -9,6 +9,9 @@ import yaml
 from infra_fleet_advisor.core.evidence import Evidence, build_evidence
 from infra_fleet_advisor.core.limits import ExecutionLimits
 from infra_fleet_advisor.core.report import CollectorCoverage
+from infra_fleet_advisor.scenarios.fleet_repository_review.collectors.terraform_iam_collector import (  # noqa: E501
+    _mask_non_code,
+)
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     DEPENDENCY_UPDATE_COLLECTOR_ID,
     DEPENDENCY_UPDATE_COLLECTOR_VERSION,
@@ -16,7 +19,8 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
 )
 
 _CONFIG_PATHS = (".github/dependabot.yml", ".github/dependabot.yaml")
-_PINNED_TERRAFORM = re.compile(r"\brequired_providers\b|^\s*version\s*=", re.MULTILINE)
+# A provider or module version constraint, outside comments and strings.
+_PINNED_TERRAFORM = re.compile(r"\bversion\s*=")
 _MAX_EVIDENCE = 200
 
 
@@ -135,7 +139,7 @@ def collect(
             continue
         if ecosystem == "terraform":
             try:
-                if not _PINNED_TERRAFORM.search(_read(checkout_root, path, limits)):
+                if not _PINNED_TERRAFORM.search(_mask_non_code(_read(checkout_root, path, limits))):
                     continue
             except (OSError, UnicodeError, ValueError):
                 failures += 1
@@ -165,6 +169,9 @@ def collect(
                 fact={
                     "covered_by_dependabot": bool(intervals),
                     "interval": intervals[0] if intervals else "",
+                    # S-010 declares monthly routine checks; any other or a
+                    # missing schedule is incomplete configuration.
+                    "updated_monthly": "monthly" in intervals,
                 },
                 identity_parts=(ecosystem, shown),
             )
