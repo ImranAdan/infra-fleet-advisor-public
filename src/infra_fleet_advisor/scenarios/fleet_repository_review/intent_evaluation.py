@@ -11,7 +11,9 @@ from infra_fleet_advisor.core.report import CollectorCoverage
 from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
     CONCERN_CI_CREDENTIALS_WITHOUT_OIDC,
     CONCERN_CONTAINER_HARDENING_INCOMPLETE,
+    CONCERN_COST_TAGS_MISSING,
     CONCERN_DEPLOYMENT_ROLLOUT_CAPACITY,
+    CONCERN_ECR_PUBLICATION_UNGATED,
     CONCERN_ECR_RETENTION_UNBOUNDED,
     CONCERN_FLEET_AWS_ONBOARDING_INCOMPLETE,
     CONCERN_FLEET_LIFECYCLE_INCOMPLETE,
@@ -24,9 +26,11 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     EVIDENCE_KIND_CONTAINER_HARDENING,
+    EVIDENCE_KIND_COST_TAGS,
     EVIDENCE_KIND_CREDENTIAL_METHOD,
     EVIDENCE_KIND_DEPLOYMENT_ROLLOUT_CAPACITY,
     EVIDENCE_KIND_ECR_LIFECYCLE,
+    EVIDENCE_KIND_ECR_PUBLICATION_GATE,
     EVIDENCE_KIND_FLEET_LIFECYCLE,
     EVIDENCE_KIND_IAM_WILDCARD,
     EVIDENCE_KIND_LOG_RETENTION,
@@ -48,6 +52,8 @@ CHECK_FLEET_AWS_ONBOARDING = "fleet_aws_onboarding"
 CHECK_APPLICATION_CONTAINERS_HARDENED = "application_containers_hardened"
 CHECK_STAGING_LOG_RETENTION_BOUNDED = "staging_log_retention_bounded"
 CHECK_ECR_LIFECYCLE_BOUNDED = "ecr_lifecycle_bounded"
+CHECK_AWS_COST_TAGS = "aws_cost_allocation_tags"
+CHECK_ECR_PUBLICATION_SCAN_GATED = "ecr_publication_scan_gated"
 
 
 @dataclass(frozen=True, slots=True)
@@ -206,6 +212,33 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
                 required_facts={"bounded_lifecycle": False},
             ),
             can_prove_satisfaction=True,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_AWS_COST_TAGS: IntentCheckDefinition(
+            concern_key=CONCERN_COST_TAGS_MISSING,
+            rule=ConcernRule(
+                category="cost",
+                evidence_kind=EVIDENCE_KIND_COST_TAGS,
+                collector_id=TF_COST_COLLECTOR_ID,
+                required_facts={"cost_tags_incomplete": True},
+            ),
+            # Divergence needs a resource whose readable tags lack a key the
+            # provider defaults also lack. Defaults do not reach every billed
+            # resource (for example node-group instances), so none can prove C-005.
+            can_prove_satisfaction=False,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_ECR_PUBLICATION_SCAN_GATED: IntentCheckDefinition(
+            concern_key=CONCERN_ECR_PUBLICATION_UNGATED,
+            rule=ConcernRule(
+                category="security",
+                evidence_kind=EVIDENCE_KIND_ECR_PUBLICATION_GATE,
+                collector_id=GHA_COLLECTOR_ID,
+                required_facts={"gated_by_blocking_scan": False},
+            ),
+            # Only recognised ECR login forms are publication paths; another
+            # push mechanism would be invisible, so a clean result is unproven.
+            can_prove_satisfaction=False,
             requires_relevant_evidence=True,
         ),
     }

@@ -2,7 +2,7 @@
 
 - Format: `1`
 - Intent ID: `infra_fleet_public_security`
-- Version: `1.2`
+- Version: `1.3`
 - Category: `security`
 
 Source: [`infra-fleet-public@d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0`](https://github.com/ImranAdan/infra-fleet-public/tree/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0)
@@ -144,3 +144,8 @@ Caveat: the workflow sets `ignore-unfixed: true`, so unfixed Critical/High
 findings do not block, and the gate applies to ECR publication, not to
 deployment. The proposition text above has been narrowed to match; a `Yes`
 does not imply a deployment-time gate exists.
+
+### Evaluation
+
+- Check: `ecr_publication_scan_gated`
+- Priority: `high`

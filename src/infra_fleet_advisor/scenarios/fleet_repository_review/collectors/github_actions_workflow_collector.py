@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,7 @@ from infra_fleet_advisor.core.limits import ExecutionLimits
 from infra_fleet_advisor.core.report import CollectorCoverage
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     EVIDENCE_KIND_CREDENTIAL_METHOD,
+    EVIDENCE_KIND_ECR_PUBLICATION_GATE,
     EVIDENCE_KIND_TRIVY_GATE,
     GHA_COLLECTOR_ID,
     GHA_COLLECTOR_VERSION,
@@ -17,6 +19,16 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
 
 _CREDENTIALS_ACTION = "aws-actions/configure-aws-credentials"
 _TRIVY_ACTION = "aquasecurity/trivy-action"
+_ECR_LOGIN_ACTION = "aws-actions/amazon-ecr-login"
+_DOCKER_LOGIN_ACTION = "docker/login-action"
+_ECR_LOGIN_COMMAND = re.compile(r"\becr\s+get-login-password\b")
+_ECR_REGISTRY = re.compile(r"\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com")
+_BUILD_PUSH_ACTION = "docker/build-push-action"
+_PUSH_COMMAND = re.compile(
+    r"\bdocker\s+(?:image\s+)?push\b|\bdocker\s+buildx\s+build\b[^\n]*--push\b"
+)
+# A job condition calling one of these still runs after its dependencies fail.
+_STATUS_OVERRIDE = re.compile(r"\b(?:always|failure|cancelled)\s*\(")
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,6 +155,137 @@ def _build_step_evidence(
     return None
 
 
+def _is_blocking_scan(step: dict[str, Any]) -> bool:
+    """A Trivy step that fails its job on any Critical or High finding."""
+    uses = step.get("uses")
+    if not isinstance(uses, str) or not _matches_action(uses, _TRIVY_ACTION):
+        return False
+    raw_with = step.get("with")
+    with_block: dict[str, Any] = raw_with if isinstance(raw_with, dict) else {}
+    severity = with_block.get("severity")
+    severities = (
+        {"CRITICAL", "HIGH"}
+        if severity is None
+        else {part.strip().upper() for part in str(severity).split(",")}
+    )
+    exit_code = str(with_block.get("exit-code", "0")).strip()
+    scanners = with_block.get("scanners")
+    return (
+        # Only an image vulnerability scan says anything about what is published.
+        str(with_block.get("scan-type", "image")).strip() == "image"
+        and isinstance(with_block.get("image-ref"), str)
+        and (scanners is None or "vuln" in str(scanners).split(","))
+        and {"CRITICAL", "HIGH"} <= severities
+        and exit_code.isdigit()
+        and int(exit_code) != 0
+        and "if" not in step
+        and not _is_truthy_yaml_value(step.get("continue-on-error"))
+    )
+
+
+def _pushes_image(step: dict[str, Any]) -> bool:
+    uses = step.get("uses")
+    if isinstance(uses, str):
+        raw_with = step.get("with")
+        return (
+            _matches_action(uses, _BUILD_PUSH_ACTION)
+            and isinstance(raw_with, dict)
+            and _is_truthy_yaml_value(raw_with.get("push"))
+        )
+    run = step.get("run")
+    return isinstance(run, str) and _PUSH_COMMAND.search(run) is not None
+
+
+def _overrides_status(step_or_job: dict[str, Any]) -> bool:
+    condition = step_or_job.get("if")
+    return isinstance(condition, str) and _STATUS_OVERRIDE.search(condition) is not None
+
+
+def _logs_in_to_ecr(step: dict[str, Any]) -> bool:
+    uses = step.get("uses")
+    if isinstance(uses, str):
+        if _matches_action(uses, _ECR_LOGIN_ACTION):
+            return True
+        raw_with = step.get("with")
+        registry = raw_with.get("registry") if isinstance(raw_with, dict) else None
+        return (
+            _matches_action(uses, _DOCKER_LOGIN_ACTION)
+            and isinstance(registry, str)
+            and _ECR_REGISTRY.search(registry) is not None
+        )
+    run = step.get("run")
+    return isinstance(run, str) and _ECR_LOGIN_COMMAND.search(run) is not None
+
+
+def _publication_evidence(workflow: dict[str, Any], rel_path: str) -> list[Evidence]:
+    """One record per job that pushes to ECR: is it gated by a blocking scan?
+
+    A job is gated when a blocking scan runs earlier in the same job, or in a
+    job it reaches through `needs` without any job on that path overriding
+    dependency failure with always(), failure() or cancelled()."""
+    jobs = workflow.get("jobs")
+    if not isinstance(jobs, dict):
+        return []
+    steps_by_job = {
+        job_id: [step for step in (job.get("steps") or []) if isinstance(step, dict)]
+        for job_id, job in jobs.items()
+        if isinstance(job, dict)
+    }
+
+    def needs(job_id: str) -> list[str]:
+        value = jobs[job_id].get("needs")
+        if isinstance(value, str):
+            return [value]
+        return [item for item in value if isinstance(item, str)] if isinstance(value, list) else []
+
+    # GitHub rejects cyclic needs, so a job's answer is path-independent; memoise
+    # it to keep dense fan-in graphs linear instead of enumerating every path.
+    gated_memo: dict[str, bool] = {}
+
+    def gated_by_dependency(job_id: str) -> bool:
+        if job_id not in gated_memo:
+            gated_memo[job_id] = False  # guards malformed cycles while computing
+            gated_memo[job_id] = not _overrides_status(jobs[job_id]) and any(
+                any(_is_blocking_scan(step) for step in steps_by_job[dependency])
+                or gated_by_dependency(dependency)
+                for dependency in needs(job_id)
+                if dependency in steps_by_job
+            )
+        return gated_memo[job_id]
+
+    evidence = []
+    for job_id, steps in steps_by_job.items():
+        # Publication is an ECR login followed by an image push; a login alone
+        # may only pull a private base image.
+        login_at = next((i for i, step in enumerate(steps) if _logs_in_to_ecr(step)), None)
+        if login_at is None or not any(_pushes_image(step) for step in steps[login_at:]):
+            continue
+        publication_path = [
+            step for step in steps[login_at:] if _logs_in_to_ecr(step) or _pushes_image(step)
+        ]
+        scanned_first = any(_is_blocking_scan(step) for step in steps[:login_at]) and not any(
+            _overrides_status(step) for step in publication_path
+        )
+        gated = scanned_first or gated_by_dependency(job_id)
+        locator = f"jobs.{job_id}"
+        evidence.append(
+            build_evidence(
+                collector_id=GHA_COLLECTOR_ID,
+                collector_version=GHA_COLLECTOR_VERSION,
+                kind=EVIDENCE_KIND_ECR_PUBLICATION_GATE,
+                source_path=rel_path,
+                locator=locator,
+                excerpt=(
+                    f"{locator} pushes to ECR; blocking Critical/High scan before it: "
+                    f"{str(gated).lower()}"
+                ),
+                fact={"gated_by_blocking_scan": gated},
+                identity_parts=(rel_path, locator),
+            )
+        )
+    return evidence
+
+
 def _is_excluded(rel_path: str, excluded_paths: frozenset[str]) -> bool:
     return any(
         rel_path == excluded or rel_path.startswith(f"{excluded}/") for excluded in excluded_paths
@@ -209,6 +352,7 @@ def collect(
                 item = _build_step_evidence(rel_path, locator, step, has_id_token_write)
                 if item is not None:
                     evidence.append(item)
+            evidence.extend(_publication_evidence(workflow, rel_path))
         except (OSError, yaml.YAMLError, UnsafePathError):
             failures += 1
             continue

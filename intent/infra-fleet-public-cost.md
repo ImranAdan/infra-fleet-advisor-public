@@ -2,7 +2,7 @@
 
 - Format: `1`
 - Intent ID: `infra_fleet_public_cost`
-- Version: `1.1`
+- Version: `1.2`
 - Category: `cost`
 
 This document declares the fleet owner's initial AWS cost position. It does not
@@ -70,4 +70,5 @@ resource that cannot carry these tags is reported as an explicit coverage gap.
 
 ### Evaluation
 
+- Check: `aws_cost_allocation_tags`
 - Priority: `medium`

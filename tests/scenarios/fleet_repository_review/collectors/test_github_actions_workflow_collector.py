@@ -1,6 +1,7 @@
 """Tests for the GitHub Actions workflow evidence collector."""
 
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -211,3 +212,106 @@ def test_tracked_symlink_cannot_read_ignored_workflow_content(git_checkout) -> N
     )
     assert result.evidence == ()
     assert result.coverage.status == "partial"
+
+
+SCAN = (
+    "      - uses: aquasecurity/trivy-action@v0\n"
+    "        with:\n          image-ref: app:1\n          severity: CRITICAL,HIGH\n"
+    "          exit-code: %s\n"
+)
+PUSH = "      - run: docker push registry/app:1\n"
+LOGIN = "      - uses: aws-actions/amazon-ecr-login@v2\n" + PUSH
+
+
+def _gate(tmp_path: Path, workflow: str) -> list[bool]:
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True, exist_ok=True)
+    (workflows / "publish.yml").write_text(workflow, encoding="utf-8")
+    result = gha_collector.collect(tmp_path, LIMITS)
+    assert result.coverage.status == "ok"
+    return [
+        bool(item.fact["gated_by_blocking_scan"])
+        for item in result.evidence
+        if item.kind == "gha_ecr_publication_gate"
+    ]
+
+
+def test_ecr_publication_is_gated_by_a_blocking_scan_through_needs(tmp_path: Path) -> None:
+    workflow = (
+        "on: push\njobs:\n"
+        "  scan:\n    runs-on: x\n    steps:\n"
+        + SCAN
+        % "1"
+        + "  configure:\n    runs-on: x\n    needs: scan\n    steps:\n      - run: echo\n"
+        "  push:\n    runs-on: x\n    needs: [configure]\n    steps:\n" + LOGIN
+    )
+
+    assert _gate(tmp_path, workflow) == [True]
+
+
+def test_ecr_publication_gate_rejects_weak_or_bypassed_scans(tmp_path: Path) -> None:
+    ungated = {
+        "no scan": "  push:\n    runs-on: x\n    steps:\n" + LOGIN,
+        "non-blocking exit code": "  push:\n    runs-on: x\n    steps:\n" + SCAN % "0" + LOGIN,
+        "scan after login": "  push:\n    runs-on: x\n    steps:\n" + LOGIN + SCAN % "1",
+        "status override": (
+            "  scan:\n    runs-on: x\n    steps:\n"
+            + SCAN % "1"
+            + "  push:\n    runs-on: x\n    needs: scan\n    if: always()\n    steps:\n"
+            + LOGIN
+        ),
+        "docker login to ECR": (
+            "  push:\n    runs-on: x\n    steps:\n"
+            "      - uses: docker/login-action@v3\n        with:\n"
+            "          registry: 123456789012.dkr.ecr.eu-west-2.amazonaws.com\n" + PUSH
+        ),
+        "CLI login": (
+            "  push:\n    runs-on: x\n    steps:\n"
+            "      - run: aws ecr get-login-password | docker login --password-stdin x\n" + PUSH
+        ),
+        "filesystem scan": (
+            "  push:\n    runs-on: x\n    steps:\n"
+            + (SCAN % "1").replace("image-ref: app:1", "scan-type: fs")
+            + LOGIN
+        ),
+        "same-job status override": (
+            "  push:\n    runs-on: x\n    steps:\n"
+            + SCAN % "1"
+            + "      - uses: aws-actions/amazon-ecr-login@v2\n        if: always()\n"
+            + PUSH
+        ),
+    }
+    for name, jobs in ungated.items():
+        assert _gate(tmp_path, "on: push\njobs:\n" + jobs) == [False], name
+
+
+def test_scan_earlier_in_the_publishing_job_gates_it(tmp_path: Path) -> None:
+    workflow = "on: push\njobs:\n  push:\n    runs-on: x\n    steps:\n" + SCAN % "1" + LOGIN
+
+    assert _gate(tmp_path, workflow) == [True]
+
+
+def test_ecr_login_without_a_push_is_not_publication(tmp_path: Path) -> None:
+    workflow = (
+        "on: push\njobs:\n  build:\n    runs-on: x\n    steps:\n"
+        "      - uses: aws-actions/amazon-ecr-login@v2\n      - run: docker pull base:1\n"
+    )
+
+    assert _gate(tmp_path, workflow) == []
+
+
+def test_malformed_needs_does_not_crash_the_collector(tmp_path: Path) -> None:
+    workflow = "on: push\njobs:\n  push:\n    runs-on: x\n    needs:\n    steps:\n" + LOGIN
+
+    assert _gate(tmp_path, workflow) == [False]
+
+
+def test_dense_needs_graph_is_evaluated_without_path_explosion(tmp_path: Path) -> None:
+    jobs = "".join(
+        f"  j{i}:\n    runs-on: x\n    needs: [{', '.join(f'j{k}' for k in range(i))}]\n"
+        "    steps:\n      - run: echo\n"
+        for i in range(40)
+    )
+    jobs += "  push:\n    runs-on: x\n    needs: [j39]\n    steps:\n" + LOGIN
+
+    assert _gate(tmp_path, "on: push\njobs:\n" + jobs) == [False]

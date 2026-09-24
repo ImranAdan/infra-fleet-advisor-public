@@ -191,8 +191,10 @@ def test_production_markdown_is_the_authoritative_catalog() -> None:
     assert len(catalog.propositions) == 20
     assert {item.check_key for item in catalog.propositions if item.check_key is not None} == {
         "application_containers_hardened",
+        "aws_cost_allocation_tags",
         "deployment_rollout_capacity",
         "ecr_lifecycle_bounded",
+        "ecr_publication_scan_gated",
         "fleet_aws_onboarding",
         "fleet_local_first_use",
         "fleet_profiles_expose_lifecycle",
@@ -224,7 +226,7 @@ def test_production_markdown_is_the_authoritative_catalog() -> None:
         None,
         "staging_log_retention_bounded",
         "ecr_lifecycle_bounded",
-        None,
+        "aws_cost_allocation_tags",
     ]
     maintainability = tuple(
         item
