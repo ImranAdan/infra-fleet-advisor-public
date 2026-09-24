@@ -1,28 +1,31 @@
 # Infra Fleet Advisor report
 
-- Source: `infra-fleet-public` @ `e667b9910595a2d961a56f8528180852afa0ca23`
+- Source: `infra-fleet-public` @ `7a98e0191a9bbba7a34a8d7927fdf8fcbec405d2`
 - Advisor version: `0.1.0` · Policy version: `1.1`
-- Model: `stub-synthesizer-v1` · Run started: `2026-09-24T08:14:31.967990+00:00`
-- Intent catalog: `intent-md-v1:b1a817bee07eb70d3ac8c53b403565a2429f0b4c3d1e74c777f08c50d22faaaa`
-- Lifecycle: 0 new, 1 unchanged, 6 resolved, 0 suppressed (0 rejected)
+- Model: `stub-synthesizer-v1` · Run started: `2026-09-24T08:58:19.524871+00:00`
+- Intent catalog: `intent-md-v1:3f7d0659058772412177ae7dde83ba19de20935caf75526fe8bf7d090fb68758`
+- Lifecycle: 2 new, 1 unchanged, 6 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
 
 - `github_actions_workflow_collector`: ok (18 evidence)
 - `terraform_iam_collector`: ok (0 evidence)
-- `terraform_cost_collector`: ok (5 evidence)
+- `terraform_cost_collector`: ok (7 evidence)
 - `kubernetes_deployment_collector`: ok (14 evidence)
+- `kubernetes_security_collector`: ok (4 evidence)
 - `fleet_lifecycle_collector`: ok (3 evidence)
 - `dependency_update_collector`: ok (7 evidence)
+- `application_config_collector`: ok (1 evidence)
 
 ## Intent evaluation
 
-**Coverage:** 13 of 20 positions have a check — 3 satisfied, 1 divergent, 9 checked but unproven; 7 declared without a check.
+**Coverage:** 20 of 20 positions have a check — 3 satisfied, 3 divergent, 14 checked but unproven; 0 declared without a check.
 
-- `declared_unverified` `infra_fleet_public_cost/C-001` — Staging application worker capacity scales to zero outside an owner-defined
+- `divergent` `infra_fleet_public_cost/C-001` — Staging application worker capacity scales to zero outside an owner-defined
   usage window. A delayed startup of up to 30 minutes is acceptable when it avoids
   paying for otherwise idle compute.
-  - Category: `cost` · Priority: `high` · Check: `not_declared` · Reason: `check_not_declared`
+  - Category: `cost` · Priority: `high` · Check: `staging_capacity_released_on_schedule` · Reason: `evidence_conflicts_with_intent`
+  - Evidence: `terraform_cost_collector:831d0b3bb6653a0a`
 - `divergent` `infra_fleet_public_cost/C-002` — Every non-production EKS worker group declares demand-driven scaling with a zero
   minimum where its workloads permit it and an explicit bounded maximum. Any
   always-on baseline must name the workload that requires it.
@@ -95,12 +98,12 @@
   tester, and same-workload peers.
   
   Evidence: \[NetworkPolicy\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/k8s/applications/load-harness/networkpolicy.yaml)
-  - Category: `security` · Priority: `not_declared` · Check: `not_declared` · Reason: `check_not_declared`
+  - Category: `security` · Priority: `high` · Check: `application_ingress_restricted` · Reason: `collector_cannot_prove_satisfaction`
 - `declared_unverified` `infra_fleet_public_security/S-004` — Permissive application egress is accepted for the current staging environment.
   
   Evidence: \[current egress policy\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/k8s/applications/load-harness/networkpolicy.yaml)
-  - Category: `security` · Priority: `not_declared` · Check: `not_declared` · Reason: `check_not_declared`
-- `declared_unverified` `infra_fleet_public_security/S-005` — When an AWS staging deployment enables a public hostname, external application
+  - Category: `security` · Priority: `medium` · Check: `permissive_egress_bounded` · Reason: `collector_cannot_prove_satisfaction`
+- `divergent` `infra_fleet_public_security/S-005` — When an AWS staging deployment enables a public hostname, external application
   traffic uses HTTPS with certificates managed by cert-manager and Let's Encrypt.
   
   Evidence: \[TLS and optional DNS\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/TLS-SSL-SETUP.md)
@@ -108,11 +111,12 @@
   Caveat: the template defaults to a reserved \`.invalid\` hostname and port-forward
   access. New public exposure remains blocked by the documented ingress-controller
   migration, and repository desired state cannot prove a certificate is live.
-  - Category: `security` · Priority: `not_declared` · Check: `not_declared` · Reason: `check_not_declared`
+  - Category: `security` · Priority: `high` · Check: `public_ingress_https` · Reason: `evidence_conflicts_with_intent`
+  - Evidence: `kubernetes_security_collector:6f5caf53a3bf6294`
 - `declared_unverified` `infra_fleet_public_security/S-006` — A publicly reachable EKS API protected by IAM is accepted for staging only.
   
   Evidence: \[staging access decision\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/EKS-ACCESS.md)
-  - Category: `security` · Priority: `not_declared` · Check: `not_declared` · Reason: `check_not_declared`
+  - Category: `security` · Priority: `high` · Check: `eks_public_endpoint_staging_only` · Reason: `collector_cannot_prove_satisfaction`
 - `declared_unverified` `infra_fleet_public_security/S-007` — Service-wide IAM action wildcards such as \`eks:\*\` are not acceptable for a
   production or persistent environment.
   
@@ -132,11 +136,11 @@
   including endpoints that start CPU, memory, and cluster load tests. This
   proposition holds only if \`SameSite=Lax\` is the accepted compensating
   control for those routes; otherwise CSRF exposure remains.
-  - Category: `security` · Priority: `not_declared` · Check: `not_declared` · Reason: `check_not_declared`
+  - Category: `security` · Priority: `high` · Check: `session_cookie_csrf_compensated` · Reason: `collector_cannot_prove_satisfaction`
 - `declared_unverified` `infra_fleet_public_security/S-009` — Automatic Kubernetes service-account token mounting is accepted for the current application.
   
   Evidence: \[documented token-mount decision\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/SECURITY-CONCERNS.md)
-  - Category: `security` · Priority: `not_declared` · Check: `not_declared` · Reason: `check_not_declared`
+  - Category: `security` · Priority: `medium` · Check: `mounted_token_unprivileged` · Reason: `collector_cannot_prove_satisfaction`
 - `declared_unverified` `infra_fleet_public_security/S-010` — Repository owners enable dependency alerts and security-update pull requests;
   routine version checks run monthly, while review and deployment remain an owned
   operational decision.
@@ -158,7 +162,21 @@
 
 ## Recommendations
 
-### #1 [unchanged] EKS worker group cannot scale on demand
+### #1 [new] Public ingress can serve application traffic over plain HTTP
+
+- Category: `security` · Priority: `high` · Confidence: 0.85
+- Fingerprint: `fp_90d0fb2169abf0b8849a8d79`
+- Evidence: `kubernetes_security_collector:6f5caf53a3bf6294`
+
+An Ingress does not cover every host with TLS from a cert-manager issuer, or it disables the HTTP-to-HTTPS redirect.
+
+**Impact:** Once a real hostname is configured, credentials and session cookies can cross the internet unencrypted.
+
+**Suggested change:** Cover every host with a cert-manager TLS entry and keep the HTTPS redirect on; route in-cluster analysis traffic to the service or an internal listener instead.
+
+**Trade-offs:** Canary analysis that currently measures HTTP through the public ingress needs an internal path, or it measures redirects instead of the canary.
+
+### #2 [unchanged] EKS worker group cannot scale on demand
 
 - Category: `cost` · Priority: `high` · Confidence: 0.85
 - Fingerprint: `fp_7ec808b779a06a62a8f1b78f`
@@ -171,6 +189,20 @@ A staging managed node group declares size bounds, but nothing in the repository
 **Suggested change:** Declare a node autoscaler for the staging cluster (cluster-autoscaler with a pod identity role, Karpenter, or EKS Auto Mode), keep an explicit bounded max_size, and lower min_size to zero unless a named workload needs an always-on node.
 
 **Trade-offs:** An autoscaler adds a controller, IAM permissions and scale-up latency; a zero minimum delays the first workload after idle periods.
+
+### #3 [new] Staging capacity is never released on a schedule
+
+- Category: `cost` · Priority: `high` · Confidence: 0.80
+- Fingerprint: `fp_156438b3cb31a7781fe4fc70`
+- Evidence: `terraform_cost_collector:831d0b3bb6653a0a`
+
+Staging worker capacity has no scheduled scale-to-zero: no aws_autoscaling_schedule reaching zero and no scheduled workflow that tears the stack down.
+
+**Impact:** Idle staging compute is billed around the clock unless someone remembers to stop it.
+
+**Suggested change:** Schedule the release: an aws_autoscaling_schedule to zero outside the usage window, or a cron trigger on the teardown workflow with an owner-set window.
+
+**Trade-offs:** Starting after the window costs the declared up-to-30-minute delay; a scheduled teardown also needs an unattended confirmation path.
 
 ### [resolved] Tracked dependency manifests lack monthly Dependabot updates
 
