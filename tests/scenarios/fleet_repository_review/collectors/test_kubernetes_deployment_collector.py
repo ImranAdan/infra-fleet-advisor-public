@@ -112,6 +112,41 @@ def test_incomplete_profile_cannot_prove_deployment_controls(git_checkout) -> No
     assert "unsupported kustomize fields" in (result.coverage.error_summary or "")
 
 
+def test_profile_missing_application_evidence_cannot_prove_controls(git_checkout) -> None:
+    repo, _sha = git_checkout(kubernetes_files=("hardened.yaml",))
+    _write_profiles(repo, weak_overlay=False)
+    overlay = repo / "k8s/profiles/weak/applications/kustomization.yaml"
+    overlay.write_text(
+        "apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nresources: []\n",
+        encoding="utf-8",
+    )
+
+    result = collector.collect(repo, LIMITS)
+
+    assert result.coverage.status == "partial"
+    assert "application deployment evidence is missing from profile(s): weak" in (
+        result.coverage.error_summary or ""
+    )
+
+
+def test_untracked_profile_entries_do_not_degrade_verified_coverage(git_checkout) -> None:
+    repo, _sha = git_checkout(kubernetes_files=("hardened.yaml",))
+    _write_profiles(repo, weak_overlay=False)
+    tracked_paths = frozenset(
+        path.relative_to(repo).as_posix() for path in repo.rglob("*") if path.is_file()
+    )
+    scratch = repo / "k8s/clusters/scratch"
+    scratch.mkdir()
+    (scratch / "notes.txt").write_text("not committed\n", encoding="utf-8")
+    (repo / "k8s/clusters/linked").symlink_to("safe", target_is_directory=True)
+
+    result = collector.collect(repo, LIMITS, tracked_paths=tracked_paths)
+
+    assert result.coverage.status == "ok"
+    assert "scratch" not in str(result.evidence)
+    assert "linked" not in str(result.evidence)
+
+
 def test_each_missing_hardening_control_is_divergent(git_checkout) -> None:
     repo, _sha = git_checkout(kubernetes_files=("hardened.yaml",))
     path = repo / "k8s" / "applications" / "hardened.yaml"

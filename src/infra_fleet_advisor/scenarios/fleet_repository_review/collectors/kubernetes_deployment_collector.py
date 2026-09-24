@@ -458,7 +458,19 @@ def collect(
         return _collect_raw(checkout_root, limits, excluded_paths, tracked_paths)
     clusters = checkout_root / "k8s" / "clusters"
     directories = (
-        sorted(path for path in clusters.iterdir() if path.is_dir()) if clusters.is_dir() else []
+        sorted(
+            path
+            for path in clusters.iterdir()
+            if path.is_dir()
+            and (
+                tracked_paths is None
+                or any(
+                    tracked.startswith(f"k8s/clusters/{path.name}/") for tracked in tracked_paths
+                )
+            )
+        )
+        if clusters.is_dir()
+        else []
     )
     if not directories:
         raw = _collect_raw(checkout_root, limits, excluded_paths, tracked_paths)
@@ -493,6 +505,26 @@ def collect(
             )
         if limit_reached:
             reasons.append(f"{render.profile}: deployment evidence omitted by safety limit")
+
+    application_ids_by_profile = {
+        profile: {
+            item.evidence_id
+            for item in profile_evidence
+            if item.source_path.startswith("k8s/applications/")
+        }
+        for profile, profile_evidence in per_profile.items()
+    }
+    application_ids = set().union(*application_ids_by_profile.values())
+    missing_profiles = sorted(
+        profile
+        for profile, evidence_ids in application_ids_by_profile.items()
+        if application_ids - evidence_ids
+    )
+    if missing_profiles:
+        reasons.append(
+            "application deployment evidence is missing from profile(s): "
+            + ", ".join(missing_profiles)
+        )
 
     evidence = _combine_profiles(per_profile)
     if len(evidence) > _MAX_DEPLOYMENT_EVIDENCE:
