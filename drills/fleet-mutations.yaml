@@ -59,11 +59,11 @@ drills:
     find: '"confirm_destroy=$confirmation"'
     replace: "'confirm_destroy=destroy staging'"
   - proposition: S-003
-    path: k8s/applications/load-harness/networkpolicy.yaml
+    path: k8s/applications/platform/networkpolicy.yaml
     find: "    - Ingress\n    - Egress"
     replace: "    - Egress"
   - proposition: S-004
-    path: k8s/applications/load-harness/networkpolicy.yaml
+    path: k8s/applications/platform/networkpolicy.yaml
     find: "namespace: applications"
     replace: "namespace: observability"
   - proposition: S-005
@@ -71,9 +71,9 @@ drills:
     find: 'cert-manager.io/cluster-issuer: "letsencrypt-prod"'
     replace: 'example.invalid/issuer: "none"'
   - proposition: S-009
-    path: k8s/applications/load-harness/hpa.yaml
-    find: "# Horizontal Pod Autoscaler for load-harness"
-    replace: "apiVersion: rbac.authorization.k8s.io/v1\nkind: RoleBinding\nmetadata:\n  name: drill-default-view\n  namespace: applications\nsubjects:\n  - kind: ServiceAccount\n    name: default\nroleRef:\n  apiGroup: rbac.authorization.k8s.io\n  kind: ClusterRole\n  name: view\n---\n# Horizontal Pod Autoscaler for load-harness"
+    path: k8s/applications/platform/hpa.yaml
+    find: "# Horizontal Pod Autoscaler for ${APP_NAME}"
+    replace: "apiVersion: rbac.authorization.k8s.io/v1\nkind: RoleBinding\nmetadata:\n  name: drill-default-view\n  namespace: applications\nsubjects:\n  - kind: ServiceAccount\n    name: default\nroleRef:\n  apiGroup: rbac.authorization.k8s.io\n  kind: ClusterRole\n  name: view\n---\n# Horizontal Pod Autoscaler for ${APP_NAME}"
   - proposition: S-006
     path: infrastructure/permanent/main.tf
     find: "provider \"aws\" {\n  region = \"eu-west-2\""
