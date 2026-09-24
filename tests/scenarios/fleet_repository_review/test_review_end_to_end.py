@@ -116,12 +116,13 @@ def test_authoritative_markdown_drives_the_production_review(git_checkout) -> No
     assert evaluations["S-007"].status == "divergent"
     assert evaluations["R-001"].status == "declared_unverified"
     assert evaluations["R-001"].reason == "no_relevant_evidence"
-    for proposition_id in ("C-001", "C-002"):
+    for proposition_id in ("C-001",):
         assert evaluations[proposition_id].status == "declared_unverified"
         assert evaluations[proposition_id].reason == "check_not_declared"
     assert evaluations["C-003"].reason == "collector_cannot_prove_satisfaction"
     assert evaluations["C-004"].reason == "no_relevant_evidence"
     assert evaluations["C-005"].reason == "no_relevant_evidence"
+    assert evaluations["C-002"].reason == "no_relevant_evidence"
     assert evaluations["S-011"].reason == "no_relevant_evidence"
     assert evaluations["M-001"].status == "declared_unverified"
     assert evaluations["M-001"].reason == "no_relevant_evidence"

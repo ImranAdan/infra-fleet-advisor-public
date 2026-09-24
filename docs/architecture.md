@@ -188,6 +188,14 @@ provider defaults make coverage partial, and computed resource tags are skipped
 rather than assumed. C-005 diverges only on such a provably untagged block, and
 is divergence-only because defaults do not reach every billed resource.
 
+For C-002 the cost collector records each `eks_managed_node_groups` entry of
+the EKS module (literal `min_size` and `max_size`) and whether anything can
+drive those bounds: a non-comment mention of `cluster-autoscaler` or
+`karpenter` in tracked Terraform or `k8s/` manifests (scanned on their own
+manifest budget), or an enabled EKS Auto Mode `compute_config`. It is
+divergence-only: whether an always-on minimum names the workload that needs it
+is a judgement.
+
 The dependency update collector classifies tracked file names from the
 verified commit into Dependabot ecosystems by a closed rule, groups them by
 directory, and matches each group to a `package-ecosystem` entry by `directory`

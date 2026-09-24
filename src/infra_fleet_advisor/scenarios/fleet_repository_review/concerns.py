@@ -24,6 +24,7 @@ CONCERN_CONTAINER_HARDENING_INCOMPLETE = "container_hardening_incomplete"
 CONCERN_LOG_RETENTION_UNBOUNDED = "staging_log_retention_unbounded"
 CONCERN_ECR_RETENTION_UNBOUNDED = "ecr_image_retention_unbounded"
 CONCERN_DEPENDENCY_UPDATES_MISSING = "dependency_updates_not_configured"
+CONCERN_WORKER_SCALING_STATIC = "worker_group_not_demand_scaled"
 CONCERN_COST_TAGS_MISSING = "cost_allocation_tags_missing"
 CONCERN_ECR_PUBLICATION_UNGATED = "ecr_publication_not_scan_gated"
 
@@ -352,6 +353,34 @@ CONCERN_TEMPLATES: dict[str, ConcernTemplate] = {
         confidence_explanation=(
             "Matched tracked file names against the committed Dependabot configuration; "
             "repository alert settings are outside the template."
+        ),
+    ),
+    CONCERN_WORKER_SCALING_STATIC: ConcernTemplate(
+        category="cost",
+        priority="high",
+        title="EKS worker group cannot scale on demand",
+        summary=(
+            "A staging managed node group declares size bounds, but nothing in the repository "
+            "drives them: no cluster-autoscaler, Karpenter or EKS Auto Mode is declared, or the "
+            "maximum is not explicit and above the minimum."
+        ),
+        impact=(
+            "Capacity stays at the desired size regardless of load: pods scaled out by the HPA "
+            "can stay pending, and idle capacity is never released."
+        ),
+        suggested_change=(
+            "Declare a node autoscaler for the staging cluster (cluster-autoscaler with a pod "
+            "identity role, Karpenter, or EKS Auto Mode), keep an explicit bounded max_size, and "
+            "lower min_size to zero unless a named workload needs an always-on node."
+        ),
+        trade_offs=(
+            "An autoscaler adds a controller, IAM permissions and scale-up latency; a zero "
+            "minimum delays the first workload after idle periods."
+        ),
+        confidence=0.85,
+        confidence_explanation=(
+            "Node group bounds are literal module inputs; autoscaler presence is a bounded text "
+            "scan of tracked Terraform and Kubernetes manifests."
         ),
     ),
     CONCERN_COST_TAGS_MISSING: ConcernTemplate(

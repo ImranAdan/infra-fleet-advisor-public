@@ -2,7 +2,7 @@
 
 - Format: `1`
 - Intent ID: `infra_fleet_public_cost`
-- Version: `1.2`
+- Version: `1.3`
 - Category: `cost`
 
 This document declares the fleet owner's initial AWS cost position. It does not
@@ -32,6 +32,7 @@ always-on baseline must name the workload that requires it.
 
 ### Evaluation
 
+- Check: `worker_groups_demand_scaled`
 - Priority: `high`
 
 ## C-003 · Log retention

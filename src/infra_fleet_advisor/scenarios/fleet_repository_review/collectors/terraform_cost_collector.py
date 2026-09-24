@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+import yaml
+
 from infra_fleet_advisor.core.errors import UnsafePathError
 from infra_fleet_advisor.core.evidence import Evidence, build_evidence
 from infra_fleet_advisor.core.limits import ExecutionLimits
@@ -20,6 +22,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     EVIDENCE_KIND_COST_TAGS,
     EVIDENCE_KIND_ECR_LIFECYCLE,
     EVIDENCE_KIND_LOG_RETENTION,
+    EVIDENCE_KIND_WORKER_SCALING,
     TF_COST_COLLECTOR_ID,
     TF_COST_COLLECTOR_VERSION,
 )
@@ -45,6 +48,60 @@ _MAX_RETENTION_DAYS = 30
 _EKS_MODULE_SOURCE = "terraform-aws-modules/eks/aws"
 _EKS_MODULE_VERSION = re.compile(r"^(?:=\s*)?21\.[0-9]+\.[0-9]+$|^~>\s*21\.[0-9]+(?:\.[0-9]+)?$")
 _EKS_DEFAULT_RETENTION_DAYS = 90
+# A managed node group only scales on demand when something drives it: a
+# cluster-autoscaler or Karpenter installation, or EKS Auto Mode.
+_NODE_AUTOSCALER = re.compile(r"\b(?:cluster-autoscaler|karpenter)\b")
+_HELM_RELEASE_HEADER = re.compile(r'resource\s+"(helm_release)"\s+"([A-Za-z0-9_-]+)"\s*\{')
+
+
+def _declares_autoscaler_in_yaml(text: str) -> bool:
+    """An active Kubernetes declaration: a Flux HelmRelease of the chart, or a
+    Deployment running its image. Mentions in names, labels or docs do not count."""
+    for document in yaml.safe_load_all(text):
+        if not isinstance(document, dict):
+            continue
+        raw_spec = document.get("spec")
+        spec: dict[str, Any] = raw_spec if isinstance(raw_spec, dict) else {}
+        if document.get("kind") == "HelmRelease":
+            chart = spec.get("chart", {})
+            chart_spec = chart.get("spec", {}) if isinstance(chart, dict) else {}
+            name = chart_spec.get("chart") if isinstance(chart_spec, dict) else None
+            if isinstance(name, str) and _NODE_AUTOSCALER.search(name):
+                return True
+        if document.get("kind") == "Deployment":
+            template = spec.get("template", {})
+            pod = template.get("spec", {}) if isinstance(template, dict) else {}
+            containers = pod.get("containers", []) if isinstance(pod, dict) else []
+            if any(
+                isinstance(c, dict)
+                and isinstance(c.get("image"), str)
+                and _NODE_AUTOSCALER.search(c["image"])
+                for c in containers
+                if isinstance(containers, list)
+            ):
+                return True
+    return False
+
+
+def _declares_autoscaler_in_terraform(text: str) -> bool:
+    """An enabled helm_release of the chart, or a Karpenter module."""
+    releases, _ = _iter_resource_blocks(text, _HELM_RELEASE_HEADER)
+    for _kind, _name, body in releases:
+        try:
+            chart, count = _attribute(body, "chart"), _attribute(body, "count", 1)
+        except ValueError:
+            continue
+        if isinstance(chart, str) and _NODE_AUTOSCALER.search(chart) and count != 0:
+            return True
+    modules, _ = _iter_resource_blocks(text, _MODULE_HEADER)
+    for _kind, _name, body in modules:
+        try:
+            source = _attribute(body, "source")
+        except ValueError:
+            continue
+        if isinstance(source, str) and "karpenter" in source:
+            return True
+    return False
 
 
 @dataclass(frozen=True, slots=True)
@@ -242,6 +299,51 @@ def _eks_module_evidence(rel_path: str, name: str, body: str) -> Evidence | None
     )
 
 
+def _worker_scaling_evidence(
+    rel_path: str, name: str, body: str, autoscaler_declared: bool
+) -> list[Evidence]:
+    """One record per EKS managed node group: bounds and whether demand can move them."""
+    groups = _object_attribute(body, "eks_managed_node_groups")
+    if groups is None:
+        return []
+    if not isinstance(groups, dict) or not all(isinstance(g, dict) for g in groups.values()):
+        raise ValueError("eks_managed_node_groups is not a literal object")
+    auto_mode = _object_attribute(body, "compute_config")
+    driven = autoscaler_declared or (
+        isinstance(auto_mode, dict) and auto_mode.get("enabled") is True
+    )
+    root_module = PurePosixPath(rel_path).parent.as_posix()
+    evidence = []
+    for group_name, group in sorted(groups.items()):
+        bounds = [group.get("min_size", 1), group.get("max_size", 3)]
+        if not all(isinstance(b, int) and not isinstance(b, bool) for b in bounds):
+            raise ValueError("node group bounds are not literal integers")
+        min_size, max_size = bounds
+        locator = f"module.{name}.eks_managed_node_groups.{group_name}"
+        evidence.append(
+            build_evidence(
+                collector_id=TF_COST_COLLECTOR_ID,
+                collector_version=TF_COST_COLLECTOR_VERSION,
+                kind=EVIDENCE_KIND_WORKER_SCALING,
+                source_path=rel_path,
+                locator=locator,
+                excerpt=(
+                    f"{locator}: min {min_size}, max {max_size}; node autoscaler "
+                    f"{'declared' if driven else 'not declared'}"
+                ),
+                fact={
+                    "min_size": min_size,
+                    "max_size": max_size,
+                    "explicit_max": "max_size" in group,
+                    "autoscaler_declared": driven,
+                    "demand_scaled": driven and "max_size" in group and max_size > min_size,
+                },
+                identity_parts=(root_module, locator),
+            )
+        )
+    return evidence
+
+
 def _lifecycle_rules(policy: dict[str, Any]) -> tuple[bool, bool]:
     """Return (expires_untagged, bounds_retained_images) for an ECR lifecycle policy."""
     rules = policy.get("rules")
@@ -371,6 +473,21 @@ def collect(
             eligible.append(path)
     files = eligible[: limits.max_workflow_files]
     truncated_count = len(eligible) - len(files)
+    # Tracked Kubernetes manifests are scanned only for a node autoscaler, on
+    # their own budget so a large k8s tree cannot crowd out Terraform files.
+    manifests = sorted(
+        path
+        for path in (checkout_root / "k8s").rglob("*")
+        if path.suffix in {".yaml", ".yml"}
+        and (tracked_paths is None or path.relative_to(checkout_root).as_posix() in tracked_paths)
+        and not any(
+            path.relative_to(checkout_root).as_posix().startswith(f"{ex}/")
+            or path.relative_to(checkout_root).as_posix() == ex
+            for ex in excluded_paths
+        )
+    )
+    truncated_count += max(0, len(manifests) - limits.max_manifest_files)
+    files += manifests[: limits.max_manifest_files]
 
     evidence: list[Evidence] = []
     repositories: dict[tuple[str, str], tuple[str, str]] = {}
@@ -378,6 +495,8 @@ def collect(
     providers: list[tuple[str, str, str]] = []
     locals_by_module: dict[str, list[str]] = {}
     tagged_by_module: dict[str, list[tuple[str, str]]] = {}
+    eks_modules: list[tuple[str, str, str]] = []
+    autoscaler_declared = False
     failures = 0
     for path in files:
         rel_path = path.relative_to(checkout_root).as_posix()
@@ -387,7 +506,10 @@ def collect(
             if path.is_symlink() or not path.resolve().is_relative_to(checkout_real):
                 failures += 1
                 continue
-            if path.stat().st_size > limits.max_file_bytes:
+            size_limit = (
+                limits.max_file_bytes if path.suffix == ".tf" else limits.max_manifest_file_bytes
+            )
+            if path.stat().st_size > size_limit:
                 failures += 1
                 continue
             text = path.read_text(encoding="utf-8")
@@ -395,6 +517,13 @@ def collect(
             failures += 1
             continue
 
+        if rel_path.endswith((".yaml", ".yml")):
+            try:
+                autoscaler_declared = autoscaler_declared or _declares_autoscaler_in_yaml(text)
+            except yaml.YAMLError:
+                failures += 1
+            continue
+        autoscaler_declared = autoscaler_declared or _declares_autoscaler_in_terraform(text)
         resources, unbalanced = _iter_resource_blocks(text, _RESOURCE_HEADER)
         modules, module_unbalanced = _iter_resource_blocks(text, _MODULE_HEADER)
         provider_blocks, provider_unbalanced = _iter_resource_blocks(text, _PROVIDER_HEADER)
@@ -428,6 +557,7 @@ def collect(
             try:
                 if _attribute(body, "source") != _EKS_MODULE_SOURCE:
                     continue
+                eks_modules.append((rel_path, name, body))
                 item = _eks_module_evidence(rel_path, name, body)
             except ValueError:
                 failures += 1
@@ -445,6 +575,16 @@ def collect(
                     tagged_by_module.get(module, []),
                 )
             )
+        except ValueError:
+            failures += 1
+
+    # Node groups are judged after every file is read: an autoscaler declared
+    # anywhere in the tracked scope drives them. An absence is evidence only
+    # when that whole scope was read, so an incomplete scan withholds them.
+    scan_complete = not failures and not truncated_count
+    for rel_path, name, body in eks_modules if autoscaler_declared or scan_complete else ():
+        try:
+            evidence.extend(_worker_scaling_evidence(rel_path, name, body, autoscaler_declared))
         except ValueError:
             failures += 1
 
