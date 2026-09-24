@@ -37,7 +37,9 @@ The Kubernetes workload and security checks evaluate what each deployment
 profile actually applies. The S-006 EKS endpoint check reads Terraform
 configuration. The advisor renders the profiles itself, without running
 kustomize or fleet code. A control must hold in every rendered profile; see
-[scope and coverage](docs/status.md).
+[scope and coverage](docs/status.md). The fleet's application is a plug-in
+named by a contract ConfigMap, and the renderer substitutes it, so the checks
+follow whichever app the fleet runs.
 
 ## Run a local review
 
