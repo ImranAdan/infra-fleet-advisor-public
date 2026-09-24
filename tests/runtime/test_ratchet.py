@@ -1,19 +1,25 @@
 import json
 from pathlib import Path
 
+import pytest
+
+from infra_fleet_advisor.core.errors import PolicyError
 from infra_fleet_advisor.runtime.cli import EXIT_OK, EXIT_RATCHET_SLIPPED, main
 from infra_fleet_advisor.runtime.ratchet import compare_advisors, to_markdown
 
 CHECK = "some_check"
 
 
-def _report(path: Path, positions: dict[str, tuple[str, str | None]]) -> Path:
+def _report(
+    path: Path, positions: dict[str, tuple[str, str | None]], commit: str = "a" * 40
+) -> Path:
     evaluations = [
         {"document_id": "cost", "proposition_id": key, "status": status,
          "statement": f"Position {key}", "check_key": check, "evidence_ids": []}
         for key, (status, check) in positions.items()
     ]  # fmt: skip
-    path.write_text(json.dumps({"intent_evaluations": evaluations}), encoding="utf-8")
+    report = {"provenance": {"source_commit_sha": commit}, "intent_evaluations": evaluations}
+    path.write_text(json.dumps(report), encoding="utf-8")
     return path
 
 
@@ -76,3 +82,11 @@ def test_ratchet_cli_exit_code_is_the_verdict(tmp_path: Path) -> None:
     assert main([*argv, str(base)]) == EXIT_OK
     assert main([*argv, str(slipped), "--summary", str(summary)]) == EXIT_RATCHET_SLIPPED
     assert "Lost proof" in summary.read_text(encoding="utf-8")
+
+
+def test_reports_of_different_fleet_commits_are_refused(tmp_path: Path) -> None:
+    base = _report(tmp_path / "base.json", {"A": ("satisfied", CHECK)})
+    moved = _report(tmp_path / "head.json", {"A": ("satisfied", CHECK)}, commit="b" * 40)
+
+    with pytest.raises(PolicyError, match="same fleet commit"):
+        compare_advisors(base, moved)

@@ -14,6 +14,7 @@ the advisor's doing:
 from dataclasses import dataclass
 from pathlib import Path
 
+from infra_fleet_advisor.core.errors import PolicyError
 from infra_fleet_advisor.runtime.intent_gate import Position, load_report, positions
 from infra_fleet_advisor.runtime.report_writer import _safe_markdown_text
 
@@ -45,7 +46,12 @@ def _score(items: dict[str, Position]) -> tuple[int, int, int]:
 
 
 def compare_advisors(base_path: Path, head_path: Path) -> RatchetResult:
-    before, after = positions(load_report(base_path)), positions(load_report(head_path))
+    base, head = load_report(base_path), load_report(head_path)
+    # The verdict means something only if the fleet was held constant.
+    commit = base.get("provenance", {}).get("source_commit_sha")
+    if not commit or commit != head.get("provenance", {}).get("source_commit_sha"):
+        raise PolicyError("base and head reports must review the same fleet commit")
+    before, after = positions(base), positions(head)
     new_proof, new_findings, lost_proof, lost_checks, vanished = [], [], [], [], []
     for key in sorted(set(before) | set(after)):
         old, new = before.get(key), after.get(key)
