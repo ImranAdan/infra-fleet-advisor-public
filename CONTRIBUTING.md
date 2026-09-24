@@ -41,6 +41,8 @@ issues created from approved reports. Advisor changes belong here when they
 improve collection, evaluation, report delivery or the documented product.
 Unsupported intent is coverage, not an automatically generated development
 queue. Discuss a proposed capability against the requirements before adding it.
+For an approved proposition, follow [Add a deterministic check](docs/adding-a-check.md)
+for the exact evidence, registration, test, drill and documentation path.
 
 Keep changes focused on the requested outcome. Product scope changes need an
 owner decision and aligned requirements; a collector or model output cannot
