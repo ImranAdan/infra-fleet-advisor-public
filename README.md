@@ -61,6 +61,7 @@ See [local setup](docs/setup.md) for custom paths and troubleshooting.
 | Run the full report-to-fleet process | [End-to-end workflow](docs/WORKFLOW.md) |
 | Configure or run a local review | [Local setup](docs/setup.md) |
 | Write or change intent | [Intent guide](docs/intent.md) |
+| Add or extend a deterministic check | [Add a check](docs/adding-a-check.md) |
 | Configure report PR delivery and review reports | [Report guide](docs/reports.md) |
 | Configure fleet issue creation or retry publication | [Fleet publication guide](docs/fleet-publication.md) |
 | Understand current support and limitations | [Scope and coverage](docs/status.md) |

@@ -10,6 +10,7 @@ Start with the [project overview](../README.md) or the
 | [Local setup](setup.md) | Install the locked environment, run reviews and troubleshoot local inputs |
 | [End-to-end workflow](WORKFLOW.md) | Run, approve, publish, select fleet work and review again |
 | [Intent](intent.md) | Declare positions and understand deterministic evaluation |
+| [Add a check](adding-a-check.md) | Turn one declared proposition into a bounded deterministic evaluation |
 | [Reports](reports.md) | Configure report delivery, review changes and understand decline history |
 | [Fleet publication](fleet-publication.md) | Configure the issues App, approve issue creation and retry safely |
 | [Scope and coverage](status.md) | Understand implemented collectors, unsupported intent and limitations |
