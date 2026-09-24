@@ -1,7 +1,12 @@
-"""Network, RBAC and TLS facts from tracked Kubernetes manifests.
+"""Network, RBAC and TLS facts for what each deployment profile applies.
 
-Reads raw manifests only: overlays are not rendered, so profile patches are
-invisible. Application workloads are the Deployments under `k8s/applications/`.
+Each profile under `k8s/clusters/` is rendered in-process by profile_renderer,
+so overlay patches are evaluated, not guessed. An object's facts are combined
+across profiles: a protective fact must hold in every profile and a risky one
+counts if any profile has it, so evidence identities stay stable. Without
+profiles, raw manifests are evaluated as one set. HelmRelease chart output is
+not rendered. Application workloads are Deployments sourced from
+`k8s/applications/`.
 """
 
 from collections.abc import Mapping
@@ -22,6 +27,9 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     K8S_SECURITY_COLLECTOR_ID,
     K8S_SECURITY_COLLECTOR_VERSION,
 )
+from infra_fleet_advisor.scenarios.fleet_repository_review.profile_renderer import (
+    render_profile,
+)
 
 _APPLICATIONS = "k8s/applications/"
 # Flux's generated install manifests are upstream platform code, not owner policy.
@@ -29,6 +37,20 @@ _GENERATED = "k8s/flux-system/"
 _ISSUER_ANNOTATIONS = ("cert-manager.io/cluster-issuer", "cert-manager.io/issuer")
 _BROAD_GROUPS = {"system:authenticated", "system:serviceaccounts"}
 _MAX_RESOURCES = 2000
+# Facts that protect: they must hold in every profile. Other booleans are risks
+# that count when any profile has them.
+_PROTECTIVE = frozenset(
+    {
+        "selected_by_ingress_policy",
+        "ingress_restricted",
+        "token_grants_nothing",
+        "application_namespace",
+        "acceptance_bounded",
+        "tls_covers_hosts",
+        "cert_manager_issuer",
+        "https_enforced",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -251,53 +273,9 @@ def _https_evidence(ingress: _Resource) -> Evidence:
     )
 
 
-def collect(
-    checkout_root: Path,
-    limits: ExecutionLimits,
-    excluded_paths: frozenset[str] = frozenset(),
-    tracked_paths: frozenset[str] | None = None,
-) -> CollectorResult:
-    manifests_dir = checkout_root / "k8s"
-    checkout_real = checkout_root.resolve()
-    if not manifests_dir.is_dir():
-        return CollectorResult((), CollectorCoverage(K8S_SECURITY_COLLECTOR_ID, "ok", 0))
-    eligible = [
-        path
-        for path in sorted(manifests_dir.rglob("*"))
-        if path.suffix in {".yaml", ".yml"}
-        and path.is_file()
-        and (tracked_paths is None or path.relative_to(checkout_root).as_posix() in tracked_paths)
-        and not any(
-            path.relative_to(checkout_root).as_posix() == ex
-            or path.relative_to(checkout_root).as_posix().startswith(f"{ex}/")
-            for ex in excluded_paths
-        )
-    ]
-    files = eligible[: limits.max_manifest_files]
+def _evaluate(resources: list[_Resource]) -> tuple[list[Evidence], int]:
+    """Evidence for one resource set; ambiguous identities are withheld."""
     failures = 0
-    resources: list[_Resource] = []
-    for path in files:
-        rel_path = path.relative_to(checkout_root).as_posix()
-        try:
-            if path.is_symlink() or not path.resolve().is_relative_to(checkout_real):
-                failures += 1
-                continue
-            if path.stat().st_size > limits.max_manifest_file_bytes:
-                failures += 1
-                continue
-            documents = list(yaml.safe_load_all(path.read_text(encoding="utf-8")))
-        except (OSError, UnicodeError, yaml.YAMLError):
-            failures += 1
-            continue
-        for document in documents:
-            items = document.get("items") if isinstance(document, Mapping) else None
-            for body in items if isinstance(items, list) else [document]:
-                if isinstance(body, Mapping) and isinstance(body.get("kind"), str):
-                    resources.append(_Resource(rel_path, body))
-    # A List can pack many resources into one bounded file; cap the work.
-    resource_limit_reached = len(resources) > _MAX_RESOURCES
-    resources = resources[:_MAX_RESOURCES]
-
     deployments = [
         r for r in resources if r.kind == "Deployment" and r.path.startswith(_APPLICATIONS)
     ]
@@ -321,29 +299,156 @@ def collect(
         except (AttributeError, TypeError):
             failures += 1
 
-    # A base and an overlay can declare the same object with different facts;
-    # one ID cannot carry both, so withhold every ambiguous identity.
+    # Two declarations of one object in the same set carry conflicting facts;
+    # one ID cannot hold both, so withhold every ambiguous identity.
     counts: dict[str, int] = {}
     for item in evidence:
         counts[item.evidence_id] = counts.get(item.evidence_id, 0) + 1
     duplicates = {eid for eid, count in counts.items() if count > 1}
-    evidence = [item for item in evidence if item.evidence_id not in duplicates]
-    failures += len(duplicates)
+    return [item for item in evidence if item.evidence_id not in duplicates], failures + len(
+        duplicates
+    )
 
-    reasons = []
-    if resource_limit_reached:
-        reasons.append("resources omitted by safety limit")
+
+def _combine(per_profile: dict[str, list[Evidence]]) -> list[Evidence]:
+    """One record per object: protective facts hold everywhere, risks anywhere."""
+    grouped: dict[str, list[tuple[str, Evidence]]] = {}
+    for profile, items in per_profile.items():
+        for item in items:
+            grouped.setdefault(item.evidence_id, []).append((profile, item))
+    combined = []
+    for entries in grouped.values():
+        first = entries[0][1]
+        fact: dict[str, bool | str | int] = {}
+        for key, value in first.fact.items():
+            values = [item.fact.get(key) for _profile, item in entries]
+            if isinstance(value, bool):
+                fact[key] = all(values) if key in _PROTECTIVE else any(values)
+            else:
+                fact[key] = ", ".join(sorted({str(v) for v in values}))
+        failing = [
+            profile
+            for profile, item in entries
+            if any(item.fact.get(key) is False for key in _PROTECTIVE & set(item.fact))
+        ]
+        profiles = sorted(profile for profile, _item in entries)
+        fact["profiles"] = ", ".join(profiles)
+        fact["failing_profiles"] = ", ".join(sorted(failing))
+        shown = next((item for profile, item in entries if profile in failing), first)
+        combined.append(
+            Evidence(
+                evidence_id=first.evidence_id,
+                kind=first.kind,
+                source_path=first.source_path,
+                locator=first.locator,
+                excerpt=f"[{', '.join(sorted(failing) or profiles)}] {shown.excerpt}"[:280],
+                fact=fact,
+                collector_id=first.collector_id,
+                collector_version=first.collector_version,
+            )
+        )
+    return combined
+
+
+def _raw_resources(
+    checkout_root: Path,
+    limits: ExecutionLimits,
+    excluded_paths: frozenset[str],
+    tracked_paths: frozenset[str] | None,
+) -> tuple[list[_Resource], list[str]]:
+    manifests_dir = checkout_root / "k8s"
+    checkout_real = checkout_root.resolve()
+    eligible = [
+        path
+        for path in sorted(manifests_dir.rglob("*"))
+        if path.suffix in {".yaml", ".yml"}
+        and path.is_file()
+        and (tracked_paths is None or path.relative_to(checkout_root).as_posix() in tracked_paths)
+        and not any(
+            path.relative_to(checkout_root).as_posix() == ex
+            or path.relative_to(checkout_root).as_posix().startswith(f"{ex}/")
+            for ex in excluded_paths
+        )
+    ]
+    files = eligible[: limits.max_manifest_files]
+    unreadable = 0
+    resources: list[_Resource] = []
+    for path in files:
+        rel_path = path.relative_to(checkout_root).as_posix()
+        try:
+            if path.is_symlink() or not path.resolve().is_relative_to(checkout_real):
+                unreadable += 1
+                continue
+            if path.stat().st_size > limits.max_manifest_file_bytes:
+                unreadable += 1
+                continue
+            documents = list(yaml.safe_load_all(path.read_text(encoding="utf-8")))
+        except (OSError, UnicodeError, yaml.YAMLError):
+            unreadable += 1
+            continue
+        for document in documents:
+            items = document.get("items") if isinstance(document, Mapping) else None
+            for body in items if isinstance(items, list) else [document]:
+                if isinstance(body, Mapping) and isinstance(body.get("kind"), str):
+                    resources.append(_Resource(rel_path, body))
+    gaps = []
+    if unreadable:
+        gaps.append(f"{unreadable} manifest file(s) could not be read")
+    if len(eligible) > len(files):
+        gaps.append(f"{len(eligible) - len(files)} manifest file(s) omitted by safety limit")
+    return resources, gaps
+
+
+def collect(
+    checkout_root: Path,
+    limits: ExecutionLimits,
+    excluded_paths: frozenset[str] = frozenset(),
+    tracked_paths: frozenset[str] | None = None,
+) -> CollectorResult:
+    if not (checkout_root / "k8s").is_dir():
+        return CollectorResult((), CollectorCoverage(K8S_SECURITY_COLLECTOR_ID, "ok", 0))
+    clusters = checkout_root / "k8s" / "clusters"
+    profiles = sorted(
+        path.name
+        for path in (clusters.iterdir() if clusters.is_dir() else ())
+        if (path / "kustomization.yaml").is_file()
+    )
+    reasons: list[str] = []
+    resource_sets: dict[str, list[_Resource]] = {}
+    if profiles:
+        for profile in profiles:
+            render = render_profile(checkout_root, profile, limits, tracked_paths)
+            reasons.extend(f"{profile}: {gap}" for gap in render.gaps)
+            resource_sets[profile] = [
+                _Resource(item.source_path, item.body)
+                for item in render.resources
+                if not any(
+                    item.source_path == ex or item.source_path.startswith(f"{ex}/")
+                    for ex in excluded_paths
+                )
+            ]
+    else:
+        resources, gaps = _raw_resources(checkout_root, limits, excluded_paths, tracked_paths)
+        reasons.extend(gaps)
+        resource_sets["manifests"] = resources
+
+    per_profile: dict[str, list[Evidence]] = {}
+    failures = 0
+    for profile, resources in resource_sets.items():
+        if len(resources) > _MAX_RESOURCES:
+            reasons.append(f"{profile}: resources omitted by safety limit")
+            resources = resources[:_MAX_RESOURCES]
+        per_profile[profile], profile_failures = _evaluate(resources)
+        failures += profile_failures
     if failures:
         reasons.append(f"{failures} manifest or resource(s) could not be evaluated")
-    if len(eligible) > len(files):
-        reasons.append(f"{len(eligible) - len(files)} manifest file(s) omitted by safety limit")
-    ordered = tuple(sorted(evidence, key=lambda item: item.evidence_id))
+    ordered = tuple(sorted(_combine(per_profile), key=lambda item: item.evidence_id))
     return CollectorResult(
         ordered,
         CollectorCoverage(
             K8S_SECURITY_COLLECTOR_ID,
             "partial" if reasons else "ok",
             len(ordered),
-            "; ".join(reasons) or None,
+            "; ".join(reasons)[:500] or None,
         ),
     )

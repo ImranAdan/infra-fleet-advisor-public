@@ -134,7 +134,8 @@ def run_review(
         checkout_root,
         limits,
         excluded_paths=excluded_paths,
-        tracked_paths=list_tracked_paths(checkout_root, "k8s"),
+        # Profile overlays can include manifests from outside k8s/.
+        tracked_paths=list_tracked_paths(checkout_root, "."),
     )
     lifecycle_result = fleet_lifecycle_collector.collect(
         checkout_root,

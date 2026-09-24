@@ -257,8 +257,9 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
             can_prove_satisfaction=False,
             requires_relevant_evidence=True,
         ),
-        # Raw manifests only: an unrendered overlay could add a policy, binding or
-        # annotation, so these four Kubernetes security checks are divergence-only.
+        # Every profile is rendered, so a complete render proves S-003, S-004 and
+        # S-009 for what Git applies (HelmRelease chart output aside). S-005 stays
+        # divergence-only: Gateway API listeners are not yet evaluated for TLS.
         CHECK_APPLICATION_INGRESS_RESTRICTED: IntentCheckDefinition(
             concern_key=CONCERN_INGRESS_UNRESTRICTED,
             rule=ConcernRule(
@@ -267,7 +268,7 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
                 collector_id=K8S_SECURITY_COLLECTOR_ID,
                 required_facts={"ingress_restricted": False},
             ),
-            can_prove_satisfaction=False,
+            can_prove_satisfaction=True,
             requires_relevant_evidence=True,
         ),
         CHECK_PERMISSIVE_EGRESS_BOUNDED: IntentCheckDefinition(
@@ -278,7 +279,7 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
                 collector_id=K8S_SECURITY_COLLECTOR_ID,
                 required_facts={"acceptance_bounded": False},
             ),
-            can_prove_satisfaction=False,
+            can_prove_satisfaction=True,
             requires_relevant_evidence=True,
         ),
         CHECK_PUBLIC_INGRESS_HTTPS: IntentCheckDefinition(
@@ -300,7 +301,7 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
                 collector_id=K8S_SECURITY_COLLECTOR_ID,
                 required_facts={"token_grants_nothing": False},
             ),
-            can_prove_satisfaction=False,
+            can_prove_satisfaction=True,
             requires_relevant_evidence=True,
         ),
         CHECK_EKS_PUBLIC_ENDPOINT_STAGING_ONLY: IntentCheckDefinition(
