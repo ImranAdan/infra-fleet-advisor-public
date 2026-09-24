@@ -49,7 +49,7 @@ def _argv(repo: Path, sha: str, output_dir: Path, prior: Path | None = None) -> 
 
 
 def test_full_run_produces_schema_valid_reports_without_cloud_creds(
-    git_checkout, tmp_path: Path
+    git_checkout, tmp_path: Path, capsys
 ) -> None:
     repo, sha = git_checkout("trivy_ignore_unfixed_bad.yml")
     output_dir = tmp_path / "out"
@@ -60,6 +60,9 @@ def test_full_run_produces_schema_valid_reports_without_cloud_creds(
     payload = json.loads((output_dir / "report.json").read_text(encoding="utf-8"))
     assert payload["new_count"] == 1
     assert (output_dir / "report.md").exists()
+    output = capsys.readouterr().out
+    assert "Intent:" in output
+    assert "positions have a check" in output
 
 
 def test_review_defaults_to_offline_synthesis(git_checkout, tmp_path: Path, monkeypatch) -> None:

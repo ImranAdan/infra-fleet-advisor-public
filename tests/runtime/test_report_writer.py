@@ -9,6 +9,7 @@ from infra_fleet_advisor.core.intent import IntentEvaluation
 from infra_fleet_advisor.core.report import CollectorCoverage, Report, RunProvenance
 from infra_fleet_advisor.core.validation import RejectedCandidate
 from infra_fleet_advisor.runtime.report_writer import (
+    intent_coverage_summary,
     load_prior_report,
     to_json,
     to_markdown,
@@ -262,3 +263,7 @@ def test_markdown_summarises_intent_coverage() -> None:
         "**Coverage:** 3 of 4 positions have a check — 1 satisfied, 1 divergent, "
         "1 checked but unproven; 1 declared without a check."
     ) in to_markdown(report)
+    assert intent_coverage_summary(report) == (
+        "3 of 4 positions have a check — 1 satisfied, 1 divergent, "
+        "1 checked but unproven; 1 declared without a check."
+    )

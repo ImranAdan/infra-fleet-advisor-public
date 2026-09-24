@@ -50,6 +50,7 @@ from infra_fleet_advisor.runtime.report_signature import (
     read_latest_declined_pr_body,
 )
 from infra_fleet_advisor.runtime.report_writer import (
+    intent_coverage_summary,
     load_prior_report,
     read_report_source_sha,
     write_report,
@@ -564,6 +565,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"{report.new_count} new, {report.unchanged_count} unchanged, "
         f"{report.resolved_count} resolved, {report.suppressed_count} suppressed"
     )
+    coverage_summary = intent_coverage_summary(report)
+    if coverage_summary is not None:
+        print(f"Intent: {coverage_summary}")
     return EXIT_OK
 
 
