@@ -11,6 +11,7 @@ EVIDENCE_KIND_CONTAINER_HARDENING = "k8s_container_hardening"
 EVIDENCE_KIND_LOG_RETENTION = "tf_log_retention"
 EVIDENCE_KIND_ECR_LIFECYCLE = "tf_ecr_lifecycle"
 EVIDENCE_KIND_COST_TAGS = "tf_cost_allocation_tags"
+EVIDENCE_KIND_WORKER_SCALING = "tf_worker_scaling"
 EVIDENCE_KIND_DEPENDENCY_UPDATES = "dependency_update_coverage"
 EVIDENCE_KIND_ECR_PUBLICATION_GATE = "gha_ecr_publication_gate"
 
@@ -27,7 +28,7 @@ FLEET_LIFECYCLE_COLLECTOR_ID = "fleet_lifecycle_collector"
 FLEET_LIFECYCLE_COLLECTOR_VERSION = "1.4.0"
 
 TF_COST_COLLECTOR_ID = "terraform_cost_collector"
-TF_COST_COLLECTOR_VERSION = "1.1.0"
+TF_COST_COLLECTOR_VERSION = "1.2.0"
 
 DEPENDENCY_UPDATE_COLLECTOR_ID = "dependency_update_collector"
 DEPENDENCY_UPDATE_COLLECTOR_VERSION = "1.0.0"

@@ -23,6 +23,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
     CONCERN_TEMPLATES,
     CONCERN_TRIVY_IGNORE_UNFIXED,
     CONCERN_WILDCARD_IAM_PERMISSIONS,
+    CONCERN_WORKER_SCALING_STATIC,
     candidate_from_template,
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
@@ -38,6 +39,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     EVIDENCE_KIND_IAM_WILDCARD,
     EVIDENCE_KIND_LOG_RETENTION,
     EVIDENCE_KIND_TRIVY_GATE,
+    EVIDENCE_KIND_WORKER_SCALING,
     FLEET_LIFECYCLE_COLLECTOR_ID,
     GHA_COLLECTOR_ID,
     K8S_DEPLOYMENT_COLLECTOR_ID,
@@ -56,6 +58,7 @@ CHECK_APPLICATION_CONTAINERS_HARDENED = "application_containers_hardened"
 CHECK_STAGING_LOG_RETENTION_BOUNDED = "staging_log_retention_bounded"
 CHECK_ECR_LIFECYCLE_BOUNDED = "ecr_lifecycle_bounded"
 CHECK_DEPENDENCY_UPDATES_CONFIGURED = "dependency_updates_configured"
+CHECK_WORKER_GROUPS_DEMAND_SCALED = "worker_groups_demand_scaled"
 CHECK_AWS_COST_TAGS = "aws_cost_allocation_tags"
 CHECK_ECR_PUBLICATION_SCAN_GATED = "ecr_publication_scan_gated"
 
@@ -228,6 +231,20 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
             ),
             # Alerts and security updates are repository settings the template
             # cannot declare, so full configuration still cannot prove S-010.
+            can_prove_satisfaction=False,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_WORKER_GROUPS_DEMAND_SCALED: IntentCheckDefinition(
+            concern_key=CONCERN_WORKER_SCALING_STATIC,
+            rule=ConcernRule(
+                category="cost",
+                evidence_kind=EVIDENCE_KIND_WORKER_SCALING,
+                collector_id=TF_COST_COLLECTOR_ID,
+                source_path_prefixes=("infrastructure/staging",),
+                required_facts={"demand_scaled": False},
+            ),
+            # Whether an always-on minimum names the workload that needs it is a
+            # judgement no static fact can settle, so C-002 is divergence-only.
             can_prove_satisfaction=False,
             requires_relevant_evidence=True,
         ),

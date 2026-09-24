@@ -287,3 +287,65 @@ def test_computed_default_tags_are_partial_not_assumed(tmp_path) -> None:
 
         assert result.coverage.status == "partial", tags
         assert _facts(result, collector.EVIDENCE_KIND_COST_TAGS) == []
+
+
+NODE_GROUPS = """
+  eks_managed_node_groups = {
+    default = {
+      instance_types = ["t3.large"] # comment
+      min_size       = 1
+      max_size       = 2
+      metadata_options = {
+        http_tokens = "required"
+      }
+    }
+  }"""
+
+
+def _scaling(tmp_path: Path, files: dict[str, str]) -> list[dict[str, object]]:
+    result = _collect(tmp_path, files)
+    assert result.coverage.status == "ok"
+    return _facts(result, collector.EVIDENCE_KIND_WORKER_SCALING)
+
+
+def test_node_group_without_an_autoscaler_is_not_demand_scaled(tmp_path) -> None:
+    [fact] = _scaling(tmp_path, {"infrastructure/staging/eks.tf": EKS % NODE_GROUPS})
+
+    assert fact == {
+        "min_size": 1,
+        "max_size": 2,
+        "explicit_max": True,
+        "autoscaler_declared": False,
+        "demand_scaled": False,
+    }
+
+
+def test_declared_autoscaler_drives_bounded_node_groups(tmp_path) -> None:
+    for extra in (
+        {
+            "k8s/infrastructure/autoscaler.yaml": (
+                "spec:\n  chart:\n    spec:\n      chart: cluster-autoscaler\n"
+            )
+        },
+        {
+            "infrastructure/staging/karpenter.tf": (
+                'resource "helm_release" "k" {\n  chart = "karpenter"\n}\n'
+            )
+        },
+    ):
+        [fact] = _scaling(tmp_path, {"infrastructure/staging/eks.tf": EKS % NODE_GROUPS, **extra})
+        assert fact["demand_scaled"] is True, extra
+        for path in extra:
+            (tmp_path / path).unlink()
+
+
+def test_autoscaler_mentioned_only_in_comments_does_not_count(tmp_path) -> None:
+    [fact] = _scaling(
+        tmp_path,
+        {
+            "infrastructure/staging/eks.tf": EKS % NODE_GROUPS + "# TODO: add karpenter\n",
+            "k8s/notes.yaml": "# cluster-autoscaler goes here\nkind: ConfigMap\n",
+        },
+    )
+
+    assert fact["autoscaler_declared"] is False

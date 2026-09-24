@@ -21,15 +21,15 @@ issue-creation decision record. See the [workflow](WORKFLOW.md) and
 |---|---|---|
 | GitHub Actions | Tracked workflow settings, including Trivy scanning configuration and, per ECR-publishing job, whether a blocking Critical/High scan gates it through `needs` | Repository configuration only; exclusions and malformed or truncated input can leave coverage incomplete |
 | Terraform IAM | Persistent-stack policies under `infrastructure/permanent/`; bounded JSON/HCL objects, local condition traversals and fixed-prefix resource ARN interpolation | Referenced policy documents and unknown decision fields remain partial within the persistent scope; no policy URL fetch or Terraform execution |
-| Terraform cost | CloudWatch log-group retention (resources and the pinned EKS module's control-plane log group), ECR lifecycle policies, and AWS provider `default_tags` cost-allocation keys under `infrastructure/` | Literal single-line values only; module log groups use published defaults for trusted majors; implicit AWS-created log groups are invisible, so C-003 cannot be proven satisfied |
+| Terraform cost | CloudWatch log-group retention (resources and the pinned EKS module's control-plane log group), ECR lifecycle policies, AWS provider `default_tags` cost-allocation keys, and EKS managed node-group bounds with node-autoscaler presence (Terraform and tracked `k8s/` text) under `infrastructure/` | Literal single-line values only; module log groups use published defaults for trusted majors; implicit AWS-created log groups are invisible, so C-003 cannot be proven satisfied |
 | Dependency updates | Tracked dependency manifests (Dockerfiles, Python requirements, npm, Go, pinned Terraform, workflows) by directory, matched against `.github/dependabot.yml` | File names only; repository alert and security-update settings cannot be read, so S-010 is divergence-only |
 | Kubernetes Deployments | Tracked raw `apps/v1` Deployment manifests under `k8s/`; rollout capacity (R-001) and container hardening (S-002) for owner-managed workloads under `k8s/applications/` | Does not render Helm or inspect a live cluster; missing, malformed, duplicate or truncated evidence remains unverified |
 | Fleet lifecycle | The tracked `fleet` facade and fixed local and AWS strategy modules; closed lifecycle dispatch plus local pinned-tool, checkout-state, explicit-context, and next-command controls | Static shell structure only; it detects absent controls but cannot prove downloads, idempotence, runtime readiness, credential behavior, or teardown effects |
 
 The security, reliability, cost and maintainability catalogs contain twenty
-positions. Twelve have registered checks. Unsupported positions and incomplete
+positions. Thirteen have registered checks. Unsupported positions and incomplete
 evaluation remain explicit report coverage; the cost catalog has three checks
-(log retention and cost tags are divergence-only), S-011's publication gate is
+(log retention, cost tags and worker scaling are divergence-only), S-011's publication gate is
 divergence-only because only recognised ECR login forms count as publication, and the maintainability catalog has two
 divergence-only checks. They do
 not automatically create issues in either repository. The

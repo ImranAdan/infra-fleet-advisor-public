@@ -202,6 +202,7 @@ def test_production_markdown_is_the_authoritative_catalog() -> None:
         "github_actions_uses_oidc",
         "persistent_iam_avoids_wildcards",
         "staging_log_retention_bounded",
+        "worker_groups_demand_scaled",
     }
     security_oidc = next(
         item
@@ -224,7 +225,7 @@ def test_production_markdown_is_the_authoritative_catalog() -> None:
     assert all(item.category == "cost" for item in cost)
     assert [item.check_key for item in cost] == [
         None,
-        None,
+        "worker_groups_demand_scaled",
         "staging_log_retention_bounded",
         "ecr_lifecycle_bounded",
         "aws_cost_allocation_tags",
