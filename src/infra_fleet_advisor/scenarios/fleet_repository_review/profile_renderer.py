@@ -30,20 +30,29 @@ _KUSTOMIZATION_KEYS = {
     "configMapGenerator",
     "generatorOptions",
 }
-# Kinds a kustomization's `namespace` leaves alone. ponytail: the kinds this
-# fleet declares; an unlisted cluster-scoped kind would gain a stray namespace.
+# Kinds a kustomization's `namespace` leaves alone, besides any `Cluster*`
+# kind. ponytail: built-in and fleet kinds; an unlisted cluster-scoped custom
+# kind would gain a stray namespace.
 _CLUSTER_SCOPED_KINDS = {
     "Namespace",
-    "ClusterRole",
-    "ClusterRoleBinding",
+    "Node",
+    "PersistentVolume",
     "CustomResourceDefinition",
-    "ClusterPolicy",
     "StorageClass",
     "PriorityClass",
+    "RuntimeClass",
+    "IngressClass",
+    "GatewayClass",
+    "APIService",
     "ValidatingWebhookConfiguration",
     "MutatingWebhookConfiguration",
+    "ValidatingAdmissionPolicy",
+    "ValidatingAdmissionPolicyBinding",
+    "ValidatingPolicy",
 }
-_VARIABLE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::?[=-]([^}]*))?\}")
+# `$${NAME}` is Flux's escape for a literal `${NAME}`.
+_VARIABLE = re.compile(r"\$(\$?)\{([A-Za-z_][A-Za-z0-9_]*)(?::?[=-]([^}]*))?\}")
+_SUBSTITUTE_CONTROL = "kustomize.toolkit.fluxcd.io/substitute"
 KUSTOMIZATION_FILES = ("kustomization.yaml", "kustomization.yml", "Kustomization")
 _FLUX_KUSTOMIZATION = "kustomize.toolkit.fluxcd.io/"
 # Flux Kustomization fields that do not change what is applied. Anything else
@@ -261,7 +270,8 @@ class _Renderer:
 
 
 def _with_namespace(resource: RenderedResource, namespace: str) -> RenderedResource:
-    if resource.body.get("kind") in _CLUSTER_SCOPED_KINDS:
+    kind = str(resource.body.get("kind", ""))
+    if kind in _CLUSTER_SCOPED_KINDS or kind.startswith("Cluster"):
         return resource
     body = copy.deepcopy(resource.body)
     metadata = body.setdefault("metadata", {})
@@ -271,29 +281,45 @@ def _with_namespace(resource: RenderedResource, namespace: str) -> RenderedResou
     return RenderedResource(resource.source_path, body, resource.patch_path)
 
 
-def _substitute(value: Any, variables: dict[str, str]) -> Any:
+@dataclass(frozen=True, slots=True)
+class _Substitution:
+    """What a Flux Kustomization substitutes, as far as Git can tell."""
+
+    variables: dict[str, str]
+    # Every source was found in Git, so a variable missing here is undefined
+    # at runtime too and its default applies. A source created outside Git
+    # (a bootstrap ConfigMap, any Secret) may define it, so it stays unknown.
+    complete: bool
+
+
+def _substitute(value: Any, substitution: _Substitution) -> Any:
     """Flux postBuild substitution for the variables Git declares.
 
-    A variable Git does not declare (such as one a bootstrap script creates)
-    stays literal, as the render did before substitution existed. A scalar that
-    is exactly one variable is re-read as YAML, since Flux substitutes text
-    before parsing: `port: ${APP_PORT}` becomes an integer.
+    A variable Git cannot resolve stays literal, as the render did before
+    substitution existed. A scalar that is exactly one variable is re-read as
+    YAML, since Flux substitutes text before parsing: `port: ${APP_PORT}`
+    becomes an integer.
     """
     if isinstance(value, dict):
-        return {key: _substitute(item, variables) for key, item in value.items()}
+        return {key: _substitute(item, substitution) for key, item in value.items()}
     if isinstance(value, list):
-        return [_substitute(item, variables) for item in value]
+        return [_substitute(item, substitution) for item in value]
     if not isinstance(value, str) or "${" not in value:
         return value
 
     def replace(match: re.Match[str]) -> str:
-        name, default = match.group(1), match.group(2)
-        if name in variables:
-            return variables[name]
-        return default if default is not None else match.group(0)
+        escaped, name, default = match.group(1), match.group(2), match.group(3)
+        if escaped:
+            return match.group(0)[1:]
+        if name in substitution.variables:
+            return substitution.variables[name]
+        if default is not None and substitution.complete:
+            return default
+        return match.group(0)
 
     replaced = _VARIABLE.sub(replace, value)
-    if _VARIABLE.fullmatch(value) and replaced != value:
+    exact = _VARIABLE.fullmatch(value)
+    if exact and not exact.group(1) and replaced != value:
         try:
             parsed = yaml.safe_load(replaced)
         except yaml.YAMLError:
@@ -302,13 +328,28 @@ def _substitute(value: Any, variables: dict[str, str]) -> Any:
     return replaced
 
 
-def _flux_variables(body: dict[str, Any], known: list[RenderedResource]) -> dict[str, str]:
-    """Variables a Flux Kustomization substitutes, as far as Git declares them."""
+def _substitution_disabled(body: dict[str, Any]) -> bool:
+    """Flux leaves a resource alone when it opts out by label or annotation."""
+    metadata = body.get("metadata")
+    if not isinstance(metadata, dict):
+        return False
+    return any(
+        isinstance(metadata.get(field), dict)
+        and metadata[field].get(_SUBSTITUTE_CONTROL) == "disabled"
+        for field in ("labels", "annotations")
+    )
+
+
+def _flux_variables(body: dict[str, Any], known: list[RenderedResource]) -> _Substitution | None:
+    """What a Flux Kustomization substitutes; None when it substitutes nothing."""
     spec = body.get("spec") or {}
-    post_build = spec.get("postBuild") or {}
+    post_build = spec.get("postBuild")
+    if not post_build:
+        return None
     metadata = body.get("metadata") or {}
     namespace = metadata.get("namespace") if isinstance(metadata, dict) else None
     variables: dict[str, str] = {}
+    complete = True
     sources = post_build.get("substituteFrom") or []
     if not isinstance(sources, list):
         raise _Incomplete("a Flux Kustomization has malformed substituteFrom")
@@ -316,23 +357,27 @@ def _flux_variables(body: dict[str, Any], known: list[RenderedResource]) -> dict
     for source in sources:
         if not isinstance(source, dict) or source.get("kind") not in {"ConfigMap", "Secret"}:
             raise _Incomplete("a Flux Kustomization has malformed substituteFrom")
-        if source["kind"] != "ConfigMap":
-            continue
-        for resource in known:
-            meta = resource.body.get("metadata") or {}
-            if (
-                resource.body.get("kind") == "ConfigMap"
-                and isinstance(meta, dict)
-                and meta.get("name") == source.get("name")
-                and meta.get("namespace") == namespace
-                and isinstance(resource.body.get("data"), dict)
-            ):
-                variables.update({str(k): str(v) for k, v in resource.body["data"].items()})
+        found = [
+            resource
+            for resource in known
+            if source["kind"] == "ConfigMap"
+            and resource.body.get("kind") == "ConfigMap"
+            and isinstance(resource.body.get("metadata"), dict)
+            and resource.body["metadata"].get("name") == source.get("name")
+            and resource.body["metadata"].get("namespace") == namespace
+            and isinstance(resource.body.get("data"), dict)
+        ]
+        complete = complete and bool(found)
+        for resource in found:
+            variables.update({str(k): str(v) for k, v in resource.body["data"].items()})
     inline = post_build.get("substitute") or {}
     if not isinstance(inline, dict):
         raise _Incomplete("a Flux Kustomization has malformed substitute")
     variables.update({str(k): str(v) for k, v in inline.items()})
-    return variables
+    # Flux skips substitution outright when no variable resolves.
+    if complete and not variables:
+        return None
+    return _Substitution(variables, complete)
 
 
 def _json_patch(document: dict[str, Any], operation: Any, rel_path: str) -> None:
@@ -492,12 +537,14 @@ def _render(renderer: _Renderer, profile: str, sources: set[tuple[str, str]]) ->
                 raise _Incomplete("Flux Kustomization nesting limit reached")
             overlay = renderer._local("", _flux_path(resource.body, sources))
             known = render.resources + [pending for pending, _depth in queue]
-            variables = _flux_variables(resource.body, known)
+            substitution = _flux_variables(resource.body, known)
             queue.extend(
                 (
-                    RenderedResource(
+                    child
+                    if substitution is None or _substitution_disabled(child.body)
+                    else RenderedResource(
                         child.source_path,
-                        _substitute(child.body, variables),
+                        _substitute(child.body, substitution),
                         child.patch_path,
                     ),
                     depth + 1,

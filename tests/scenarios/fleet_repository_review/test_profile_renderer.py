@@ -271,11 +271,69 @@ def test_flux_substitutes_what_git_declares_and_keeps_the_rest(tmp_path: Path) -
     assert render.complete, render.gaps
     [deploy] = [r for r in render.resources if r.body["kind"] == "Deployment"]
     assert deploy.body["metadata"]["name"] == "shop"
-    # An exact variable is re-read as YAML, as Flux substitutes before parsing;
-    # `runtime` is created outside Git, so REGISTRY stays a literal.
+    # An exact variable is re-read as YAML, as Flux substitutes before parsing.
+    # `runtime` is created outside Git: REGISTRY stays literal, and so does a
+    # default, because at runtime that source may define MODE.
     assert deploy.body["spec"] == {
         "port": 8080,
         "image": "${REGISTRY}/shop",
         "tier": "gold",
-        "mode": "safe",
+        "mode": "${MODE:=safe}",
+    }
+
+
+def _substituted(tmp_path: Path, post_build: str, manifest: str):
+    flux = FLUX.replace(
+        "sourceRef: {kind: GitRepository, name: flux-system}}",
+        "sourceRef: {kind: GitRepository, name: flux-system}" + post_build + "}",
+    )
+    render = _profile(
+        tmp_path,
+        "resources: [thing.yaml]\n",
+        {"k8s/clusters/p/apps.yaml": flux, "k8s/overlay/thing.yaml": manifest},
+    )
+    assert render.complete, render.gaps
+    return [r.body for r in render.resources if r.body["kind"] == "Thing"]
+
+
+def test_substitution_follows_flux_escapes_defaults_and_opt_outs(tmp_path: Path) -> None:
+    thing = (
+        "apiVersion: v1\nkind: Thing\nmetadata: {name: a}\n"
+        "spec: {name: '${APP}', literal: '$${APP}', mode: '${MODE:=safe}'}\n---\n"
+        "apiVersion: v1\nkind: Thing\nmetadata: {name: b, labels:"
+        " {kustomize.toolkit.fluxcd.io/substitute: disabled}}\nspec: {name: '${APP}'}\n"
+    )
+    first, opted_out = _substituted(tmp_path, ", postBuild: {substitute: {APP: shop}}", thing)
+
+    # Every source is in Git, so an undefined variable's default applies.
+    assert first["spec"] == {"name": "shop", "literal": "${APP}", "mode": "safe"}
+    assert opted_out["spec"] == {"name": "${APP}"}
+
+
+def test_without_post_build_nothing_is_substituted(tmp_path: Path) -> None:
+    thing = "apiVersion: v1\nkind: Thing\nmetadata: {name: a}\nspec: {mode: '${MODE:=safe}'}\n"
+    [only] = _substituted(tmp_path, "", thing)
+
+    assert only["spec"] == {"mode": "${MODE:=safe}"}
+
+
+def test_namespace_skips_cluster_scoped_kinds(tmp_path: Path) -> None:
+    render = _profile(
+        tmp_path,
+        "namespace: apps\nresources: [kinds.yaml]\n",
+        {
+            "k8s/overlay/kinds.yaml": "".join(
+                f"---\napiVersion: v1\nkind: {kind}\nmetadata: {{name: x}}\n"
+                for kind in ("Node", "PersistentVolume", "ClusterIssuer", "ConfigMap")
+            )
+        },
+    )
+
+    assert render.complete, render.gaps
+    namespaces = {r.body["kind"]: r.body["metadata"].get("namespace") for r in render.resources}
+    assert namespaces == {
+        "Node": None,
+        "PersistentVolume": None,
+        "ClusterIssuer": None,
+        "ConfigMap": "apps",
     }
