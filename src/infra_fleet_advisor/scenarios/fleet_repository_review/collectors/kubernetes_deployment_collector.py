@@ -1,5 +1,14 @@
+"""Rollout and container facts for the Deployments each profile applies.
+
+The target fleet uses Flux Kustomizations and profile overlays, so raw base
+manifests are insufficient evidence of deployed desired state. Profiles are
+rendered in-process through the same closed, read-only subset used by the
+Kubernetes security collector. Facts for one workload are then combined across
+profiles under its stable Kubernetes identity.
+"""
+
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -15,11 +24,20 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     K8S_DEPLOYMENT_COLLECTOR_ID,
     K8S_DEPLOYMENT_COLLECTOR_VERSION,
 )
+from infra_fleet_advisor.scenarios.fleet_repository_review.profile_renderer import (
+    KUSTOMIZATION_FILES,
+    render_profiles,
+)
 
 _DEFAULT_FENCEPOST = "25%"
 _PERCENT = re.compile(r"^(0|[1-9][0-9]*)%$")
 _MAX_DEPLOYMENT_EVIDENCE = 500
 _MAX_INT_OR_PERCENT = 2_147_483_647
+_MAX_PROFILES = 8
+_PROTECTIVE_FACT = {
+    EVIDENCE_KIND_DEPLOYMENT_ROLLOUT_CAPACITY: "retains_healthy_capacity",
+    EVIDENCE_KIND_CONTAINER_HARDENING: "all_containers_hardened",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -239,7 +257,49 @@ def _build_hardening_evidence(
     )
 
 
-def collect(
+def _evaluate_documents(
+    documents: Iterable[tuple[Any, str]],
+) -> tuple[tuple[Evidence, ...], int, bool]:
+    failures = 0
+    deployment_limit_reached = False
+    evidence_by_id: dict[str, Evidence] = {}
+    seen_ids: set[str] = set()
+    duplicate_ids: set[str] = set()
+
+    for document, rel_path in documents:
+        if document is None:
+            continue
+        if not isinstance(document, Mapping):
+            failures += 1
+            continue
+        resources, list_failed = _list_items(document)
+        failures += int(list_failed)
+        for resource in resources:
+            rollout, item_failed = _build_deployment_evidence(resource, rel_path)
+            failures += int(item_failed)
+            if rollout is None:
+                continue
+            hardening, item_failed = _build_hardening_evidence(resource, rel_path)
+            failures += int(item_failed)
+            for item in (rollout, hardening):
+                if item is None:
+                    continue
+                if item.evidence_id in seen_ids:
+                    duplicate_ids.add(item.evidence_id)
+                    evidence_by_id.pop(item.evidence_id, None)
+                    continue
+                seen_ids.add(item.evidence_id)
+                if len(evidence_by_id) >= _MAX_DEPLOYMENT_EVIDENCE:
+                    deployment_limit_reached = True
+                    continue
+                evidence_by_id[item.evidence_id] = item
+
+    failures += len(duplicate_ids)
+    evidence = tuple(evidence_by_id[key] for key in sorted(evidence_by_id))
+    return evidence, failures, deployment_limit_reached
+
+
+def _collect_raw(
     checkout_root: Path,
     limits: ExecutionLimits,
     excluded_paths: frozenset[str] = frozenset(),
@@ -283,10 +343,7 @@ def collect(
     files = eligible_files[: limits.max_manifest_files]
     omitted_files = len(eligible_files) - len(files)
     failures = 0
-    deployment_limit_reached = False
-    evidence_by_id: dict[str, Evidence] = {}
-    seen_ids: set[str] = set()
-    duplicate_ids: set[str] = set()
+    documents: list[tuple[Any, str]] = []
 
     for path in files:
         rel_path = path.relative_to(checkout_root).as_posix()
@@ -297,40 +354,15 @@ def collect(
             if path.stat().st_size > limits.max_manifest_file_bytes:
                 failures += 1
                 continue
-            documents = tuple(yaml.safe_load_all(path.read_text(encoding="utf-8")))
+            parsed = tuple(yaml.safe_load_all(path.read_text(encoding="utf-8")))
         except (OSError, UnicodeError, yaml.YAMLError):
             failures += 1
             continue
 
-        for document in documents:
-            if document is None:
-                continue
-            if not isinstance(document, Mapping):
-                failures += 1
-                continue
-            resources, list_failed = _list_items(document)
-            failures += int(list_failed)
-            for resource in resources:
-                rollout, item_failed = _build_deployment_evidence(resource, rel_path)
-                failures += int(item_failed)
-                if rollout is None:
-                    continue
-                hardening, item_failed = _build_hardening_evidence(resource, rel_path)
-                failures += int(item_failed)
-                for item in (rollout, hardening):
-                    if item is None:
-                        continue
-                    if item.evidence_id in seen_ids:
-                        duplicate_ids.add(item.evidence_id)
-                        evidence_by_id.pop(item.evidence_id, None)
-                        continue
-                    seen_ids.add(item.evidence_id)
-                    if len(evidence_by_id) >= _MAX_DEPLOYMENT_EVIDENCE:
-                        deployment_limit_reached = True
-                        continue
-                    evidence_by_id[item.evidence_id] = item
+        documents.extend((document, rel_path) for document in parsed)
 
-    failures += len(duplicate_ids)
+    evidence, evaluation_failures, deployment_limit_reached = _evaluate_documents(documents)
+    failures += evaluation_failures
 
     reasons: list[str] = []
     if failures:
@@ -344,7 +376,6 @@ def collect(
     if deployment_limit_reached:
         reasons.append("deployment evidence omitted by safety limit")
     status = "partial" if reasons else "ok"
-    evidence = tuple(evidence_by_id[key] for key in sorted(evidence_by_id))
     return CollectorResult(
         evidence=evidence,
         coverage=CollectorCoverage(
@@ -352,5 +383,122 @@ def collect(
             status=status,
             evidence_count=len(evidence),
             error_summary="; ".join(reasons) or None,
+        ),
+    )
+
+
+def _combine_profiles(per_profile: dict[str, tuple[Evidence, ...]]) -> tuple[Evidence, ...]:
+    """Keep resource identities stable while requiring controls in every profile."""
+    grouped: dict[str, list[tuple[str, Evidence]]] = {}
+    for profile, evidence in per_profile.items():
+        for item in evidence:
+            grouped.setdefault(item.evidence_id, []).append((profile, item))
+
+    combined: list[Evidence] = []
+    for evidence_id in sorted(grouped):
+        entries = grouped[evidence_id]
+        first = entries[0][1]
+        protective_fact = _PROTECTIVE_FACT[first.kind]
+        fact: dict[str, bool | str | int] = {}
+        for key, value in first.fact.items():
+            values = [item.fact.get(key) for _profile, item in entries]
+            if key == protective_fact:
+                fact[key] = all(item is True for item in values)
+            elif all(item == values[0] for item in values):
+                fact[key] = value
+            else:
+                fact[key] = ", ".join(sorted({str(item) for item in values}))
+
+        failing = sorted(
+            profile for profile, item in entries if item.fact.get(protective_fact) is not True
+        )
+        profiles = sorted(profile for profile, _item in entries)
+        fact["profiles"] = ", ".join(profiles)
+        fact["failing_profiles"] = ", ".join(failing)
+        shown = next((item for profile, item in entries if profile in failing), first)
+        combined.append(
+            Evidence(
+                evidence_id=first.evidence_id,
+                kind=first.kind,
+                source_path=shown.source_path,
+                locator=first.locator,
+                excerpt=f"[{', '.join(failing or profiles)}] {shown.excerpt}"[:280],
+                fact=fact,
+                collector_id=first.collector_id,
+                collector_version=first.collector_version,
+            )
+        )
+    return tuple(combined)
+
+
+def _mark_unrendered(result: CollectorResult, reasons: list[str]) -> CollectorResult:
+    summary_parts = [*reasons, "no deployment profiles; manifests evaluated unrendered"]
+    if result.coverage.error_summary:
+        summary_parts.append(result.coverage.error_summary)
+    return CollectorResult(
+        result.evidence,
+        CollectorCoverage(
+            K8S_DEPLOYMENT_COLLECTOR_ID,
+            "failed" if result.coverage.status == "failed" else "partial",
+            len(result.evidence),
+            "; ".join(summary_parts)[:500],
+        ),
+    )
+
+
+def collect(
+    checkout_root: Path,
+    limits: ExecutionLimits,
+    excluded_paths: frozenset[str] = frozenset(),
+    tracked_paths: frozenset[str] | None = None,
+) -> CollectorResult:
+    if not (checkout_root / "k8s").exists():
+        return _collect_raw(checkout_root, limits, excluded_paths, tracked_paths)
+    clusters = checkout_root / "k8s" / "clusters"
+    directories = (
+        sorted(path for path in clusters.iterdir() if path.is_dir()) if clusters.is_dir() else []
+    )
+    if not directories:
+        raw = _collect_raw(checkout_root, limits, excluded_paths, tracked_paths)
+        return _mark_unrendered(raw, [])
+
+    reasons: list[str] = []
+    profiles: list[str] = []
+    for directory in directories:
+        if any((directory / name).is_file() for name in KUSTOMIZATION_FILES):
+            profiles.append(directory.name)
+        else:
+            reasons.append(f"{directory.name}: no kustomization file, profile not rendered")
+    if len(profiles) > _MAX_PROFILES:
+        reasons.append(f"{len(profiles) - _MAX_PROFILES} profile(s) omitted by safety limit")
+        profiles = profiles[:_MAX_PROFILES]
+    if not profiles:
+        raw = _collect_raw(checkout_root, limits, excluded_paths, tracked_paths)
+        return _mark_unrendered(raw, reasons)
+
+    per_profile: dict[str, tuple[Evidence, ...]] = {}
+    for render in render_profiles(checkout_root, profiles, limits, tracked_paths, excluded_paths):
+        reasons.extend(f"{render.profile}: {gap}" for gap in render.gaps)
+        documents = ((resource.body, resource.source_path) for resource in render.resources)
+        evidence, failures, limit_reached = _evaluate_documents(documents)
+        per_profile[render.profile] = evidence
+        if failures:
+            reasons.append(
+                f"{render.profile}: {failures} manifest or resource(s) could not be evaluated"
+            )
+        if limit_reached:
+            reasons.append(f"{render.profile}: deployment evidence omitted by safety limit")
+
+    evidence = _combine_profiles(per_profile)
+    if len(evidence) > _MAX_DEPLOYMENT_EVIDENCE:
+        evidence = evidence[:_MAX_DEPLOYMENT_EVIDENCE]
+        reasons.append("deployment evidence omitted by safety limit")
+    return CollectorResult(
+        evidence,
+        CollectorCoverage(
+            K8S_DEPLOYMENT_COLLECTOR_ID,
+            "partial" if reasons else "ok",
+            len(evidence),
+            "; ".join(reasons)[:500] or None,
         ),
     )

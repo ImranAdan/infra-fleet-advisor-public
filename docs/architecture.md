@@ -118,7 +118,8 @@ or inserted steps can therefore still produce a one-time lifecycle change.
 Kubernetes Deployment rollout evidence uses the API version, kind, namespace,
 and name as its stable handle. Duplicate declarations of that handle make
 coverage partial and are withheld rather than selecting one declaration
-arbitrarily.
+arbitrarily. The same handle combines rollout and container facts across
+profiles, so adding a profile does not churn lifecycle identity.
 
 Fleet lifecycle evidence uses one stable identity for the common profile
 dispatch contract. Its collector reads only the tracked `fleet` facade and
@@ -196,14 +197,15 @@ manifest budget), or an enabled EKS Auto Mode `compute_config`. It is
 divergence-only: whether an always-on minimum names the workload that needs it
 is a judgement.
 
-Kubernetes security facts come from rendered profiles. `profile_renderer`
-builds each `k8s/clusters/<profile>` the way Flux would, following every Flux
-`Kustomization`'s local `spec.path` and applying the closed kustomize subset the
-fleet uses, in pure Python: no kustomize binary, no network, no plugins. Rendered
-objects keep their source file for citation. Facts are combined per object
-across profiles, a protective fact holding only if it holds in every profile, so
-evidence identities do not change with the number of profiles while a violation
-introduced by one profile's patch is still caught and named.
+Kubernetes deployment and security facts come from rendered profiles.
+`profile_renderer` builds each `k8s/clusters/<profile>` the way Flux would,
+following every Flux `Kustomization`'s local `spec.path` and applying the closed
+kustomize subset the fleet uses, in pure Python: no kustomize binary, no network,
+no plugins. Rendered objects keep their source file for citation. Facts are
+combined per object across profiles, a protective fact holding only if it holds
+in every profile, so evidence identities do not change with the number of
+profiles while a violation introduced by one profile's patch is still caught
+and named.
 
 The dependency update collector classifies tracked file names from the
 verified commit into Dependabot ecosystems by a closed rule, groups them by

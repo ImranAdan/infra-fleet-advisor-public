@@ -291,15 +291,16 @@ A registered proposition evaluates as exactly one of `satisfied`, `divergent`,
 or `declared_unverified`; incomplete collector coverage and absence of relevant
 evidence can never prove satisfaction.
 
-The initial reliability check `deployment_rollout_capacity` evaluates tracked
-`apps/v1` Deployment desired state under `k8s/applications/`. For an active
-application Deployment, satisfaction requires RollingUpdate, an effective
-`maxUnavailable` of zero, a positive effective `maxSurge`, and a readiness probe
-on every application container. Integer and percentage fenceposts are resolved
-against declared replicas using Kubernetes rollout rounding. Generated platform
-Deployments outside the application path remain collected evidence but are not
-part of this proposition. Missing application Deployment evidence or incomplete
-manifest coverage is unverified, not satisfied.
+The reliability check `deployment_rollout_capacity` evaluates tracked `apps/v1`
+Deployment desired state sourced from `k8s/applications/` after every deployment
+profile is rendered. For an active application Deployment, satisfaction requires
+RollingUpdate, an effective `maxUnavailable` of zero, a positive effective
+`maxSurge`, and a readiness probe on every application container in every
+profile. Integer and percentage fenceposts are resolved against declared
+replicas using Kubernetes rollout rounding. Generated platform Deployments
+outside the application path remain collected evidence but are not part of this
+proposition. Missing application Deployment evidence or incomplete profile
+coverage is unverified, not satisfied.
 
 Every `divergent` proposition produces one required recommendation containing
 all evidence that conflicted with it. A model may replace the deterministic

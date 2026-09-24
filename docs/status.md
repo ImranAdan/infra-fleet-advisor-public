@@ -25,7 +25,7 @@ issue-creation decision record. See the [workflow](WORKFLOW.md) and
 | Dependency updates | Tracked dependency manifests (Dockerfiles, Python requirements, npm, Go, pinned Terraform, workflows) by directory, matched against `.github/dependabot.yml` | File names only; repository alert and security-update settings cannot be read, so S-010 is divergence-only |
 | Application config | Literal `app.config[...]` session-cookie settings in tracked Flask applications under `applications/`, parsed with `ast` and never imported | Module-level literals only; runtime overrides are invisible, so S-008 is divergence-only |
 | Kubernetes security | What each deployment profile applies: every `k8s/clusters/<profile>` is rendered in-process (Flux Kustomization paths, local `resources`, inline JSON6902 patches). Evaluates ingress NetworkPolicy coverage of application pods, permissive egress outside application namespaces, Ingress TLS/issuer/redirect and RBAC reaching mounted tokens; protective facts must hold in every profile | Remote bases, strategic-merge patches, unknown kustomize fields or untracked files make a profile incomplete. Flux `${VAR}` substitutions stay literal and HelmRelease chart output is not rendered. S-003, S-004 and S-009 can be satisfied; S-005 stays divergence-only until Gateway API listeners are evaluated |
-| Kubernetes Deployments | Tracked raw `apps/v1` Deployment manifests under `k8s/`; rollout capacity (R-001) and container hardening (S-002) for owner-managed workloads under `k8s/applications/` | Does not render Helm or inspect a live cluster; missing, malformed, duplicate or truncated evidence remains unverified |
+| Kubernetes Deployments | Rendered `apps/v1` Deployments in every profile; rollout capacity (R-001) and container hardening (S-002) for owner-managed workloads sourced from `k8s/applications/` | Uses the same closed kustomize subset as the security collector; does not render Helm or inspect a live cluster, and incomplete profiles remain unverified |
 | Fleet lifecycle | The tracked `fleet` facade and fixed local and AWS strategy modules; closed lifecycle dispatch plus local pinned-tool, checkout-state, explicit-context, and next-command controls | Static shell structure only; it detects absent controls but cannot prove downloads, idempotence, runtime readiness, credential behavior, or teardown effects |
 
 The security, reliability, cost and maintainability catalogs contain twenty
@@ -45,10 +45,11 @@ incomplete. Within that scope, the wildcard check does not establish effective
 permissions after conditions and denies, and a referenced policy document remains
 a visible gap because the advisor does not fetch it.
 
-The rollout collector also records Flux's generated controllers, but R-001 is
-scoped to owner-managed application manifests. Platform evidence remains
-available for future platform-specific intent without generating application
-rollout advice.
+The deployment collector combines one workload's facts across rendered
+profiles, so a rollout or hardening control must hold everywhere. It also
+records Flux's generated controllers, but R-001 and S-002 are scoped to
+owner-managed application manifests. Platform evidence remains available for
+future platform-specific intent without generating application advice.
 
 The lifecycle collector never executes Fleet code. It reads the fixed, bounded,
 tracked `fleet` facade and the two named strategy modules, and recognizes only
