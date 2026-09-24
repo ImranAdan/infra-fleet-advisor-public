@@ -27,6 +27,8 @@ from infra_fleet_advisor.runtime.fleet_feedback import (
     write_feedback_outputs,
 )
 from infra_fleet_advisor.runtime.github_issues import GhCliIssueClient, publish_issue_plan
+from infra_fleet_advisor.runtime.intent_gate import compare_reports
+from infra_fleet_advisor.runtime.intent_gate import to_markdown as gate_markdown
 from infra_fleet_advisor.runtime.issue_publication import (
     FLEET_REPOSITORY,
     build_issue_plan,
@@ -59,6 +61,7 @@ EXIT_POLICY_ERROR = 2
 EXIT_PROVENANCE_ERROR = 3
 EXIT_PIPELINE_ERROR = 4
 EXIT_UNSAFE_OUTPUT_ERROR = 5
+EXIT_INTENT_REGRESSION = 6
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -74,6 +77,12 @@ def _build_parser() -> argparse.ArgumentParser:
     review.add_argument("--source-label", default="infra-fleet-public")
     review.add_argument("--synthesizer", choices=SYNTHESIZERS, default=DEFAULT_SYNTHESIZER)
 
+    gate = sub.add_parser(
+        "gate", help="Fail when a fleet change would newly diverge from declared intent"
+    )
+    gate.add_argument("--base-report", required=True, type=Path)
+    gate.add_argument("--head-report", required=True, type=Path)
+    gate.add_argument("--summary", type=Path, default=None)
     remediate = sub.add_parser(
         "remediate", help="Apply mechanical fixes a published report already justifies"
     )
@@ -226,6 +235,19 @@ def _remediate(args: argparse.Namespace) -> int:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
+
+    if args.command == "gate":
+        try:
+            gate_result = compare_reports(args.base_report, args.head_report)
+        except PolicyError as exc:
+            print(f"policy error: {exc}", file=sys.stderr)
+            return EXIT_POLICY_ERROR
+        summary = gate_markdown(gate_result)
+        print(summary)
+        if args.summary is not None:
+            with args.summary.open("a", encoding="utf-8") as handle:
+                handle.write(summary)
+        return EXIT_OK if gate_result.passed else EXIT_INTENT_REGRESSION
 
     if args.command == "report-readiness":
         try:
