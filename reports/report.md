@@ -1,10 +1,10 @@
 # Infra Fleet Advisor report
 
-- Source: `infra-fleet-public` @ `7a98e0191a9bbba7a34a8d7927fdf8fcbec405d2`
+- Source: `infra-fleet-public` @ `1045a84e6ac14fa1c85d56281600ecbba2cedad5`
 - Advisor version: `0.1.0` · Policy version: `1.1`
-- Model: `stub-synthesizer-v1` · Run started: `2026-09-24T08:58:19.524871+00:00`
+- Model: `stub-synthesizer-v1` · Run started: `2026-09-24T15:19:01.482623+00:00`
 - Intent catalog: `intent-md-v1:3f7d0659058772412177ae7dde83ba19de20935caf75526fe8bf7d090fb68758`
-- Lifecycle: 2 new, 1 unchanged, 6 resolved, 0 suppressed (0 rejected)
+- Lifecycle: 0 new, 3 unchanged, 6 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
 
@@ -19,7 +19,7 @@
 
 ## Intent evaluation
 
-**Coverage:** 20 of 20 positions have a check — 3 satisfied, 3 divergent, 14 checked but unproven; 0 declared without a check.
+**Coverage:** 20 of 20 positions have a check — 6 satisfied, 3 divergent, 11 checked but unproven; 0 declared without a check.
 
 - `divergent` `infra_fleet_public_cost/C-001` — Staging application worker capacity scales to zero outside an owner-defined
   usage window. A delayed startup of up to 30 minutes is acceptable when it avoids
@@ -94,15 +94,15 @@
   
   Evidence: \[application Deployment\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/k8s/applications/load-harness/deployment.yaml)
   - Category: `security` · Priority: `high` · Check: `application_containers_hardened` · Reason: `complete_evidence_supports_intent`
-- `declared_unverified` `infra_fleet_public_security/S-003` — Application ingress is limited to the declared ingress, observability, Flux load
+- `satisfied` `infra_fleet_public_security/S-003` — Application ingress is limited to the declared ingress, observability, Flux load
   tester, and same-workload peers.
   
   Evidence: \[NetworkPolicy\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/k8s/applications/load-harness/networkpolicy.yaml)
-  - Category: `security` · Priority: `high` · Check: `application_ingress_restricted` · Reason: `collector_cannot_prove_satisfaction`
-- `declared_unverified` `infra_fleet_public_security/S-004` — Permissive application egress is accepted for the current staging environment.
+  - Category: `security` · Priority: `high` · Check: `application_ingress_restricted` · Reason: `complete_evidence_supports_intent`
+- `satisfied` `infra_fleet_public_security/S-004` — Permissive application egress is accepted for the current staging environment.
   
   Evidence: \[current egress policy\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/k8s/applications/load-harness/networkpolicy.yaml)
-  - Category: `security` · Priority: `medium` · Check: `permissive_egress_bounded` · Reason: `collector_cannot_prove_satisfaction`
+  - Category: `security` · Priority: `medium` · Check: `permissive_egress_bounded` · Reason: `complete_evidence_supports_intent`
 - `divergent` `infra_fleet_public_security/S-005` — When an AWS staging deployment enables a public hostname, external application
   traffic uses HTTPS with certificates managed by cert-manager and Let's Encrypt.
   
@@ -137,10 +137,10 @@
   proposition holds only if \`SameSite=Lax\` is the accepted compensating
   control for those routes; otherwise CSRF exposure remains.
   - Category: `security` · Priority: `high` · Check: `session_cookie_csrf_compensated` · Reason: `collector_cannot_prove_satisfaction`
-- `declared_unverified` `infra_fleet_public_security/S-009` — Automatic Kubernetes service-account token mounting is accepted for the current application.
+- `satisfied` `infra_fleet_public_security/S-009` — Automatic Kubernetes service-account token mounting is accepted for the current application.
   
   Evidence: \[documented token-mount decision\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/SECURITY-CONCERNS.md)
-  - Category: `security` · Priority: `medium` · Check: `mounted_token_unprivileged` · Reason: `collector_cannot_prove_satisfaction`
+  - Category: `security` · Priority: `medium` · Check: `mounted_token_unprivileged` · Reason: `complete_evidence_supports_intent`
 - `declared_unverified` `infra_fleet_public_security/S-010` — Repository owners enable dependency alerts and security-update pull requests;
   routine version checks run monthly, while review and deployment remain an owned
   operational decision.
@@ -162,7 +162,7 @@
 
 ## Recommendations
 
-### #1 [new] Public ingress can serve application traffic over plain HTTP
+### #1 [unchanged] Public ingress can serve application traffic over plain HTTP
 
 - Category: `security` · Priority: `high` · Confidence: 0.85
 - Fingerprint: `fp_90d0fb2169abf0b8849a8d79`
@@ -190,7 +190,7 @@ A staging managed node group declares size bounds, but nothing in the repository
 
 **Trade-offs:** An autoscaler adds a controller, IAM permissions and scale-up latency; a zero minimum delays the first workload after idle periods.
 
-### #3 [new] Staging capacity is never released on a schedule
+### #3 [unchanged] Staging capacity is never released on a schedule
 
 - Category: `cost` · Priority: `high` · Confidence: 0.80
 - Fingerprint: `fp_156438b3cb31a7781fe4fc70`

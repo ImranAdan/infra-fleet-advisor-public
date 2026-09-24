@@ -98,13 +98,15 @@
     },
     {
       "collector_id": "kubernetes_security_collector",
-      "collector_version": "1.0.0",
+      "collector_version": "2.0.0",
       "evidence_id": "kubernetes_security_collector:6f5caf53a3bf6294",
-      "excerpt": "hosts covered by TLS: true; cert-manager issuer: true; HTTP redirect disabled: true",
+      "excerpt": "[aws-staging] hosts covered by TLS: true; cert-manager issuer: true; HTTP redirect disabled: true",
       "fact": {
         "cert_manager_issuer": true,
+        "failing_profiles": "aws-staging",
         "http_redirect_disabled": true,
         "https_enforced": false,
+        "profiles": "aws-staging",
         "tls_covers_hosts": true
       },
       "kind": "k8s_ingress_https",
@@ -342,9 +344,9 @@
       "evidence_ids": [],
       "priority": "high",
       "proposition_id": "S-003",
-      "reason": "collector_cannot_prove_satisfaction",
+      "reason": "complete_evidence_supports_intent",
       "statement": "Application ingress is limited to the declared ingress, observability, Flux load\ntester, and same-workload peers.\n\nEvidence: [NetworkPolicy](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/k8s/applications/load-harness/networkpolicy.yaml)",
-      "status": "declared_unverified"
+      "status": "satisfied"
     },
     {
       "category": "security",
@@ -353,9 +355,9 @@
       "evidence_ids": [],
       "priority": "medium",
       "proposition_id": "S-004",
-      "reason": "collector_cannot_prove_satisfaction",
+      "reason": "complete_evidence_supports_intent",
       "statement": "Permissive application egress is accepted for the current staging environment.\n\nEvidence: [current egress policy](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/k8s/applications/load-harness/networkpolicy.yaml)",
-      "status": "declared_unverified"
+      "status": "satisfied"
     },
     {
       "category": "security",
@@ -410,9 +412,9 @@
       "evidence_ids": [],
       "priority": "medium",
       "proposition_id": "S-009",
-      "reason": "collector_cannot_prove_satisfaction",
+      "reason": "complete_evidence_supports_intent",
       "statement": "Automatic Kubernetes service-account token mounting is accepted for the current application.\n\nEvidence: [documented token-mount decision](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/SECURITY-CONCERNS.md)",
-      "status": "declared_unverified"
+      "status": "satisfied"
     },
     {
       "category": "security",
@@ -437,7 +439,7 @@
       "status": "declared_unverified"
     }
   ],
-  "new_count": 2,
+  "new_count": 0,
   "provenance": {
     "advisor_version": "0.1.0",
     "collector_versions": {
@@ -446,15 +448,15 @@
       "fleet_lifecycle_collector": "1.4.0",
       "github_actions_workflow_collector": "1.5.0",
       "kubernetes_deployment_collector": "1.1.0",
-      "kubernetes_security_collector": "1.0.0",
+      "kubernetes_security_collector": "2.0.0",
       "terraform_cost_collector": "1.3.0",
       "terraform_iam_collector": "1.4.0"
     },
     "intent_digest": "intent-md-v1:3f7d0659058772412177ae7dde83ba19de20935caf75526fe8bf7d090fb68758",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.1",
-    "run_started_at": "2026-09-24T08:58:19.524871+00:00",
-    "source_commit_sha": "7a98e0191a9bbba7a34a8d7927fdf8fcbec405d2",
+    "run_started_at": "2026-09-24T15:19:01.482623+00:00",
+    "source_commit_sha": "1045a84e6ac14fa1c85d56281600ecbba2cedad5",
     "source_label": "infra-fleet-public"
   },
   "recommendations": [
@@ -472,7 +474,7 @@
       "priority": "high",
       "rank": 1,
       "rank_rationale": "priority=high, category_weight=10, confidence=0.85",
-      "status": "new",
+      "status": "unchanged",
       "suggested_change": "Cover every host with a cert-manager TLS entry and keep the HTTPS redirect on; route in-cluster analysis traffic to the service or an internal listener instead.",
       "summary": "An Ingress does not cover every host with TLS from a cert-manager issuer, or it disables the HTTP-to-HTTPS redirect.",
       "title": "Public ingress can serve application traffic over plain HTTP",
@@ -512,7 +514,7 @@
       "priority": "high",
       "rank": 3,
       "rank_rationale": "priority=high, category_weight=5, confidence=0.80",
-      "status": "new",
+      "status": "unchanged",
       "suggested_change": "Schedule the release: an aws_autoscaling_schedule to zero outside the usage window, or a cron trigger on the teardown workflow with an owner-set window.",
       "summary": "Staging worker capacity has no scheduled scale-to-zero: no aws_autoscaling_schedule reaching zero and no scheduled workflow that tears the stack down.",
       "title": "Staging capacity is never released on a schedule",
@@ -645,5 +647,5 @@
   "rejected_count": 0,
   "resolved_count": 6,
   "suppressed_count": 0,
-  "unchanged_count": 1
+  "unchanged_count": 3
 }
