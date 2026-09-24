@@ -126,7 +126,7 @@ def test_eks_version_must_pin_the_trusted_major(tmp_path) -> None:
         result = _collect(tmp_path, {"infrastructure/staging/eks.tf": text})
 
         assert (result.coverage.status == "ok") is trusted, version
-        assert bool(result.evidence) is trusted, version
+        assert bool(_facts(result, EVIDENCE_KIND_LOG_RETENTION)) is trusted, version
 
 
 def test_modules_declared_in_strings_or_comments_are_ignored(tmp_path) -> None:
@@ -203,7 +203,7 @@ def test_untracked_terraform_downloads_are_not_evidence(tmp_path) -> None:
     result = collector.collect(tmp_path, LIMITS, tracked_paths=frozenset({tracked}))
 
     assert result.coverage.status == "ok"
-    assert result.evidence == ()
+    assert _facts(result, EVIDENCE_KIND_LOG_RETENTION) == []
 
 
 PROVIDER = 'provider "aws" {\n  region = "eu-west-2"\n%s\n}\n'
@@ -372,3 +372,71 @@ def test_incomplete_autoscaler_scan_withholds_scaling_evidence(tmp_path) -> None
 
     assert result.coverage.status == "partial"
     assert _facts(result, collector.EVIDENCE_KIND_WORKER_SCALING) == []
+
+
+def test_public_eks_endpoint_is_accepted_only_in_staging(tmp_path) -> None:
+    module = EKS % "  endpoint_public_access = true\n  enabled_log_types = []"
+    cluster = (
+        'resource "aws_eks_cluster" "prod" {\n  name = "p"\n'
+        "  vpc_config {\n    subnet_ids = []\n  }\n}\n"
+    )
+    result = _collect(
+        tmp_path,
+        {
+            "infrastructure/staging/eks.tf": module,
+            "infrastructure/production/eks.tf": cluster,
+        },
+    )
+
+    facts = {
+        f["staging_stack"]: f["exposure_accepted"]
+        for f in _facts(result, collector.EVIDENCE_KIND_EKS_ENDPOINT)
+    }
+    # aws_eks_cluster defaults to a public endpoint, so production diverges.
+    assert facts == {True: True, False: False}
+
+
+def test_staging_capacity_needs_a_scheduled_release(tmp_path) -> None:
+    eks = EKS % "  enabled_log_types = []"
+    local_ci = (
+        "on:\n  schedule: [{cron: '0 5 * * 1'}]\njobs:\n  a:\n    runs-on: x\n"
+        "    steps:\n      - run: ./fleet down --profile local\n"
+    )
+    [fact] = _facts(
+        _collect(
+            tmp_path,
+            {"infrastructure/staging/eks.tf": eks, ".github/workflows/local.yml": local_ci},
+        ),
+        collector.EVIDENCE_KIND_IDLE_CAPACITY,
+    )
+    assert fact["scheduled_release"] is False
+
+    staging = local_ci.replace("--profile local", "--profile aws-staging")
+    [fact] = _facts(
+        _collect(tmp_path, {".github/workflows/local.yml": staging}),
+        collector.EVIDENCE_KIND_IDLE_CAPACITY,
+    )
+    assert fact["scheduled_release"] is True
+
+    (tmp_path / ".github" / "workflows" / "local.yml").unlink()
+    minimum_only = 'resource "aws_autoscaling_schedule" "night" {\n  min_size = 0\n}\n'
+    [fact] = _facts(
+        _collect(tmp_path, {"infrastructure/staging/schedule.tf": minimum_only}),
+        collector.EVIDENCE_KIND_IDLE_CAPACITY,
+    )
+    assert fact["scheduled_release"] is False
+    schedule = (
+        'resource "aws_autoscaling_schedule" "night" {\n  min_size = 0\n  desired_capacity = 0\n}\n'
+    )
+    [fact] = _facts(
+        _collect(tmp_path, {"infrastructure/staging/schedule.tf": schedule}),
+        collector.EVIDENCE_KIND_IDLE_CAPACITY,
+    )
+    assert fact["scheduled_release"] is True
+
+
+def test_reusable_module_cluster_definitions_are_withheld(tmp_path) -> None:
+    cluster = 'resource "aws_eks_cluster" "c" {\n  vpc_config {\n    subnet_ids = []\n  }\n}\n'
+    result = _collect(tmp_path, {"infrastructure/modules/eks/main.tf": cluster})
+
+    assert _facts(result, collector.EVIDENCE_KIND_EKS_ENDPOINT) == []

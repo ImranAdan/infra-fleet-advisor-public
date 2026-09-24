@@ -197,6 +197,7 @@ def test_production_markdown_is_the_authoritative_catalog() -> None:
         "deployment_rollout_capacity",
         "ecr_lifecycle_bounded",
         "ecr_publication_scan_gated",
+        "eks_public_endpoint_staging_only",
         "fleet_aws_onboarding",
         "fleet_local_first_use",
         "fleet_profiles_expose_lifecycle",
@@ -205,6 +206,8 @@ def test_production_markdown_is_the_authoritative_catalog() -> None:
         "github_actions_uses_oidc",
         "persistent_iam_avoids_wildcards",
         "public_ingress_https",
+        "session_cookie_csrf_compensated",
+        "staging_capacity_released_on_schedule",
         "staging_log_retention_bounded",
         "worker_groups_demand_scaled",
     }
@@ -228,7 +231,7 @@ def test_production_markdown_is_the_authoritative_catalog() -> None:
     assert len(cost) == 5
     assert all(item.category == "cost" for item in cost)
     assert [item.check_key for item in cost] == [
-        None,
+        "staging_capacity_released_on_schedule",
         "worker_groups_demand_scaled",
         "staging_log_retention_bounded",
         "ecr_lifecycle_bounded",
