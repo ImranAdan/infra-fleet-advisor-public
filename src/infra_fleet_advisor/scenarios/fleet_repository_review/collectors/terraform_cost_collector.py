@@ -63,6 +63,7 @@ _TEARDOWN_COMMAND = re.compile(
     r"terraform\b[^\n]*\bdestroy\b|\./fleet\s+down\b[^\n]*--profile[ =]aws-staging\b"
 )
 _HELM_RELEASE_HEADER = re.compile(r'resource\s+"(helm_release)"\s+"([A-Za-z0-9_-]+)"\s*\{')
+_MISSING = object()
 
 
 def _declares_autoscaler_in_yaml(text: str) -> bool:
@@ -94,25 +95,58 @@ def _declares_autoscaler_in_yaml(text: str) -> bool:
     return False
 
 
-def _declares_autoscaler_in_terraform(text: str) -> bool:
-    """An enabled helm_release of the chart, or a Karpenter module."""
-    releases, _ = _iter_resource_blocks(text, _HELM_RELEASE_HEADER)
+def _block_enabled(body: str) -> bool:
+    """Whether a Terraform block has a statically non-empty instance set."""
+    count = _attribute(body, "count", _MISSING)
+    for_each = _attribute(body, "for_each", _MISSING)
+    if count is not _MISSING and for_each is not _MISSING:
+        raise ValueError("block declares both count and for_each")
+    if count is not _MISSING:
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            raise ValueError("count is not a literal non-negative integer")
+        return count > 0
+    if for_each is not _MISSING:
+        if not isinstance(for_each, (dict, list)):
+            raise ValueError("for_each is not a literal collection")
+        return bool(for_each)
+    return True
+
+
+def _declares_autoscaler_in_terraform(text: str) -> tuple[bool, bool]:
+    """Return (active autoscaler found, scan complete)."""
+    complete = True
+    releases, unbalanced = _iter_resource_blocks(text, _HELM_RELEASE_HEADER)
+    complete = complete and not unbalanced
     for _kind, _name, body in releases:
         try:
-            chart, count = _attribute(body, "chart"), _attribute(body, "count", 1)
+            chart = _attribute(body, "chart")
         except ValueError:
+            complete = False
             continue
-        if isinstance(chart, str) and _NODE_AUTOSCALER.search(chart) and count != 0:
-            return True
+        if not isinstance(chart, str):
+            complete = False
+        elif _NODE_AUTOSCALER.search(chart):
+            try:
+                if _block_enabled(body):
+                    return True, complete
+            except ValueError:
+                complete = False
     modules, _ = _iter_resource_blocks(text, _MODULE_HEADER)
     for _kind, _name, body in modules:
         try:
             source = _attribute(body, "source")
         except ValueError:
+            complete = False
             continue
-        if isinstance(source, str) and "karpenter" in source:
-            return True
-    return False
+        if not isinstance(source, str):
+            complete = False
+        elif "karpenter" in source:
+            try:
+                if _block_enabled(body):
+                    return True, complete
+            except ValueError:
+                complete = False
+    return False, complete
 
 
 @dataclass(frozen=True, slots=True)
@@ -608,7 +642,9 @@ def collect(
             except yaml.YAMLError:
                 failures += 1
             continue
-        autoscaler_declared = autoscaler_declared or _declares_autoscaler_in_terraform(text)
+        declared_here, autoscaler_scan_complete = _declares_autoscaler_in_terraform(text)
+        autoscaler_declared = autoscaler_declared or declared_here
+        failures += int(not autoscaler_scan_complete)
         resources, unbalanced = _iter_resource_blocks(text, _RESOURCE_HEADER)
         modules, module_unbalanced = _iter_resource_blocks(text, _MODULE_HEADER)
         provider_blocks, provider_unbalanced = _iter_resource_blocks(text, _PROVIDER_HEADER)

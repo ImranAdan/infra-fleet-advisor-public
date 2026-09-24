@@ -352,7 +352,10 @@ def test_autoscaler_mentioned_only_in_comments_does_not_count(tmp_path) -> None:
 
 
 def test_inactive_autoscaler_mentions_do_not_count(tmp_path) -> None:
-    disabled = 'resource "helm_release" "k" {\n  count = 0\n  chart = "karpenter"\n}\n'
+    disabled = (
+        'resource "helm_release" "k" {\n  count = 0\n  chart = "karpenter"\n}\n'
+        'module "karpenter" {\n  count = 0\n  source = "example/karpenter/aws"\n}\n'
+    )
     described = 'variable "x" {\n  description = "enable cluster-autoscaler later"\n}\n'
     [fact] = _scaling(
         tmp_path,
@@ -360,6 +363,40 @@ def test_inactive_autoscaler_mentions_do_not_count(tmp_path) -> None:
             "infrastructure/staging/eks.tf": EKS % NODE_GROUPS,
             "infrastructure/staging/autoscaler.tf": disabled + described,
             "k8s/labels.yaml": "kind: ConfigMap\ndata:\n  owner: karpenter-team\n",
+        },
+    )
+
+    assert fact["autoscaler_declared"] is False
+
+
+def test_dynamic_autoscaler_enablement_makes_scaling_unverified(tmp_path) -> None:
+    dynamic = (
+        'module "karpenter" {\n  count = var.enable_karpenter ? 1 : 0\n'
+        '  source = "example/karpenter/aws"\n}\n'
+    )
+
+    result = _collect(
+        tmp_path,
+        {
+            "infrastructure/staging/eks.tf": EKS % NODE_GROUPS,
+            "infrastructure/staging/autoscaler.tf": dynamic,
+        },
+    )
+
+    assert result.coverage.status == "partial"
+    assert "could not be evaluated" in (result.coverage.error_summary or "")
+    assert _facts(result, collector.EVIDENCE_KIND_WORKER_SCALING) == []
+
+
+def test_dynamic_enablement_on_unrelated_module_does_not_hide_scaling(tmp_path) -> None:
+    [fact] = _scaling(
+        tmp_path,
+        {
+            "infrastructure/staging/eks.tf": EKS % NODE_GROUPS,
+            "infrastructure/staging/database.tf": (
+                'module "database" {\n  count = var.enable_database ? 1 : 0\n'
+                '  source = "example/database/aws"\n}\n'
+            ),
         },
     )
 
