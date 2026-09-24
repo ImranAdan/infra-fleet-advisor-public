@@ -223,6 +223,9 @@ in `infra-fleet-public` when the issues-only integration is configured. The PR
 is the decision record and is linked from every new issue. Closing an unmerged
 PR or pushing a report directly does not authorize publication. The publisher revalidates the merged report
 against the current closed policy before acquiring a cross-repository token.
+The advisory workflow must validate the prospective bounded issue plan before
+opening or updating the report PR; this preflight carries no fleet credential or
+publication authority, and post-merge validation remains mandatory.
 Recommendations that are suppressed, carry an owner-accepted trade-off, cite
 invalid evidence, or have a mismatched fingerprint are ineligible. The number
 of active issue actions must not exceed the policy recommendation limit.

@@ -14,6 +14,12 @@ fingerprints, evidence, paths, suppression, accepted trade-offs and hard limits.
 Recommendations whose relevant collector is incomplete are deferred, including
 historical carry-forwards; uncertainty does not become a fresh fix request.
 
+The advisory workflow also builds a prospective issue plan before it proposes a
+report PR. That catches an invalid recommendation or oversized issue body before
+the owner reviews a decision record. It uses a runner-local placeholder approval
+and no fleet credential. The publisher still performs the complete validation
+again against the exact merged report and its real approval record.
+
 Live main is re-fetched immediately before acquiring the write token and again
 before publication. A changed report, policy, intent or validation input pauses
 the write. Fetched code is never executed. This checks freshness without locking

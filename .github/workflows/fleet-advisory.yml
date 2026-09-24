@@ -124,6 +124,21 @@ jobs:
             --synthesizer "${{ inputs.synthesizer || 'stub' }}" \
             "${prior[@]}"
 
+      # Build the same bounded action shape the post-merge publisher will
+      # revalidate. A maximum-width placeholder approval also exercises the
+      # decision-record lines in issue bodies without granting any authority or
+      # acquiring a fleet credential. The output remains runner-local.
+      - name: Validate the prospective fleet issue plan
+        run: |
+          cat > "$RUNNER_TEMP/report-approval-placeholder.json" <<'JSON'
+          {"number":2147483647,"merge_commit_sha":"0000000000000000000000000000000000000000"}
+          JSON
+          uv run --frozen infra-fleet-advisor issue-plan \
+            --report "$RUNNER_TEMP/advisory/report.json" \
+            --policy policy.yaml --intent-dir intent \
+            --approval "$RUNNER_TEMP/report-approval-placeholder.json" \
+            --output "$RUNNER_TEMP/prospective-fleet-issue-plan.json"
+
       # A closed, unmerged advisory PR created by this workflow is an explicit
       # decline at the report signature recorded in its body. Two 100-item pages
       # paired with a 199-record gate prove the history is complete or fail
