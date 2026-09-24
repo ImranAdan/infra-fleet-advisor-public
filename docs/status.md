@@ -71,8 +71,8 @@ Terraform or GitHub call succeeds.
 `drills/fleet-mutations.yaml` lists one literal, declared violation of the real
 fleet per registered check. `infra-fleet-advisor drill` applies each in a
 throwaway worktree, runs the ordinary review and requires the named
-proposition to diverge; the nightly advisory workflow runs them as a separate,
-read-only job. A drill reports `caught`, `missed` (the check no longer sees the
+proposition to diverge; the nightly advisory workflow and every pull request (the Quality workflow)
+run them as a separate, read-only job. A drill reports `caught`, `missed` (the check no longer sees the
 fleet), `stale` (the fleet no longer contains the drill's text) or
 `already divergent` (the position cannot regress). Coverage counts a check
 only as far as its drill proves it bites.
