@@ -2,7 +2,7 @@
 
 - Format: `1`
 - Intent ID: `infra_fleet_public_security`
-- Version: `1.5`
+- Version: `1.6`
 - Category: `security`
 
 Source: [`infra-fleet-public@d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0`](https://github.com/ImranAdan/infra-fleet-public/tree/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0)
@@ -94,6 +94,11 @@ A publicly reachable EKS API protected by IAM is accepted for staging only.
 
 Evidence: [staging access decision](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/EKS-ACCESS.md)
 
+### Evaluation
+
+- Check: `eks_public_endpoint_staging_only`
+- Priority: `high`
+
 ## S-007 · IAM scope
 
 ### Intent
@@ -125,6 +130,11 @@ configured, Flask session-cookie authentication protects `/ui/*` POST routes,
 including endpoints that start CPU, memory, and cluster load tests. This
 proposition holds only if `SameSite=Lax` is the accepted compensating
 control for those routes; otherwise CSRF exposure remains.
+
+### Evaluation
+
+- Check: `session_cookie_csrf_compensated`
+- Priority: `high`
 
 ## S-009 · Service-account tokens
 

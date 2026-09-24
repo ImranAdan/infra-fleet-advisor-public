@@ -19,6 +19,7 @@ from infra_fleet_advisor.core.report import (
 )
 from infra_fleet_advisor.provenance.source_verification import SourceProvenance, list_tracked_paths
 from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
+    application_config_collector,
     dependency_update_collector,
     fleet_lifecycle_collector,
 )
@@ -39,6 +40,8 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import CONCERN_RULES
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
+    APP_CONFIG_COLLECTOR_ID,
+    APP_CONFIG_COLLECTOR_VERSION,
     DEPENDENCY_UPDATE_COLLECTOR_ID,
     DEPENDENCY_UPDATE_COLLECTOR_VERSION,
     FLEET_LIFECYCLE_COLLECTOR_ID,
@@ -118,6 +121,7 @@ def run_review(
         tracked_paths=(
             list_tracked_paths(checkout_root, "infrastructure")
             | list_tracked_paths(checkout_root, "k8s")
+            | list_tracked_paths(checkout_root, ".github/workflows")
         ),
     )
     k8s_result = k8s_deployment_collector.collect(
@@ -148,6 +152,12 @@ def run_review(
         excluded_paths=excluded_paths,
         tracked_paths=list_tracked_paths(checkout_root, "."),
     )
+    app_config_result = application_config_collector.collect(
+        checkout_root,
+        limits,
+        excluded_paths=excluded_paths,
+        tracked_paths=list_tracked_paths(checkout_root, "applications"),
+    )
     all_evidence: tuple[Evidence, ...] = (
         gha_result.evidence
         + tf_result.evidence
@@ -156,6 +166,7 @@ def run_review(
         + k8s_security_result.evidence
         + lifecycle_result.evidence
         + dependency_result.evidence
+        + app_config_result.evidence
     )
     evidence_by_id = {e.evidence_id: e for e in all_evidence}
     coverage: list[CollectorCoverage] = [
@@ -166,6 +177,7 @@ def run_review(
         k8s_security_result.coverage,
         lifecycle_result.coverage,
         dependency_result.coverage,
+        app_config_result.coverage,
     ]
 
     if intent_catalog is None:
@@ -223,6 +235,7 @@ def run_review(
             K8S_SECURITY_COLLECTOR_ID: K8S_SECURITY_COLLECTOR_VERSION,
             FLEET_LIFECYCLE_COLLECTOR_ID: FLEET_LIFECYCLE_COLLECTOR_VERSION,
             DEPENDENCY_UPDATE_COLLECTOR_ID: DEPENDENCY_UPDATE_COLLECTOR_VERSION,
+            APP_CONFIG_COLLECTOR_ID: APP_CONFIG_COLLECTOR_VERSION,
         },
         model_identifier=synthesis_response.model_identifier,
         run_started_at=run_started_at,

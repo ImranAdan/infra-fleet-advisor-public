@@ -21,6 +21,8 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.collectors.terraform_
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     EVIDENCE_KIND_COST_TAGS,
     EVIDENCE_KIND_ECR_LIFECYCLE,
+    EVIDENCE_KIND_EKS_ENDPOINT,
+    EVIDENCE_KIND_IDLE_CAPACITY,
     EVIDENCE_KIND_LOG_RETENTION,
     EVIDENCE_KIND_WORKER_SCALING,
     TF_COST_COLLECTOR_ID,
@@ -28,7 +30,8 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
 )
 
 _RESOURCE_HEADER = re.compile(
-    r'resource\s+"(aws_cloudwatch_log_group|aws_ecr_repository|aws_ecr_lifecycle_policy)"'
+    r'resource\s+"(aws_cloudwatch_log_group|aws_ecr_repository|aws_ecr_lifecycle_policy'
+    r'|aws_eks_cluster|aws_autoscaling_schedule)"'
     r'\s+"([A-Za-z0-9_-]+)"\s*\{'
 )
 _MODULE_HEADER = re.compile(r'(module)\s+"([A-Za-z0-9_-]+)"\s*\{')
@@ -51,6 +54,14 @@ _EKS_DEFAULT_RETENTION_DAYS = 90
 # A managed node group only scales on demand when something drives it: a
 # cluster-autoscaler or Karpenter installation, or EKS Auto Mode.
 _NODE_AUTOSCALER = re.compile(r"\b(?:cluster-autoscaler|karpenter)\b")
+_VPC_CONFIG_HEADER = re.compile(r"(vpc_config)\s*()\{")
+_STAGING = "infrastructure/staging"
+# A scheduled teardown of AWS staging: a run step that destroys Terraform state
+# or brings the aws-staging profile down. The local profile's CI teardown of a
+# throwaway kind cluster releases no AWS capacity and does not count.
+_TEARDOWN_COMMAND = re.compile(
+    r"terraform\b[^\n]*\bdestroy\b|\./fleet\s+down\b[^\n]*--profile[ =]aws-staging\b"
+)
 _HELM_RELEASE_HEADER = re.compile(r'resource\s+"(helm_release)"\s+"([A-Za-z0-9_-]+)"\s*\{')
 
 
@@ -344,6 +355,55 @@ def _worker_scaling_evidence(
     return evidence
 
 
+def _endpoint_evidence(rel_path: str, locator: str, public: bool) -> Evidence:
+    root_module = PurePosixPath(rel_path).parent.as_posix()
+    staging = root_module == _STAGING or root_module.startswith(f"{_STAGING}/")
+    return build_evidence(
+        collector_id=TF_COST_COLLECTOR_ID,
+        collector_version=TF_COST_COLLECTOR_VERSION,
+        kind=EVIDENCE_KIND_EKS_ENDPOINT,
+        source_path=rel_path,
+        locator=locator,
+        excerpt=f"{locator}: public API endpoint {str(public).lower()} in {root_module}",
+        fact={
+            "public_endpoint": public,
+            "staging_stack": staging,
+            "exposure_accepted": not public or staging,
+        },
+        identity_parts=(root_module, locator),
+    )
+
+
+def _cluster_endpoint_public(body: str) -> bool:
+    """aws_eks_cluster enables the public endpoint unless vpc_config says otherwise."""
+    blocks, unbalanced = _iter_resource_blocks(body, _VPC_CONFIG_HEADER)
+    if unbalanced or len(blocks) != 1:
+        raise ValueError("aws_eks_cluster needs exactly one vpc_config block")
+    public = _attribute(blocks[0][2], "endpoint_public_access", True)
+    if not isinstance(public, bool):
+        raise ValueError("endpoint_public_access is not a literal")
+    return public
+
+
+def _schedules_teardown(text: str) -> bool:
+    """A tracked workflow that runs a teardown command on a schedule."""
+    workflow = yaml.safe_load(text)
+    if not isinstance(workflow, dict):
+        return False
+    triggers = workflow.get("on", workflow.get(True))
+    if not isinstance(triggers, dict) or not triggers.get("schedule"):
+        return False
+    jobs = workflow.get("jobs")
+    return isinstance(jobs, dict) and any(
+        isinstance(step, dict)
+        and isinstance(step.get("run"), str)
+        and _TEARDOWN_COMMAND.search(step["run"]) is not None
+        for job in jobs.values()
+        if isinstance(job, dict)
+        for step in job.get("steps") or []
+    )
+
+
 def _lifecycle_rules(policy: dict[str, Any]) -> tuple[bool, bool]:
     """Return (expires_untagged, bounds_retained_images) for an ECR lifecycle policy."""
     rules = policy.get("rules")
@@ -488,6 +548,19 @@ def collect(
     )
     truncated_count += max(0, len(manifests) - limits.max_manifest_files)
     files += manifests[: limits.max_manifest_files]
+    # Tracked workflows are scanned only for a scheduled teardown (C-001).
+    workflows = sorted(
+        path
+        for path in (checkout_root / ".github" / "workflows").glob("*.y*ml")
+        if (tracked_paths is None or path.relative_to(checkout_root).as_posix() in tracked_paths)
+        and not any(
+            path.relative_to(checkout_root).as_posix() == ex
+            or path.relative_to(checkout_root).as_posix().startswith(f"{ex}/")
+            for ex in excluded_paths
+        )
+    )
+    truncated_count += max(0, len(workflows) - limits.max_workflow_files)
+    files += workflows[: limits.max_workflow_files]
 
     evidence: list[Evidence] = []
     repositories: dict[tuple[str, str], tuple[str, str]] = {}
@@ -497,6 +570,7 @@ def collect(
     tagged_by_module: dict[str, list[tuple[str, str]]] = {}
     eks_modules: list[tuple[str, str, str]] = []
     autoscaler_declared = False
+    scheduled_release: list[str] = []
     failures = 0
     for path in files:
         rel_path = path.relative_to(checkout_root).as_posix()
@@ -517,6 +591,13 @@ def collect(
             failures += 1
             continue
 
+        if rel_path.startswith(".github/workflows/"):
+            try:
+                if _schedules_teardown(text):
+                    scheduled_release.append(f"scheduled teardown in {rel_path}")
+            except yaml.YAMLError:
+                failures += 1
+            continue
         if rel_path.endswith((".yaml", ".yml")):
             try:
                 autoscaler_declared = autoscaler_declared or _declares_autoscaler_in_yaml(text)
@@ -543,6 +624,21 @@ def collect(
             try:
                 if resource_type == "aws_cloudwatch_log_group":
                     evidence.append(_log_group_evidence(rel_path, name, body))
+                elif resource_type == "aws_eks_cluster":
+                    evidence.append(
+                        _endpoint_evidence(
+                            rel_path,
+                            f"resource.aws_eks_cluster.{name}",
+                            _cluster_endpoint_public(body),
+                        )
+                    )
+                elif resource_type == "aws_autoscaling_schedule":
+                    to_zero = 0 in (
+                        _attribute(body, "min_size"),
+                        _attribute(body, "desired_capacity"),
+                    )
+                    if to_zero and module.startswith(_STAGING):
+                        scheduled_release.append(f"aws_autoscaling_schedule.{name}")
                 elif resource_type == "aws_ecr_repository":
                     literal = _attribute(body, "name")
                     repositories[(module, name)] = (
@@ -558,7 +654,12 @@ def collect(
                 if _attribute(body, "source") != _EKS_MODULE_SOURCE:
                     continue
                 eks_modules.append((rel_path, name, body))
+                # Validates the pinned major before any v21 default is trusted.
                 item = _eks_module_evidence(rel_path, name, body)
+                public = _attribute(body, "endpoint_public_access", False)
+                if not isinstance(public, bool):
+                    raise ValueError("endpoint_public_access is not a literal")
+                evidence.append(_endpoint_evidence(rel_path, f"module.{name}", public))
             except ValueError:
                 failures += 1
                 continue
@@ -587,6 +688,28 @@ def collect(
             evidence.extend(_worker_scaling_evidence(rel_path, name, body, autoscaler_declared))
         except ValueError:
             failures += 1
+
+    # C-001: staging worker capacity needs a scheduled release. An absence is
+    # evidence only when the whole scope was read.
+    for rel_path, name, _body in eks_modules if scheduled_release or scan_complete else ():
+        if not rel_path.startswith(f"{_STAGING}/"):
+            continue
+        locator = f"module.{name} idle capacity"
+        evidence.append(
+            build_evidence(
+                collector_id=TF_COST_COLLECTOR_ID,
+                collector_version=TF_COST_COLLECTOR_VERSION,
+                kind=EVIDENCE_KIND_IDLE_CAPACITY,
+                source_path=rel_path,
+                locator=locator,
+                excerpt=(
+                    f"{locator}: "
+                    + ("; ".join(scheduled_release[:3]) or "no scheduled scale-down or teardown")
+                ),
+                fact={"scheduled_release": bool(scheduled_release)},
+                identity_parts=(_STAGING, locator),
+            )
+        )
 
     ecr_items, ecr_failures = _ecr_evidence(repositories, policies)
     evidence.extend(ecr_items)

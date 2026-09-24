@@ -74,3 +74,15 @@ drills:
     path: k8s/applications/load-harness/hpa.yaml
     find: "# Horizontal Pod Autoscaler for load-harness"
     replace: "apiVersion: rbac.authorization.k8s.io/v1\nkind: RoleBinding\nmetadata:\n  name: drill-default-view\n  namespace: applications\nsubjects:\n  - kind: ServiceAccount\n    name: default\nroleRef:\n  apiGroup: rbac.authorization.k8s.io\n  kind: ClusterRole\n  name: view\n---\n# Horizontal Pod Autoscaler for load-harness"
+  - proposition: S-006
+    path: infrastructure/permanent/main.tf
+    find: "provider \"aws\" {\n  region = \"eu-west-2\""
+    replace: "module \"eks\" {\n  source                 = \"terraform-aws-modules/eks/aws\"\n  version                = \"21.25.0\"\n  endpoint_public_access = true\n  enabled_log_types      = []\n}\n\nprovider \"aws\" {\n  region = \"eu-west-2\""
+  - proposition: S-008
+    path: applications/load-harness/src/load_harness/app.py
+    find: 'app.config["SESSION_COOKIE_SAMESITE"] = "Lax"'
+    replace: 'app.config["SESSION_COOKIE_SAMESITE"] = "None"'
+  - proposition: C-001
+    path: .github/workflows/nightly-destroy.yml
+    find: "workflow_dispatch:"
+    replace: "workflow_dispatch:"

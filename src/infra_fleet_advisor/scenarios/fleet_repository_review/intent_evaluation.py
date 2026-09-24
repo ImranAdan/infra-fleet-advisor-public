@@ -12,14 +12,17 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
     CONCERN_CI_CREDENTIALS_WITHOUT_OIDC,
     CONCERN_CONTAINER_HARDENING_INCOMPLETE,
     CONCERN_COST_TAGS_MISSING,
+    CONCERN_CSRF_UNCOMPENSATED,
     CONCERN_DEPENDENCY_UPDATES_MISSING,
     CONCERN_DEPLOYMENT_ROLLOUT_CAPACITY,
     CONCERN_ECR_PUBLICATION_UNGATED,
     CONCERN_ECR_RETENTION_UNBOUNDED,
     CONCERN_EGRESS_ACCEPTANCE_EXCEEDED,
+    CONCERN_EKS_EXPOSURE_BEYOND_STAGING,
     CONCERN_FLEET_AWS_ONBOARDING_INCOMPLETE,
     CONCERN_FLEET_LIFECYCLE_INCOMPLETE,
     CONCERN_FLEET_LOCAL_FIRST_USE_INCOMPLETE,
+    CONCERN_IDLE_CAPACITY_UNSCHEDULED,
     CONCERN_INGRESS_HTTP_ALLOWED,
     CONCERN_INGRESS_UNRESTRICTED,
     CONCERN_LOG_RETENTION_UNBOUNDED,
@@ -31,6 +34,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
     candidate_from_template,
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
+    APP_CONFIG_COLLECTOR_ID,
     DEPENDENCY_UPDATE_COLLECTOR_ID,
     EVIDENCE_KIND_CONTAINER_HARDENING,
     EVIDENCE_KIND_COST_TAGS,
@@ -40,12 +44,15 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     EVIDENCE_KIND_ECR_LIFECYCLE,
     EVIDENCE_KIND_ECR_PUBLICATION_GATE,
     EVIDENCE_KIND_EGRESS_ACCEPTANCE,
+    EVIDENCE_KIND_EKS_ENDPOINT,
     EVIDENCE_KIND_FLEET_LIFECYCLE,
     EVIDENCE_KIND_IAM_WILDCARD,
+    EVIDENCE_KIND_IDLE_CAPACITY,
     EVIDENCE_KIND_INGRESS_HTTPS,
     EVIDENCE_KIND_INGRESS_RESTRICTION,
     EVIDENCE_KIND_LOG_RETENTION,
     EVIDENCE_KIND_SERVICE_ACCOUNT_PRIVILEGE,
+    EVIDENCE_KIND_SESSION_COOKIE,
     EVIDENCE_KIND_TRIVY_GATE,
     EVIDENCE_KIND_WORKER_SCALING,
     FLEET_LIFECYCLE_COLLECTOR_ID,
@@ -71,6 +78,9 @@ CHECK_APPLICATION_INGRESS_RESTRICTED = "application_ingress_restricted"
 CHECK_PERMISSIVE_EGRESS_BOUNDED = "permissive_egress_bounded"
 CHECK_PUBLIC_INGRESS_HTTPS = "public_ingress_https"
 CHECK_SERVICE_ACCOUNT_UNPRIVILEGED = "mounted_token_unprivileged"
+CHECK_EKS_PUBLIC_ENDPOINT_STAGING_ONLY = "eks_public_endpoint_staging_only"
+CHECK_SESSION_COOKIE_CSRF_COMPENSATED = "session_cookie_csrf_compensated"
+CHECK_STAGING_CAPACITY_RELEASED = "staging_capacity_released_on_schedule"
 CHECK_WORKER_GROUPS_DEMAND_SCALED = "worker_groups_demand_scaled"
 CHECK_AWS_COST_TAGS = "aws_cost_allocation_tags"
 CHECK_ECR_PUBLICATION_SCAN_GATED = "ecr_publication_scan_gated"
@@ -290,6 +300,44 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
                 collector_id=K8S_SECURITY_COLLECTOR_ID,
                 required_facts={"token_grants_nothing": False},
             ),
+            can_prove_satisfaction=False,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_EKS_PUBLIC_ENDPOINT_STAGING_ONLY: IntentCheckDefinition(
+            concern_key=CONCERN_EKS_EXPOSURE_BEYOND_STAGING,
+            rule=ConcernRule(
+                category="security",
+                evidence_kind=EVIDENCE_KIND_EKS_ENDPOINT,
+                collector_id=TF_COST_COLLECTOR_ID,
+                required_facts={"exposure_accepted": False},
+            ),
+            # Every tracked EKS definition is read, but a cluster created outside
+            # Terraform or by an unrecognised module stays invisible.
+            can_prove_satisfaction=False,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_SESSION_COOKIE_CSRF_COMPENSATED: IntentCheckDefinition(
+            concern_key=CONCERN_CSRF_UNCOMPENSATED,
+            rule=ConcernRule(
+                category="security",
+                evidence_kind=EVIDENCE_KIND_SESSION_COOKIE,
+                collector_id=APP_CONFIG_COLLECTOR_ID,
+                required_facts={"csrf_compensated": False},
+            ),
+            # Literal module-level config only; runtime overrides are invisible.
+            can_prove_satisfaction=False,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_STAGING_CAPACITY_RELEASED: IntentCheckDefinition(
+            concern_key=CONCERN_IDLE_CAPACITY_UNSCHEDULED,
+            rule=ConcernRule(
+                category="cost",
+                evidence_kind=EVIDENCE_KIND_IDLE_CAPACITY,
+                collector_id=TF_COST_COLLECTOR_ID,
+                required_facts={"scheduled_release": False},
+            ),
+            # A schedule outside the repository (an EventBridge rule, a person)
+            # cannot be seen, and the usage window is the owner's to judge.
             can_prove_satisfaction=False,
             requires_relevant_evidence=True,
         ),

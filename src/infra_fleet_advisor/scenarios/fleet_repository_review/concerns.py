@@ -28,6 +28,9 @@ CONCERN_INGRESS_UNRESTRICTED = "application_ingress_unrestricted"
 CONCERN_EGRESS_ACCEPTANCE_EXCEEDED = "permissive_egress_beyond_applications"
 CONCERN_INGRESS_HTTP_ALLOWED = "public_ingress_allows_plain_http"
 CONCERN_SERVICE_ACCOUNT_GRANTS_ACCESS = "mounted_token_grants_access"
+CONCERN_EKS_EXPOSURE_BEYOND_STAGING = "public_eks_endpoint_beyond_staging"
+CONCERN_CSRF_UNCOMPENSATED = "session_cookie_lacks_csrf_compensation"
+CONCERN_IDLE_CAPACITY_UNSCHEDULED = "staging_capacity_never_released_on_schedule"
 CONCERN_WORKER_SCALING_STATIC = "worker_group_not_demand_scaled"
 CONCERN_COST_TAGS_MISSING = "cost_allocation_tags_missing"
 CONCERN_ECR_PUBLICATION_UNGATED = "ecr_publication_not_scan_gated"
@@ -437,6 +440,70 @@ CONCERN_TEMPLATES: dict[str, ConcernTemplate] = {
         trade_offs="A workload that genuinely needs API access must say so in its own intent.",
         confidence=0.9,
         confidence_explanation="Joined from pod spec and tracked RoleBinding subjects.",
+    ),
+    CONCERN_EKS_EXPOSURE_BEYOND_STAGING: ConcernTemplate(
+        category="security",
+        priority="high",
+        title="Public EKS API endpoint outside the staging stack",
+        summary=(
+            "An EKS cluster outside infrastructure/staging enables its public API endpoint; "
+            "the owner accepted a public, IAM-protected endpoint for staging only."
+        ),
+        impact="A persistent or production-like cluster exposes its control plane to the internet.",
+        suggested_change=(
+            "Disable endpoint_public_access for that cluster and reach it through private "
+            "access, or record an owner decision extending the acceptance."
+        ),
+        trade_offs="Private-only access needs in-VPC runners or a bastion for CI and operators.",
+        confidence=0.9,
+        confidence_explanation="Read from literal endpoint settings and the cluster's root module.",
+    ),
+    CONCERN_CSRF_UNCOMPENSATED: ConcernTemplate(
+        category="security",
+        priority="high",
+        title="Session cookie lacks the CSRF compensating control",
+        summary=(
+            "A Flask application does not set SESSION_COOKIE_SAMESITE to Lax or Strict with "
+            "HttpOnly cookies, the control the owner's CSRF acceptance depends on."
+        ),
+        impact=(
+            "Cookie-authenticated POST routes that start load tests become reachable by "
+            "cross-site request forgery."
+        ),
+        suggested_change=(
+            'Set app.config["SESSION_COOKIE_SAMESITE"] = "Lax" (or "Strict") and keep '
+            "SESSION_COOKIE_HTTPONLY true, or add CSRF tokens to the UI forms."
+        ),
+        trade_offs="Strict breaks cookies on top-level cross-site navigation into the UI.",
+        confidence=0.9,
+        confidence_explanation=(
+            "Read from literal app.config assignments parsed with ast; no code was executed."
+        ),
+    ),
+    CONCERN_IDLE_CAPACITY_UNSCHEDULED: ConcernTemplate(
+        category="cost",
+        priority="high",
+        title="Staging capacity is never released on a schedule",
+        summary=(
+            "Staging worker capacity has no scheduled scale-to-zero: no aws_autoscaling_schedule "
+            "reaching zero and no scheduled workflow that tears the stack down."
+        ),
+        impact=(
+            "Idle staging compute is billed around the clock unless someone remembers to stop it."
+        ),
+        suggested_change=(
+            "Schedule the release: an aws_autoscaling_schedule to zero outside the usage window, "
+            "or a cron trigger on the teardown workflow with an owner-set window."
+        ),
+        trade_offs=(
+            "Starting after the window costs the declared up-to-30-minute delay; a scheduled "
+            "teardown also needs an unattended confirmation path."
+        ),
+        confidence=0.8,
+        confidence_explanation=(
+            "Looked for scheduled scale-down resources and scheduled teardown commands in tracked "
+            "Terraform and workflows; out-of-repository schedules are invisible."
+        ),
     ),
     CONCERN_WORKER_SCALING_STATIC: ConcernTemplate(
         category="cost",

@@ -116,9 +116,7 @@ def test_authoritative_markdown_drives_the_production_review(git_checkout) -> No
     assert evaluations["S-007"].status == "divergent"
     assert evaluations["R-001"].status == "declared_unverified"
     assert evaluations["R-001"].reason == "no_relevant_evidence"
-    for proposition_id in ("C-001",):
-        assert evaluations[proposition_id].status == "declared_unverified"
-        assert evaluations[proposition_id].reason == "check_not_declared"
+    assert evaluations["C-001"].reason == "no_relevant_evidence"
     assert evaluations["C-003"].reason == "collector_cannot_prove_satisfaction"
     assert evaluations["C-004"].reason == "no_relevant_evidence"
     assert evaluations["C-005"].reason == "no_relevant_evidence"
@@ -482,7 +480,7 @@ def test_registered_collectors_contribute_to_one_report(git_checkout) -> None:
     concern_keys = {r.concern_key for r in report.recommendations}
     assert "trivy_ignore_unfixed" in concern_keys
     assert "wildcard_iam_permissions" in concern_keys
-    assert len(report.coverage) == 7
+    assert len(report.coverage) == 8
     assert all(c.status == "ok" for c in report.coverage)
     assert len(report.evidence) == 2
 

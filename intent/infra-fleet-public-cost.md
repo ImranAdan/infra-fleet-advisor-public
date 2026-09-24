@@ -2,7 +2,7 @@
 
 - Format: `1`
 - Intent ID: `infra_fleet_public_cost`
-- Version: `1.3`
+- Version: `1.4`
 - Category: `cost`
 
 This document declares the fleet owner's initial AWS cost position. It does not
@@ -20,6 +20,7 @@ paying for otherwise idle compute.
 
 ### Evaluation
 
+- Check: `staging_capacity_released_on_schedule`
 - Priority: `high`
 
 ## C-002 · Worker scaling bounds
