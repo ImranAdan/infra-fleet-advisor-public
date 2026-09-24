@@ -1,0 +1,42 @@
+name: Infra Fleet intent gate
+description: >-
+  Review a fleet pull request's base and head against this advisor's declared
+  intent, write the comparison to the job summary, and fail when the change
+  would newly diverge from a declared position. Read-only; nothing is applied,
+  published or commented.
+
+inputs:
+  fleet-path:
+    description: Path to a full-history checkout of the fleet repository
+    default: .
+  base-sha:
+    description: Full SHA of the pull request base
+    required: true
+  head-sha:
+    description: Full SHA of the pull request head
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+      with:
+        python-version: "3.11"
+
+    # The action's own checkout of this repository supplies the advisor code,
+    # lockfile, policy and intent, all pinned by the caller's `uses:` SHA.
+    - name: Install the advisor from its lockfile
+      shell: bash
+      run: |
+        pip install "uv==0.9.14"
+        uv sync --frozen --no-dev --project "$GITHUB_ACTION_PATH/../../.."
+
+    - name: Compare intent at base and head
+      shell: bash
+      env:
+        FLEET_PATH: ${{ inputs.fleet-path }}
+        BASE_SHA: ${{ inputs.base-sha }}
+        HEAD_SHA: ${{ inputs.head-sha }}
+      run: |
+        "$GITHUB_ACTION_PATH/../../../scripts/intent-gate.sh" \
+          "$FLEET_PATH" "$BASE_SHA" "$HEAD_SHA" "$RUNNER_TEMP/intent-gate"

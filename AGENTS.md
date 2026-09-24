@@ -37,6 +37,11 @@ create advisor capability tickets. The maintainer selects valuable fleet issues
 and asks an agent working in the fleet to propose fixes. Issue creation does not
 start an agent or grant authority to merge, deploy, or close issues.
 
+Under PDR 0007 the fleet may run this repository's `intent-gate` composite
+action, pinned by SHA, on its pull requests. The gate reviews base and head
+read-only with the stub synthesizer and fails only on a newly divergent
+position. It must never gain write permissions, publish work, or call a model.
+
 ## Scope and execution discipline
 
 Treat the user's time, attention, and token budget as constrained resources.

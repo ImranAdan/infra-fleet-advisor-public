@@ -49,3 +49,4 @@ These describe the product and implementation in more detail than the guides.
 | [0004](decisions/0004-intent-driven-capability-evolution.md) | Superseded capability-ticket approach; retained as history |
 | [0005](decisions/0005-public-project-language.md) | Public project language |
 | [0006](decisions/0006-report-approval-and-fleet-work.md) | Approved report PRs as the fleet issue-creation decision record |
+| [0007](decisions/0007-pre-merge-intent-gate.md) | Read-only intent gate on fleet pull requests |

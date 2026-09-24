@@ -36,6 +36,18 @@ report rather than becoming automatic development tickets.
 
 See the [end-to-end workflow](docs/WORKFLOW.md) for the commands and decisions.
 
+## Catch divergence before it merges
+
+The same checks run on fleet pull requests through the
+[intent gate](docs/decisions/0007-pre-merge-intent-gate.md), a read-only
+composite action the fleet pins by SHA. It reviews the base and head, fails when
+the change would newly diverge from a declared position, and explains why in
+the job summary. Try it locally against any two fleet commits:
+
+```bash
+./scripts/intent-gate.sh ../infra-fleet-public BASE_SHA HEAD_SHA /tmp/intent-gate
+```
+
 ## Run a local review
 
 Requires Git, Python 3.11+, `uv`, and Make. Clone both repositories alongside
