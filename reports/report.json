@@ -221,15 +221,12 @@
       "category": "cost",
       "check_key": "aws_cost_allocation_tags",
       "document_id": "infra_fleet_public_cost",
-      "evidence_ids": [
-        "terraform_cost_collector:444d9162e4a0b4b7",
-        "terraform_cost_collector:716686c2cfdaac9d"
-      ],
+      "evidence_ids": [],
       "priority": "medium",
       "proposition_id": "C-005",
-      "reason": "evidence_conflicts_with_intent",
+      "reason": "collector_cannot_prove_satisfaction",
       "statement": "Terraform-managed AWS resources that support tagging declare consistent\nenvironment, service, and owner tags so billed usage can be attributed. Any\nresource that cannot carry these tags is reported as an explicit coverage gap.",
-      "status": "divergent"
+      "status": "declared_unverified"
     },
     {
       "category": "maintainability",
@@ -378,15 +375,12 @@
       "category": "security",
       "check_key": "dependency_updates_configured",
       "document_id": "infra_fleet_public_security",
-      "evidence_ids": [
-        "dependency_update_collector:393b67d709c744d8",
-        "dependency_update_collector:c75dced6323eba06"
-      ],
+      "evidence_ids": [],
       "priority": "medium",
       "proposition_id": "S-010",
-      "reason": "evidence_conflicts_with_intent",
+      "reason": "collector_cannot_prove_satisfaction",
       "statement": "Repository owners enable dependency alerts and security-update pull requests;\nroutine version checks run monthly, while review and deployment remain an owned\noperational decision.\n\nEvidence: [Dependabot operating model](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/DEPENDABOT.md)\n\nCaveat: repository-level alert and security-update settings cannot be declared\nby the template, and this proposition defines no remediation SLA.",
-      "status": "divergent"
+      "status": "declared_unverified"
     },
     {
       "category": "security",
@@ -400,7 +394,7 @@
       "status": "declared_unverified"
     }
   ],
-  "new_count": 3,
+  "new_count": 0,
   "provenance": {
     "advisor_version": "0.1.0",
     "collector_versions": {
@@ -414,8 +408,8 @@
     "intent_digest": "intent-md-v1:b1a817bee07eb70d3ac8c53b403565a2429f0b4c3d1e74c777f08c50d22faaaa",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.1",
-    "run_started_at": "2026-09-24T07:20:23.337886+00:00",
-    "source_commit_sha": "fdf43d351709c8fde6affe03892a331a20909e56",
+    "run_started_at": "2026-09-24T07:28:56.280676+00:00",
+    "source_commit_sha": "197405ff88fc4595cb24c407a3e6d1c3e281fb57",
     "source_label": "infra-fleet-public"
   },
   "recommendations": [
@@ -433,7 +427,7 @@
       "priority": "high",
       "rank": 1,
       "rank_rationale": "priority=high, category_weight=5, confidence=0.85",
-      "status": "new",
+      "status": "unchanged",
       "suggested_change": "Declare a node autoscaler for the staging cluster (cluster-autoscaler with a pod identity role, Karpenter, or EKS Auto Mode), keep an explicit bounded max_size, and lower min_size to zero unless a named workload needs an always-on node.",
       "summary": "A staging managed node group declares size bounds, but nothing in the repository drives them: no cluster-autoscaler, Karpenter or EKS Auto Mode is declared, or the maximum is not explicit and above the minimum.",
       "title": "EKS worker group cannot scale on demand",
@@ -452,9 +446,9 @@
       "impact": "Pinned versions and image digests in that directory never receive routine or security update pull requests and silently age.",
       "owner_accepted_trade_off": null,
       "priority": "medium",
-      "rank": 2,
-      "rank_rationale": "priority=medium, category_weight=10, confidence=0.90",
-      "status": "new",
+      "rank": null,
+      "rank_rationale": null,
+      "status": "resolved",
       "suggested_change": "Add a monthly Dependabot entry for that ecosystem and directory, grouped like the existing entries, or remove the unused manifest.",
       "summary": "A tracked manifest directory (a Dockerfile, Python requirements, pinned Terraform, workflows) has no matching Dependabot entry, or its entry is not scheduled monthly.",
       "title": "Tracked dependency manifests lack monthly Dependabot updates",
@@ -473,9 +467,9 @@
       "impact": "Billed usage of the listed resources, and of any other resource that does not tag itself, may go unattributed when the bill is split by environment, service or owner.",
       "owner_accepted_trade_off": null,
       "priority": "medium",
-      "rank": 3,
-      "rank_rationale": "priority=medium, category_weight=5, confidence=0.90",
-      "status": "new",
+      "rank": null,
+      "rank_rationale": null,
+      "status": "resolved",
       "suggested_change": "Add default_tags { tags = { Environment, Service, Owner } } to every aws provider, for example from a shared local, and activate the keys as cost-allocation tags.",
       "summary": "Resources in a root module set tags that lack an environment, service or owner key, and the AWS provider's default_tags do not supply the missing keys.",
       "title": "Terraform resources lack cost-allocation tags",
@@ -564,7 +558,7 @@
   ],
   "rejected": [],
   "rejected_count": 0,
-  "resolved_count": 4,
+  "resolved_count": 6,
   "suppressed_count": 0,
-  "unchanged_count": 0
+  "unchanged_count": 1
 }
