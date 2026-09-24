@@ -15,13 +15,19 @@
     {
       "collector_id": "terraform_cost_collector",
       "error_summary": null,
-      "evidence_count": 5,
+      "evidence_count": 7,
       "status": "ok"
     },
     {
       "collector_id": "kubernetes_deployment_collector",
       "error_summary": null,
       "evidence_count": 14,
+      "status": "ok"
+    },
+    {
+      "collector_id": "kubernetes_security_collector",
+      "error_summary": null,
+      "evidence_count": 4,
       "status": "ok"
     },
     {
@@ -34,6 +40,12 @@
       "collector_id": "dependency_update_collector",
       "error_summary": null,
       "evidence_count": 7,
+      "status": "ok"
+    },
+    {
+      "collector_id": "application_config_collector",
+      "error_summary": null,
+      "evidence_count": 1,
       "status": "ok"
     }
   ],
@@ -85,6 +97,21 @@
       "source_path": "scripts/fleet-profiles/aws-staging.sh"
     },
     {
+      "collector_id": "kubernetes_security_collector",
+      "collector_version": "1.0.0",
+      "evidence_id": "kubernetes_security_collector:6f5caf53a3bf6294",
+      "excerpt": "hosts covered by TLS: true; cert-manager issuer: true; HTTP redirect disabled: true",
+      "fact": {
+        "cert_manager_issuer": true,
+        "http_redirect_disabled": true,
+        "https_enforced": false,
+        "tls_covers_hosts": true
+      },
+      "kind": "k8s_ingress_https",
+      "locator": "Ingress/applications/load-harness/https",
+      "source_path": "k8s/profiles/aws-staging/applications/ingress-nginx.yaml"
+    },
+    {
       "collector_id": "terraform_cost_collector",
       "collector_version": "1.2.0",
       "evidence_id": "terraform_cost_collector:444d9162e4a0b4b7",
@@ -116,6 +143,18 @@
     },
     {
       "collector_id": "terraform_cost_collector",
+      "collector_version": "1.3.0",
+      "evidence_id": "terraform_cost_collector:831d0b3bb6653a0a",
+      "excerpt": "module.eks idle capacity: no scheduled scale-down or teardown",
+      "fact": {
+        "scheduled_release": false
+      },
+      "kind": "tf_idle_capacity_schedule",
+      "locator": "module.eks idle capacity",
+      "source_path": "infrastructure/staging/eks.tf"
+    },
+    {
+      "collector_id": "terraform_cost_collector",
       "collector_version": "1.0.0",
       "evidence_id": "terraform_cost_collector:d2d6fa1dfde83257",
       "excerpt": "module.eks (terraform-aws-modules/eks/aws 21.25.0): control-plane log group retention 90 days",
@@ -129,7 +168,7 @@
     },
     {
       "collector_id": "terraform_cost_collector",
-      "collector_version": "1.2.0",
+      "collector_version": "1.3.0",
       "evidence_id": "terraform_cost_collector:d31a3916e8b5bd2a",
       "excerpt": "module.eks.eks_managed_node_groups.default: min 1, max 2; node autoscaler not declared",
       "fact": {
@@ -173,14 +212,16 @@
   "intent_evaluations": [
     {
       "category": "cost",
-      "check_key": null,
+      "check_key": "staging_capacity_released_on_schedule",
       "document_id": "infra_fleet_public_cost",
-      "evidence_ids": [],
+      "evidence_ids": [
+        "terraform_cost_collector:831d0b3bb6653a0a"
+      ],
       "priority": "high",
       "proposition_id": "C-001",
-      "reason": "check_not_declared",
+      "reason": "evidence_conflicts_with_intent",
       "statement": "Staging application worker capacity scales to zero outside an owner-defined\nusage window. A delayed startup of up to 30 minutes is acceptable when it avoids\npaying for otherwise idle compute.",
-      "status": "declared_unverified"
+      "status": "divergent"
     },
     {
       "category": "cost",
@@ -296,45 +337,47 @@
     },
     {
       "category": "security",
-      "check_key": null,
+      "check_key": "application_ingress_restricted",
       "document_id": "infra_fleet_public_security",
       "evidence_ids": [],
-      "priority": null,
+      "priority": "high",
       "proposition_id": "S-003",
-      "reason": "check_not_declared",
+      "reason": "collector_cannot_prove_satisfaction",
       "statement": "Application ingress is limited to the declared ingress, observability, Flux load\ntester, and same-workload peers.\n\nEvidence: [NetworkPolicy](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/k8s/applications/load-harness/networkpolicy.yaml)",
       "status": "declared_unverified"
     },
     {
       "category": "security",
-      "check_key": null,
+      "check_key": "permissive_egress_bounded",
       "document_id": "infra_fleet_public_security",
       "evidence_ids": [],
-      "priority": null,
+      "priority": "medium",
       "proposition_id": "S-004",
-      "reason": "check_not_declared",
+      "reason": "collector_cannot_prove_satisfaction",
       "statement": "Permissive application egress is accepted for the current staging environment.\n\nEvidence: [current egress policy](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/k8s/applications/load-harness/networkpolicy.yaml)",
       "status": "declared_unverified"
     },
     {
       "category": "security",
-      "check_key": null,
+      "check_key": "public_ingress_https",
       "document_id": "infra_fleet_public_security",
-      "evidence_ids": [],
-      "priority": null,
+      "evidence_ids": [
+        "kubernetes_security_collector:6f5caf53a3bf6294"
+      ],
+      "priority": "high",
       "proposition_id": "S-005",
-      "reason": "check_not_declared",
+      "reason": "evidence_conflicts_with_intent",
       "statement": "When an AWS staging deployment enables a public hostname, external application\ntraffic uses HTTPS with certificates managed by cert-manager and Let's Encrypt.\n\nEvidence: [TLS and optional DNS](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/TLS-SSL-SETUP.md)\n\nCaveat: the template defaults to a reserved `.invalid` hostname and port-forward\naccess. New public exposure remains blocked by the documented ingress-controller\nmigration, and repository desired state cannot prove a certificate is live.",
-      "status": "declared_unverified"
+      "status": "divergent"
     },
     {
       "category": "security",
-      "check_key": null,
+      "check_key": "eks_public_endpoint_staging_only",
       "document_id": "infra_fleet_public_security",
       "evidence_ids": [],
-      "priority": null,
+      "priority": "high",
       "proposition_id": "S-006",
-      "reason": "check_not_declared",
+      "reason": "collector_cannot_prove_satisfaction",
       "statement": "A publicly reachable EKS API protected by IAM is accepted for staging only.\n\nEvidence: [staging access decision](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/EKS-ACCESS.md)",
       "status": "declared_unverified"
     },
@@ -351,23 +394,23 @@
     },
     {
       "category": "security",
-      "check_key": null,
+      "check_key": "session_cookie_csrf_compensated",
       "document_id": "infra_fleet_public_security",
       "evidence_ids": [],
-      "priority": null,
+      "priority": "high",
       "proposition_id": "S-008",
-      "reason": "check_not_declared",
+      "reason": "collector_cannot_prove_satisfaction",
       "statement": "CSRF protection is not required for the current API-first staging application.\n\nEvidence: [documented CSRF decision](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/SECURITY-CONCERNS.md)\n\nCaveat: the application is not purely API-first \u2014 when `API_KEY` is\nconfigured, Flask session-cookie authentication protects `/ui/*` POST routes,\nincluding endpoints that start CPU, memory, and cluster load tests. This\nproposition holds only if `SameSite=Lax` is the accepted compensating\ncontrol for those routes; otherwise CSRF exposure remains.",
       "status": "declared_unverified"
     },
     {
       "category": "security",
-      "check_key": null,
+      "check_key": "mounted_token_unprivileged",
       "document_id": "infra_fleet_public_security",
       "evidence_ids": [],
-      "priority": null,
+      "priority": "medium",
       "proposition_id": "S-009",
-      "reason": "check_not_declared",
+      "reason": "collector_cannot_prove_satisfaction",
       "statement": "Automatic Kubernetes service-account token mounting is accepted for the current application.\n\nEvidence: [documented token-mount decision](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/SECURITY-CONCERNS.md)",
       "status": "declared_unverified"
     },
@@ -394,25 +437,47 @@
       "status": "declared_unverified"
     }
   ],
-  "new_count": 0,
+  "new_count": 2,
   "provenance": {
     "advisor_version": "0.1.0",
     "collector_versions": {
+      "application_config_collector": "1.0.0",
       "dependency_update_collector": "1.0.0",
       "fleet_lifecycle_collector": "1.4.0",
       "github_actions_workflow_collector": "1.5.0",
       "kubernetes_deployment_collector": "1.1.0",
-      "terraform_cost_collector": "1.2.0",
+      "kubernetes_security_collector": "1.0.0",
+      "terraform_cost_collector": "1.3.0",
       "terraform_iam_collector": "1.4.0"
     },
-    "intent_digest": "intent-md-v1:b1a817bee07eb70d3ac8c53b403565a2429f0b4c3d1e74c777f08c50d22faaaa",
+    "intent_digest": "intent-md-v1:3f7d0659058772412177ae7dde83ba19de20935caf75526fe8bf7d090fb68758",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.1",
-    "run_started_at": "2026-09-24T08:14:31.967990+00:00",
-    "source_commit_sha": "e667b9910595a2d961a56f8528180852afa0ca23",
+    "run_started_at": "2026-09-24T08:58:19.524871+00:00",
+    "source_commit_sha": "7a98e0191a9bbba7a34a8d7927fdf8fcbec405d2",
     "source_label": "infra-fleet-public"
   },
   "recommendations": [
+    {
+      "category": "security",
+      "concern_key": "public_ingress_allows_plain_http",
+      "confidence": 0.85,
+      "confidence_explanation": "Read from Ingress hosts, TLS entries and annotations.",
+      "evidence_ids": [
+        "kubernetes_security_collector:6f5caf53a3bf6294"
+      ],
+      "fingerprint": "fp_90d0fb2169abf0b8849a8d79",
+      "impact": "Once a real hostname is configured, credentials and session cookies can cross the internet unencrypted.",
+      "owner_accepted_trade_off": null,
+      "priority": "high",
+      "rank": 1,
+      "rank_rationale": "priority=high, category_weight=10, confidence=0.85",
+      "status": "new",
+      "suggested_change": "Cover every host with a cert-manager TLS entry and keep the HTTPS redirect on; route in-cluster analysis traffic to the service or an internal listener instead.",
+      "summary": "An Ingress does not cover every host with TLS from a cert-manager issuer, or it disables the HTTP-to-HTTPS redirect.",
+      "title": "Public ingress can serve application traffic over plain HTTP",
+      "trade_offs": "Canary analysis that currently measures HTTP through the public ingress needs an internal path, or it measures redirects instead of the canary."
+    },
     {
       "category": "cost",
       "concern_key": "worker_group_not_demand_scaled",
@@ -425,13 +490,33 @@
       "impact": "Capacity stays at the desired size regardless of load: pods scaled out by the HPA can stay pending, and idle capacity is never released.",
       "owner_accepted_trade_off": null,
       "priority": "high",
-      "rank": 1,
+      "rank": 2,
       "rank_rationale": "priority=high, category_weight=5, confidence=0.85",
       "status": "unchanged",
       "suggested_change": "Declare a node autoscaler for the staging cluster (cluster-autoscaler with a pod identity role, Karpenter, or EKS Auto Mode), keep an explicit bounded max_size, and lower min_size to zero unless a named workload needs an always-on node.",
       "summary": "A staging managed node group declares size bounds, but nothing in the repository drives them: no cluster-autoscaler, Karpenter or EKS Auto Mode is declared, or the maximum is not explicit and above the minimum.",
       "title": "EKS worker group cannot scale on demand",
       "trade_offs": "An autoscaler adds a controller, IAM permissions and scale-up latency; a zero minimum delays the first workload after idle periods."
+    },
+    {
+      "category": "cost",
+      "concern_key": "staging_capacity_never_released_on_schedule",
+      "confidence": 0.8,
+      "confidence_explanation": "Looked for scheduled scale-down resources and scheduled teardown commands in tracked Terraform and workflows; out-of-repository schedules are invisible.",
+      "evidence_ids": [
+        "terraform_cost_collector:831d0b3bb6653a0a"
+      ],
+      "fingerprint": "fp_156438b3cb31a7781fe4fc70",
+      "impact": "Idle staging compute is billed around the clock unless someone remembers to stop it.",
+      "owner_accepted_trade_off": null,
+      "priority": "high",
+      "rank": 3,
+      "rank_rationale": "priority=high, category_weight=5, confidence=0.80",
+      "status": "new",
+      "suggested_change": "Schedule the release: an aws_autoscaling_schedule to zero outside the usage window, or a cron trigger on the teardown workflow with an owner-set window.",
+      "summary": "Staging worker capacity has no scheduled scale-to-zero: no aws_autoscaling_schedule reaching zero and no scheduled workflow that tears the stack down.",
+      "title": "Staging capacity is never released on a schedule",
+      "trade_offs": "Starting after the window costs the declared up-to-30-minute delay; a scheduled teardown also needs an unattended confirmation path."
     },
     {
       "category": "security",
