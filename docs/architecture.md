@@ -208,6 +208,12 @@ in every profile, so evidence identities do not change with the number of
 profiles while a violation introduced by one profile's patch is still caught
 and named.
 
+The bootstrap `flux-system` source represents the reviewed checkout. A second
+GitRepository is followed only when it declares
+`infra-fleet.io/checkout-mirror: "true"`; merely declaring a source name is not
+evidence that its remote content matches the checkout. All other sources make
+the profile incomplete.
+
 The dependency update collector classifies tracked file names from the
 verified commit into Dependabot ecosystems by a closed rule, groups them by
 directory, and matches each group to a `package-ecosystem` entry by `directory`
