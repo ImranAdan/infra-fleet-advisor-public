@@ -337,3 +337,41 @@ def test_namespace_skips_cluster_scoped_kinds(tmp_path: Path) -> None:
         "ClusterIssuer": None,
         "ConfigMap": "apps",
     }
+
+
+def test_substitution_matches_flux_text_semantics(tmp_path: Path) -> None:
+    app = (
+        "apiVersion: v1\nkind: ConfigMap\nmetadata: {name: app, namespace: flux-system}\n"
+        "data: {KEY: mode, EMPTY: '', VALUES: '{replicas: 2, tiers: [a, b]}', NAME: \"shop\\n\"}\n"
+    )
+    thing = (
+        "apiVersion: v1\nkind: Thing\nmetadata: {name: a}\n"
+        "spec: {'${KEY}': enabled, colon: '${EMPTY:=safe}', bare: '${EMPTY=safe}',"
+        " values: '${VALUES}', name: '${NAME}'}\n"
+    )
+    flux = FLUX.replace(
+        "sourceRef: {kind: GitRepository, name: flux-system}}",
+        "sourceRef: {kind: GitRepository, name: flux-system},"
+        " postBuild: {substituteFrom: [{kind: ConfigMap, name: app}]}}",
+    )
+    render = _profile(
+        tmp_path,
+        "resources: [thing.yaml]\n",
+        {
+            "k8s/clusters/p/kustomization.yaml": KUSTOMIZATION
+            + "resources: [app.yaml, apps.yaml]\n",
+            "k8s/clusters/p/app.yaml": app,
+            "k8s/clusters/p/apps.yaml": flux,
+            "k8s/overlay/thing.yaml": thing,
+        },
+    )
+
+    assert render.complete, render.gaps
+    [spec] = [r.body["spec"] for r in render.resources if r.body["kind"] == "Thing"]
+    assert spec == {
+        "mode": "enabled",  # keys are substituted too
+        "colon": "safe",  # `:=` treats a declared empty value as unset
+        "bare": "",  # `=` does not
+        "values": {"replicas": 2, "tiers": ["a", "b"]},  # a whole collection
+        "name": "shop",  # newlines are stripped from substituteFrom values
+    }

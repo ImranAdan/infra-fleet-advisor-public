@@ -51,7 +51,8 @@ _CLUSTER_SCOPED_KINDS = {
     "ValidatingPolicy",
 }
 # `$${NAME}` is Flux's escape for a literal `${NAME}`.
-_VARIABLE = re.compile(r"\$(\$?)\{([A-Za-z_][A-Za-z0-9_]*)(?::?[=-]([^}]*))?\}")
+# Groups: escape, name, `:` (empty counts as unset), default.
+_VARIABLE = re.compile(r"\$(\$?)\{([A-Za-z_][A-Za-z0-9_]*)(?:(:?)[=-]([^}]*))?\}")
 _SUBSTITUTE_CONTROL = "kustomize.toolkit.fluxcd.io/substitute"
 KUSTOMIZATION_FILES = ("kustomization.yaml", "kustomization.yml", "Kustomization")
 _FLUX_KUSTOMIZATION = "kustomize.toolkit.fluxcd.io/"
@@ -301,19 +302,25 @@ def _substitute(value: Any, substitution: _Substitution) -> Any:
     becomes an integer.
     """
     if isinstance(value, dict):
-        return {key: _substitute(item, substitution) for key, item in value.items()}
+        # Flux substitutes the serialized text, keys included.
+        return {
+            _substitute(key, substitution): _substitute(item, substitution)
+            for key, item in value.items()
+        }
     if isinstance(value, list):
         return [_substitute(item, substitution) for item in value]
     if not isinstance(value, str) or "${" not in value:
         return value
 
     def replace(match: re.Match[str]) -> str:
-        escaped, name, default = match.group(1), match.group(2), match.group(3)
+        escaped, name, colon, default = match.groups()
         if escaped:
             return match.group(0)[1:]
-        if name in substitution.variables:
-            return substitution.variables[name]
-        if default is not None and substitution.complete:
+        value = substitution.variables.get(name)
+        # `${X:=d}` and `${X:-d}` treat an empty X as unset; `${X=d}` does not.
+        if value is not None and not (colon and value == "" and default is not None):
+            return value
+        if default is not None and (substitution.complete or value is not None):
             return default
         return match.group(0)
 
@@ -324,7 +331,9 @@ def _substitute(value: Any, substitution: _Substitution) -> Any:
             parsed = yaml.safe_load(replaced)
         except yaml.YAMLError:
             return replaced
-        return parsed if isinstance(parsed, (str, int, float, bool)) else replaced
+        # The text Flux substitutes is parsed as YAML, so a value may become a
+        # number, a boolean or a whole collection.
+        return parsed if parsed is not None else replaced
     return replaced
 
 
@@ -369,7 +378,11 @@ def _flux_variables(body: dict[str, Any], known: list[RenderedResource]) -> _Sub
         ]
         complete = complete and bool(found)
         for resource in found:
-            variables.update({str(k): str(v) for k, v in resource.body["data"].items()})
+            # Flux strips newlines from substituteFrom values; generated files
+            # usually end with one.
+            variables.update(
+                {str(k): str(v).replace("\n", "") for k, v in resource.body["data"].items()}
+            )
     inline = post_build.get("substitute") or {}
     if not isinstance(inline, dict):
         raise _Incomplete("a Flux Kustomization has malformed substitute")
