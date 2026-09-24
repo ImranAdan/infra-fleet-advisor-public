@@ -260,7 +260,8 @@ def test_flux_substitutes_what_git_declares_and_keeps_the_rest(tmp_path: Path) -
         tmp_path,
         "resources: [deploy.yaml]\n",
         {
-            "k8s/clusters/p/kustomization.yaml": KUSTOMIZATION + "resources: [app.yaml, apps.yaml]\n",
+            "k8s/clusters/p/kustomization.yaml": KUSTOMIZATION
+            + "resources: [app.yaml, apps.yaml]\n",
             "k8s/clusters/p/app.yaml": app,
             "k8s/clusters/p/apps.yaml": flux,
             "k8s/overlay/deploy.yaml": deployment,
