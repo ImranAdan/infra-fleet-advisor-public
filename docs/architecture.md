@@ -201,8 +201,20 @@ Kubernetes deployment and security facts come from rendered profiles.
 `profile_renderer` builds each `k8s/clusters/<profile>` the way Flux would,
 following every Flux `Kustomization`'s local `spec.path` and applying the closed
 kustomize subset the fleet uses, in pure Python: no kustomize binary, no network,
-no plugins. Rendered objects retain their source manifest and the last
-kustomization patch that changed them for review. Facts are
+no plugins. That subset is `resources`, inline JSON6902 `patches`, `images`,
+`namespace` and `configMapGenerator` with stable names. Rendered objects retain
+their source manifest and the last kustomization patch that changed them for
+review.
+
+Flux `postBuild` substitution is applied for the values Git declares: inline
+`substitute`, and `substituteFrom` ConfigMaps the render itself produced. That
+is how the renderer sees the fleet's application by its real name, since the
+fleet names it only in its `fleet-app` contract. A variable from a source
+created outside Git, such as a bootstrap ConfigMap or any Secret, stays
+literal, and so does its default, because at runtime that source may define it.
+`$${NAME}` escapes and the `kustomize.toolkit.fluxcd.io/substitute: disabled`
+opt-out are honoured, as Flux honours them. Swapping the fleet's app therefore
+changes which Deployment is evaluated, not whether it is. Facts are
 combined per object across profiles, a protective fact holding only if it holds
 in every profile, so evidence identities do not change with the number of
 profiles while a violation introduced by one profile's patch is still caught
