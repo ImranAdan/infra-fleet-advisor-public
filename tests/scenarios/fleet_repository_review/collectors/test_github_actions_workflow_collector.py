@@ -363,3 +363,19 @@ def test_missing_local_action_makes_coverage_partial(tmp_path: Path) -> None:
     )
 
     assert gha_collector.collect(tmp_path, LIMITS).coverage.status == "partial"
+
+
+def test_excluded_local_action_is_never_evidence(tmp_path: Path) -> None:
+    (tmp_path / ".github" / "workflows").mkdir(parents=True)
+    (tmp_path / ".github" / "actions" / "aws").mkdir(parents=True)
+    (tmp_path / ".github" / "workflows" / "apply.yml").write_text(
+        "on: push\njobs:\n  a:\n    runs-on: x\n    steps:\n      - uses: ./.github/actions/aws\n",
+        encoding="utf-8",
+    )
+    (tmp_path / ".github" / "actions" / "aws" / "action.yml").write_text(
+        COMPOSITE, encoding="utf-8"
+    )
+
+    result = gha_collector.collect(tmp_path, LIMITS, excluded_paths=frozenset({".github/actions"}))
+
+    assert [item for item in result.evidence if item.kind == "gha_credential_method"] == []

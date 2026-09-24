@@ -91,3 +91,50 @@ def test_production_drills_name_registered_propositions() -> None:
     drills = load_drills(Path(__file__).parents[2] / "drills" / "fleet-mutations.yaml")
 
     assert len({drill.proposition for drill in drills}) == len(drills)
+
+
+def test_symlinked_drill_target_is_stale_and_never_written(tmp_path: Path) -> None:
+    outside = tmp_path / "outside.txt"
+    outside.write_text("retention = 14\n", encoding="utf-8")
+    fleet = tmp_path / "fleet"
+    fleet.mkdir()
+    _git(fleet, "init", "-q")
+    (fleet / "eks.tf").write_text("retention = 14\n", encoding="utf-8")
+    (fleet / "link.tf").symlink_to(outside)
+    _git(fleet, "add", "-A")
+    _git(fleet, "commit", "-qm", "base")
+
+    [result] = run_drills(
+        fleet,
+        (Drill("C-001", "link.tf", "retention = 14", "retention = 90"),),
+        _fake_review,
+        tmp_path / "out",
+    )
+
+    assert result.outcome == "stale"
+    assert outside.read_text(encoding="utf-8") == "retention = 14\n"
+
+
+def test_drill_cli_refuses_output_inside_the_fleet(tmp_path: Path) -> None:
+    from infra_fleet_advisor.runtime.cli import EXIT_UNSAFE_OUTPUT_ERROR, main
+
+    fleet = tmp_path / "fleet"
+    fleet.mkdir()
+    code = main(
+        [
+            "drill",
+            "--checkout",
+            str(fleet),
+            "--drills",
+            "unused.yaml",
+            "--policy",
+            "policy.yaml",
+            "--intent-dir",
+            "intent",
+            "--output-dir",
+            str(fleet / "out"),
+        ]
+    )
+
+    assert code == EXIT_UNSAFE_OUTPUT_ERROR
+    assert not (fleet / "out").exists()

@@ -99,7 +99,12 @@ def run_drills(
             for index, drill in enumerate(drills):
                 _git(worktree, "reset", "--quiet", "--hard", base_sha)
                 target = worktree / drill.path
-                text = target.read_text(encoding="utf-8") if target.is_file() else ""
+                # The fleet is untrusted: a tracked symlink must not redirect a
+                # drill's write outside the throwaway worktree.
+                inside = not target.is_symlink() and target.resolve().is_relative_to(
+                    worktree.resolve()
+                )
+                text = target.read_text(encoding="utf-8") if inside and target.is_file() else ""
                 if drill.find not in text:
                     results.append(DrillResult(drill, "stale"))
                     continue

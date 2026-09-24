@@ -285,6 +285,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             if code != EXIT_OK:
                 raise PolicyError(f"review of a drill commit failed with exit code {code}")
 
+        checkout_real = args.checkout.resolve()
+        destinations = [args.output_dir] + ([args.summary] if args.summary else [])
+        if any(
+            path.resolve() == checkout_real or path.resolve().is_relative_to(checkout_real)
+            for path in destinations
+        ):
+            print("drill error: output must be outside the fleet checkout", file=sys.stderr)
+            return EXIT_UNSAFE_OUTPUT_ERROR
         try:
             args.output_dir.mkdir(parents=True, exist_ok=True)
             drill_results = run_drills(
@@ -293,9 +301,18 @@ def main(argv: Sequence[str] | None = None) -> int:
                 review_once,
                 args.output_dir.resolve(),
             )
-        except (PolicyError, OSError, subprocess.CalledProcessError) as exc:
+        except PolicyError as exc:
             print(f"drill error: {exc}", file=sys.stderr)
             return EXIT_POLICY_ERROR
+        except subprocess.CalledProcessError as exc:
+            # The command line names machine paths; report only what failed.
+            print(
+                f"drill error: git {exc.cmd[5] if len(exc.cmd) > 5 else ''} failed", file=sys.stderr
+            )
+            return EXIT_PIPELINE_ERROR
+        except OSError as exc:
+            print(f"drill error: {type(exc).__name__} while preparing a drill", file=sys.stderr)
+            return EXIT_PIPELINE_ERROR
         drill_summary = drill_markdown(drill_results)
         print(drill_summary)
         if args.summary is not None:

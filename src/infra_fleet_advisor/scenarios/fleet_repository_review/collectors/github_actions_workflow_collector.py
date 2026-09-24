@@ -293,6 +293,7 @@ def _local_action_steps(
     uses: str,
     limits: ExecutionLimits,
     tracked_paths: frozenset[str] | None,
+    excluded_paths: frozenset[str] = frozenset(),
 ) -> tuple[str, list[dict[str, Any]]] | None:
     """Steps of a tracked local composite action a workflow step calls.
 
@@ -311,6 +312,8 @@ def _local_action_steps(
         path = checkout_root / rel_path
         if not path.is_file():
             continue
+        if _is_excluded(rel_path, excluded_paths):
+            return rel_path, []  # excluded content is never evidence
         if tracked_paths is not None and rel_path not in tracked_paths:
             raise ValueError("local action is not part of the verified commit")
         if path.is_symlink() or not path.resolve().is_relative_to(checkout_real):
@@ -395,7 +398,9 @@ def collect(
                 uses = step.get("uses")
                 try:
                     local = (
-                        _local_action_steps(checkout_root, uses, limits, tracked_paths)
+                        _local_action_steps(
+                            checkout_root, uses, limits, tracked_paths, excluded_paths
+                        )
                         if isinstance(uses, str)
                         else None
                     )
