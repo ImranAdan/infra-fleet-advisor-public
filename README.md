@@ -30,10 +30,11 @@ flowchart LR
   a one-line violation of the real fleet that must make it fire. A check that
   stops seeing the fleet goes red instead of inflating coverage.
 
-The Kubernetes security checks evaluate what each deployment profile actually
-applies: the advisor renders the profiles itself, without running kustomize or
-fleet code. Rollout capacity and container hardening still read the raw
-manifests; see [scope and coverage](docs/status.md).
+The Kubernetes workload and security checks evaluate what each deployment
+profile actually applies. The S-006 EKS endpoint check reads Terraform
+configuration. The advisor renders the profiles itself, without running
+kustomize or fleet code. A control must hold in every rendered profile; see
+[scope and coverage](docs/status.md).
 
 ## Run a local review
 

@@ -378,7 +378,7 @@ CONCERN_TEMPLATES: dict[str, ConcernTemplate] = {
         trade_offs="New legitimate callers need an explicit rule before they can connect.",
         confidence=0.9,
         confidence_explanation=(
-            "Evaluated with label-selector semantics over raw manifests; overlays are not rendered."
+            "Evaluated with label-selector semantics across every rendered deployment profile."
         ),
     ),
     CONCERN_EGRESS_ACCEPTANCE_EXCEEDED: ConcernTemplate(

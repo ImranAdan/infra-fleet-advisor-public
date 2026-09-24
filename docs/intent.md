@@ -55,15 +55,16 @@ working cluster. M-003 registers `fleet_aws_onboarding`, a divergence-only check
 of the AWS setup and teardown controls; see [scope and coverage](status.md).
 
 The registered `deployment_rollout_capacity` check evaluates tracked `apps/v1`
-Deployment manifests under `k8s/applications/`. The collector still inventories
-Deployments elsewhere under `k8s/`, but generated platform controllers do not
-decide this owner-managed application proposition. For each active application
-Deployment the check deterministically resolves integer or percentage rollout
-fenceposts against the declared replica count. Capacity is preserved only when
-RollingUpdate has an effective `maxUnavailable` of zero, a positive effective
-`maxSurge`, and every application container has a readiness probe. A complete set
-of conforming application Deployment evidence can prove the proposition
-satisfied; malformed, duplicate, missing, excluded, or truncated evidence leaves
+Deployments sourced from `k8s/applications/` after every Fleet profile is
+rendered. The collector still inventories Deployments elsewhere in the rendered
+sets, but generated platform controllers do not decide this owner-managed
+application proposition. For each active application Deployment the check
+deterministically resolves integer or percentage rollout fenceposts against the
+declared replica count. Capacity is preserved only when RollingUpdate has an
+effective `maxUnavailable` of zero, a positive effective `maxSurge`, and every
+application container has a readiness probe in every profile. A complete set of
+conforming profile evidence can prove the proposition satisfied; an incomplete
+profile or malformed, duplicate, missing, excluded, or truncated evidence leaves
 it explicitly unverified.
 
 The catalog digest is part of report provenance and material signatures. Issue

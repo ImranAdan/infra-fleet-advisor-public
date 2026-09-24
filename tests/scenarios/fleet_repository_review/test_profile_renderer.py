@@ -49,6 +49,7 @@ def test_json6902_patches_apply_to_the_rendered_base(tmp_path: Path) -> None:
     assert render.complete, render.gaps
     [config] = [r for r in render.resources if r.body["kind"] == "ConfigMap"]
     assert config.source_path == "k8s/base/config.yaml"
+    assert config.patch_path == "k8s/overlay/kustomization.yaml"
     assert config.body["data"] == {"a": "2", "list": ["x", "y"], "b/c": "z"}
     # The base file on disk is untouched.
     assert "'1'" in (tmp_path / "k8s/base/config.yaml").read_text(encoding="utf-8")

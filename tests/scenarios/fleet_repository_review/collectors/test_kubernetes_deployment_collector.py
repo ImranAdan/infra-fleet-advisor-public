@@ -33,14 +33,118 @@ def _hardening(result: collector.CollectorResult) -> list[collector.Evidence]:
     return _of_kind(result, EVIDENCE_KIND_CONTAINER_HARDENING)
 
 
+def _write_profiles(root: Path, *, weak_overlay: bool = True) -> None:
+    kustomize = "apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\n"
+    flux = (
+        "apiVersion: kustomize.toolkit.fluxcd.io/v1\nkind: Kustomization\n"
+        "metadata: {name: apps}\n"
+        "spec:\n"
+        "  path: ./k8s/profiles/%s/applications\n"
+        "  sourceRef: {kind: GitRepository, name: flux-system}\n"
+    )
+    (root / "k8s/applications/kustomization.yaml").write_text(
+        kustomize + "resources: [hardened.yaml]\n", encoding="utf-8"
+    )
+    for profile in ("safe", "weak"):
+        cluster = root / "k8s" / "clusters" / profile
+        cluster.mkdir(parents=True)
+        (cluster / "kustomization.yaml").write_text(
+            kustomize + "resources: [applications.yaml]\n", encoding="utf-8"
+        )
+        (cluster / "applications.yaml").write_text(flux % profile, encoding="utf-8")
+        overlay = root / "k8s" / "profiles" / profile / "applications"
+        overlay.mkdir(parents=True)
+        text = kustomize + "resources: [../../../applications]\n"
+        if profile == "weak" and weak_overlay:
+            text += (
+                "patches:\n"
+                "  - target: {kind: Deployment, name: hardened}\n"
+                "    patch: |-\n"
+                "      - {op: replace, path: "
+                "/spec/strategy/rollingUpdate/maxUnavailable, value: 1}\n"
+                "      - {op: replace, path: "
+                "/spec/template/spec/containers/0/securityContext/allowPrivilegeEscalation, "
+                "value: true}\n"
+            )
+        (overlay / "kustomization.yaml").write_text(text, encoding="utf-8")
+
+
 def test_hardened_containers_are_evidenced(git_checkout) -> None:
     repo, _sha = git_checkout(kubernetes_files=("hardened.yaml",))
 
     result = collector.collect(repo, LIMITS)
 
-    assert result.coverage.status == "ok"
+    assert result.coverage.status == "partial"
+    assert "evaluated unrendered" in (result.coverage.error_summary or "")
     [evidence] = _hardening(result)
     assert evidence.fact == {"containers": 2, "all_containers_hardened": True}
+
+
+def test_profile_overlay_cannot_hide_rollout_or_hardening_divergence(git_checkout) -> None:
+    repo, _sha = git_checkout(kubernetes_files=("hardened.yaml",))
+    _write_profiles(repo)
+
+    result = collector.collect(repo, LIMITS)
+
+    assert result.coverage.status == "ok"
+    [rollout] = _rollout(result)
+    [hardening] = _hardening(result)
+    assert rollout.fact["retains_healthy_capacity"] is False
+    assert hardening.fact["all_containers_hardened"] is False
+    assert rollout.fact["profiles"] == "safe, weak"
+    assert rollout.fact["failing_profiles"] == "weak"
+    assert hardening.fact["failing_profiles"] == "weak"
+    assert rollout.source_path == "k8s/applications/hardened.yaml"
+    assert hardening.source_path == "k8s/applications/hardened.yaml"
+    assert "rendered patch=k8s/profiles/weak/applications/kustomization.yaml" in rollout.excerpt
+    assert "rendered patch=k8s/profiles/weak/applications/kustomization.yaml" in hardening.excerpt
+
+
+def test_incomplete_profile_cannot_prove_deployment_controls(git_checkout) -> None:
+    repo, _sha = git_checkout(kubernetes_files=("hardened.yaml",))
+    _write_profiles(repo, weak_overlay=False)
+    overlay = repo / "k8s/profiles/weak/applications/kustomization.yaml"
+    overlay.write_text(overlay.read_text(encoding="utf-8") + "namePrefix: changed-\n")
+
+    result = collector.collect(repo, LIMITS)
+
+    assert result.coverage.status == "partial"
+    assert "unsupported kustomize fields" in (result.coverage.error_summary or "")
+
+
+def test_profile_missing_application_evidence_cannot_prove_controls(git_checkout) -> None:
+    repo, _sha = git_checkout(kubernetes_files=("hardened.yaml",))
+    _write_profiles(repo, weak_overlay=False)
+    overlay = repo / "k8s/profiles/weak/applications/kustomization.yaml"
+    overlay.write_text(
+        "apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nresources: []\n",
+        encoding="utf-8",
+    )
+
+    result = collector.collect(repo, LIMITS)
+
+    assert result.coverage.status == "partial"
+    assert "application deployment evidence is missing from profile(s): weak" in (
+        result.coverage.error_summary or ""
+    )
+
+
+def test_untracked_profile_entries_do_not_degrade_verified_coverage(git_checkout) -> None:
+    repo, _sha = git_checkout(kubernetes_files=("hardened.yaml",))
+    _write_profiles(repo, weak_overlay=False)
+    tracked_paths = frozenset(
+        path.relative_to(repo).as_posix() for path in repo.rglob("*") if path.is_file()
+    )
+    scratch = repo / "k8s/clusters/scratch"
+    scratch.mkdir()
+    (scratch / "notes.txt").write_text("not committed\n", encoding="utf-8")
+    (repo / "k8s/clusters/linked").symlink_to("safe", target_is_directory=True)
+
+    result = collector.collect(repo, LIMITS, tracked_paths=tracked_paths)
+
+    assert result.coverage.status == "ok"
+    assert "scratch" not in str(result.evidence)
+    assert "linked" not in str(result.evidence)
 
 
 def test_each_missing_hardening_control_is_divergent(git_checkout) -> None:
@@ -115,7 +219,7 @@ def test_single_replica_defaults_preserve_capacity(git_checkout) -> None:
 
     result = collector.collect(repo, LIMITS)
 
-    assert result.coverage.status == "ok"
+    assert result.coverage.status == "partial"
     assert len(_rollout(result)) == 1
     evidence = _rollout(result)[0]
     assert evidence.kind == EVIDENCE_KIND_DEPLOYMENT_ROLLOUT_CAPACITY
