@@ -14,10 +14,12 @@ break a declared position is seen before it merges.
 ## Decision
 
 1. The advisor ships a composite action, `.github/actions/intent-gate`. The
-   fleet calls it from its own pull-request workflow, pinned by commit SHA so
-   Dependabot's `github-actions` entry proposes advisor upgrades as ordinary,
-   reviewed fleet changes.
-2. The action reviews the pull request's base and head with the `stub`
+   fleet calls it from its own pull-request workflow, pinned by commit SHA, so
+   an advisor upgrade reaches the fleet only as an ordinary, reviewed fleet
+   change. Dependabot can automate that once the advisor publishes release
+   tags; until then the pin is bumped by hand.
+2. The action reviews the pull request's merge commit and its first parent (the
+   base as it would be merged) with the `stub`
    synthesizer and the advisor's own policy and intent, then `gate` compares
    the two reports. It fails only when a position that was not divergent on the
    base is divergent on the head. Resolutions, pre-existing divergences and

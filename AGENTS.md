@@ -38,7 +38,7 @@ and asks an agent working in the fleet to propose fixes. Issue creation does not
 start an agent or grant authority to merge, deploy, or close issues.
 
 Under PDR 0007 the fleet may run this repository's `intent-gate` composite
-action, pinned by SHA, on its pull requests. The gate reviews base and head
+action, pinned by SHA, on its pull requests. The gate reviews base and merge result
 read-only with the stub synthesizer and fails only on a newly divergent
 position. It must never gain write permissions, publish work, or call a model.
 

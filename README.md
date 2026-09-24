@@ -40,7 +40,7 @@ See the [end-to-end workflow](docs/WORKFLOW.md) for the commands and decisions.
 
 The same checks run on fleet pull requests through the
 [intent gate](docs/decisions/0007-pre-merge-intent-gate.md), a read-only
-composite action the fleet pins by SHA. It reviews the base and head, fails when
+composite action the fleet pins by SHA. It reviews the base and the merge result, fails when
 the change would newly diverge from a declared position, and explains why in
 the job summary. Try it locally against any two fleet commits:
 
