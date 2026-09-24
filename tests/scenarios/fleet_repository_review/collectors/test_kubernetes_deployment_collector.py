@@ -37,7 +37,7 @@ def _write_profiles(root: Path, *, weak_overlay: bool = True) -> None:
     kustomize = "apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\n"
     flux = (
         "apiVersion: kustomize.toolkit.fluxcd.io/v1\nkind: Kustomization\n"
-        "metadata: {name: apps}\n"
+        "metadata: {name: apps, namespace: flux-system}\n"
         "spec:\n"
         "  path: ./k8s/profiles/%s/applications\n"
         "  sourceRef: {kind: GitRepository, name: flux-system}\n"

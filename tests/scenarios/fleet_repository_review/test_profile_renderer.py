@@ -15,7 +15,7 @@ LIMITS = ExecutionLimits(
 KUSTOMIZATION = "apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\n"
 FLUX = (
     "apiVersion: kustomize.toolkit.fluxcd.io/v1\nkind: Kustomization\n"
-    "metadata: {name: apps}\n"
+    "metadata: {name: apps, namespace: flux-system}\n"
     "spec: {path: ./k8s/overlay, sourceRef: {kind: GitRepository, name: flux-system}}\n"
 )
 CONFIG = "apiVersion: v1\nkind: ConfigMap\nmetadata: {name: c}\ndata: {a: '1', list: [x]}\n"
@@ -129,7 +129,7 @@ def test_only_explicit_checkout_mirrors_are_rendered(tmp_path: Path) -> None:
     source_path = "platform/local/source.yaml"
     source = (
         "apiVersion: source.toolkit.fluxcd.io/v1\nkind: GitRepository\n"
-        "metadata:\n  name: local-source\n"
+        "metadata:\n  name: local-source\n  namespace: flux-system\n"
         "spec: {url: https://example.com/somewhere-else.git}\n"
     )
     _profile(
@@ -156,6 +156,32 @@ def test_only_explicit_checkout_mirrors_are_rendered(tmp_path: Path) -> None:
 
     assert trusted.complete, trusted.gaps
     assert [resource.body["kind"] for resource in trusted.resources] == ["ConfigMap"]
+
+
+def test_a_mirror_is_trusted_by_namespace_and_name_not_name_alone(tmp_path: Path) -> None:
+    mirror = (
+        "apiVersion: source.toolkit.fluxcd.io/v1\nkind: GitRepository\n"
+        "metadata:\n  name: apps-source\n  namespace: team-a\n"
+        '  annotations:\n    infra-fleet.io/checkout-mirror: "true"\n'
+        "spec: {url: https://example.com/checkout.git}\n"
+    )
+    for source_ref, trusted in (
+        ("{kind: GitRepository, name: apps-source, namespace: team-a}", True),
+        # Same name, another namespace: an unrelated, unannotated source.
+        ("{kind: GitRepository, name: apps-source, namespace: team-b}", False),
+        # Omitted namespace resolves to the Kustomization's own (flux-system).
+        ("{kind: GitRepository, name: apps-source}", False),
+        ("{kind: GitRepository, name: flux-system, namespace: team-b}", False),
+    ):
+        flux = FLUX.replace(
+            "sourceRef: {kind: GitRepository, name: flux-system}", f"sourceRef: {source_ref}"
+        )
+        render = _profile(
+            tmp_path,
+            "resources: [../base]\n",
+            {"k8s/clusters/p/apps.yaml": flux, "platform/mirror.yaml": mirror},
+        )
+        assert render.complete is trusted, (source_ref, render.gaps)
 
 
 def test_nested_flux_kustomizations_and_alternate_filenames_are_followed(tmp_path: Path) -> None:

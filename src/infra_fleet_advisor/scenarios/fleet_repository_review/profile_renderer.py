@@ -40,8 +40,9 @@ _FLUX_SPEC_KEYS = {
     "suspend",
     "serviceAccountName",
 }
-# Flux's bootstrap source is the repository Flux was bootstrapped from.
-_BOOTSTRAP_SOURCE = "flux-system"
+# Flux's bootstrap source is the repository Flux was bootstrapped from; sources
+# are identified by (namespace, name), as Flux resolves them.
+_BOOTSTRAP_SOURCE = ("flux-system", "flux-system")
 _CHECKOUT_MIRROR_ANNOTATION = "infra-fleet.io/checkout-mirror"
 _MAX_DEPTH = 8
 _MAX_RESOURCES = 2000
@@ -218,10 +219,17 @@ def _json_patch(document: dict[str, Any], operation: Any, rel_path: str) -> None
         raise _Incomplete(f"{rel_path} patch {op} {path} cannot apply") from exc
 
 
-def _declared_sources(renderer: _Renderer) -> set[str]:
-    """GitRepository sources explicitly declared as mirrors of the checkout."""
+def _declared_sources(renderer: _Renderer) -> set[tuple[str, str]]:
+    """(namespace, name) of GitRepositories explicitly declared as checkout mirrors."""
     names = {_BOOTSTRAP_SOURCE}
-    tracked = renderer.tracked or frozenset()
+    # No tracked set means no tracking filter, as for every other read here.
+    tracked = renderer.tracked
+    if tracked is None:
+        tracked = frozenset(
+            path.relative_to(renderer.root).as_posix()
+            for path in renderer.root.rglob("*.y*ml")
+            if ".git" not in path.relative_to(renderer.root).parts
+        )
     candidates = [path for path in sorted(tracked) if path.endswith((".yaml", ".yml"))]
     # A substring test precedes any parse, so this scan has its own, larger
     # bound. An unscanned file can only omit a source, which makes a render
@@ -240,19 +248,21 @@ def _declared_sources(renderer: _Renderer) -> set[str]:
                     if not isinstance(metadata, dict):
                         continue
                     annotations = metadata.get("annotations")
-                    name = metadata.get("name")
+                    name, namespace = metadata.get("name"), metadata.get("namespace")
+                    # Without a namespace the source cannot be matched exactly.
                     if (
                         isinstance(annotations, dict)
                         and annotations.get(_CHECKOUT_MIRROR_ANNOTATION) == "true"
                         and isinstance(name, str)
+                        and isinstance(namespace, str)
                     ):
-                        names.add(name)
+                        names.add((namespace, name))
         except (OSError, UnicodeError, yaml.YAMLError, AttributeError):
             continue
     return names
 
 
-def _flux_path(body: dict[str, Any], sources: set[str]) -> str:
+def _flux_path(body: dict[str, Any], sources: set[tuple[str, str]]) -> str:
     """The local overlay a Flux Kustomization applies, or _Incomplete."""
     spec = body.get("spec")
     if not isinstance(spec, dict) or set(spec) - _FLUX_SPEC_KEYS:
@@ -261,10 +271,15 @@ def _flux_path(body: dict[str, Any], sources: set[str]) -> str:
     if not isinstance(post_build, dict) or set(post_build) - {"substitute", "substituteFrom"}:
         raise _Incomplete("a Flux Kustomization uses unsupported postBuild options")
     source = spec.get("sourceRef")
+    metadata = body.get("metadata")
+    # Flux resolves an omitted sourceRef.namespace to the Kustomization's own.
+    namespace = (source.get("namespace") if isinstance(source, dict) else None) or (
+        metadata.get("namespace") if isinstance(metadata, dict) else None
+    )
     if (
         not isinstance(source, dict)
         or source.get("kind") != "GitRepository"
-        or source.get("name") not in sources
+        or (namespace, source.get("name")) not in sources
     ):
         raise _Incomplete("a Flux Kustomization reads a source other than this repository")
     path = spec.get("path")
@@ -295,7 +310,7 @@ def render_profile(
     return render_profiles(checkout_root, [profile], limits, tracked_paths)[0]
 
 
-def _render(renderer: _Renderer, profile: str, sources: set[str]) -> ProfileRender:
+def _render(renderer: _Renderer, profile: str, sources: set[tuple[str, str]]) -> ProfileRender:
     """Everything the profile's Flux Kustomizations would apply, from Git alone."""
     render = ProfileRender(profile)
     failures = (
