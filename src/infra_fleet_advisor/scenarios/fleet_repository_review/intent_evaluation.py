@@ -26,6 +26,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
     CONCERN_INGRESS_HTTP_ALLOWED,
     CONCERN_INGRESS_UNRESTRICTED,
     CONCERN_LOG_RETENTION_UNBOUNDED,
+    CONCERN_PLATFORM_NAMES_APPLICATION,
     CONCERN_SERVICE_ACCOUNT_GRANTS_ACCESS,
     CONCERN_TEMPLATES,
     CONCERN_TRIVY_IGNORE_UNFIXED,
@@ -35,7 +36,9 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     APP_CONFIG_COLLECTOR_ID,
+    APP_CONTRACT_COLLECTOR_ID,
     DEPENDENCY_UPDATE_COLLECTOR_ID,
+    EVIDENCE_KIND_APPLICATION_COUPLING,
     EVIDENCE_KIND_CONTAINER_HARDENING,
     EVIDENCE_KIND_COST_TAGS,
     EVIDENCE_KIND_CREDENTIAL_METHOD,
@@ -84,6 +87,7 @@ CHECK_STAGING_CAPACITY_RELEASED = "staging_capacity_released_on_schedule"
 CHECK_WORKER_GROUPS_DEMAND_SCALED = "worker_groups_demand_scaled"
 CHECK_AWS_COST_TAGS = "aws_cost_allocation_tags"
 CHECK_ECR_PUBLICATION_SCAN_GATED = "ecr_publication_scan_gated"
+CHECK_APPLICATION_SWAPPABLE = "fleet_application_swappable"
 
 
 @dataclass(frozen=True, slots=True)
@@ -381,6 +385,19 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
             # Only recognised ECR login forms are publication paths; another
             # push mechanism would be invisible, so a clean result is unproven.
             can_prove_satisfaction=False,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_APPLICATION_SWAPPABLE: IntentCheckDefinition(
+            concern_key=CONCERN_PLATFORM_NAMES_APPLICATION,
+            rule=ConcernRule(
+                category="maintainability",
+                evidence_kind=EVIDENCE_KIND_APPLICATION_COUPLING,
+                collector_id=APP_CONTRACT_COLLECTOR_ID,
+                required_facts={"swappable": False},
+            ),
+            # The search covers every tracked platform file, so a complete scan
+            # that finds no name, with contracts for two apps, proves the claim.
+            can_prove_satisfaction=True,
             requires_relevant_evidence=True,
         ),
     }

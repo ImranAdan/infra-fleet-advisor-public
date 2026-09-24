@@ -78,6 +78,10 @@ drills:
     path: infrastructure/permanent/main.tf
     find: "provider \"aws\" {\n  region = \"eu-west-2\""
     replace: "module \"eks\" {\n  source                 = \"terraform-aws-modules/eks/aws\"\n  version                = \"21.25.0\"\n  endpoint_public_access = true\n  enabled_log_types      = []\n}\n\nprovider \"aws\" {\n  region = \"eu-west-2\""
+  - proposition: M-004
+    path: k8s/profiles/local/policies/require-local-images.yaml
+    find: "container.image.startsWith('fleet-local-registry:5000/')"
+    replace: "container.image.startsWith('fleet-local-registry:5000/load-harness:')"
   - proposition: S-008
     path: applications/load-harness/src/load_harness/app.py
     find: 'app.config["SESSION_COOKIE_SAMESITE"] = "Lax"'

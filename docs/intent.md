@@ -53,6 +53,11 @@ explicit Kubernetes context and printed next command. Complete controls remain
 `declared_unverified` because source inspection cannot prove downloads or a
 working cluster. M-003 registers `fleet_aws_onboarding`, a divergence-only check
 of the AWS setup and teardown controls; see [scope and coverage](status.md).
+M-004 registers `fleet_application_swappable`. It reads the Fleet's app
+contracts and searches every tracked platform file for an application name, so
+it can prove the platform names none: it is satisfied when the selected contract
+exists, at least two applications ship contracts, and no platform file names an
+app.
 
 The registered `deployment_rollout_capacity` check evaluates tracked `apps/v1`
 Deployments sourced from `k8s/applications/` after every Fleet profile is

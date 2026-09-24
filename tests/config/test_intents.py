@@ -188,12 +188,13 @@ def test_rejects_symlinked_intent_documents(tmp_path: Path) -> None:
 def test_production_markdown_is_the_authoritative_catalog() -> None:
     catalog = load_intent_catalog(PRODUCTION_INTENTS, TAXONOMY)
 
-    assert len(catalog.propositions) == 20
+    assert len(catalog.propositions) == 21
     assert {item.check_key for item in catalog.propositions if item.check_key is not None} == {
         "application_containers_hardened",
         "application_ingress_restricted",
         "aws_cost_allocation_tags",
         "dependency_updates_configured",
+        "fleet_application_swappable",
         "deployment_rollout_capacity",
         "ecr_lifecycle_bounded",
         "ecr_publication_scan_gated",
@@ -242,9 +243,11 @@ def test_production_markdown_is_the_authoritative_catalog() -> None:
         for item in catalog.propositions
         if item.document_id == "infra_fleet_public_maintainability"
     )
-    assert len(maintainability) == 3
+    assert len(maintainability) == 4
     assert all(item.category == "maintainability" for item in maintainability)
     assert maintainability[0].check_key == "fleet_profiles_expose_lifecycle"
     assert maintainability[1].check_key == "fleet_local_first_use"
     assert maintainability[2].check_key == "fleet_aws_onboarding"
-    assert all(item.priority == "high" for item in maintainability)
+    assert maintainability[3].check_key == "fleet_application_swappable"
+    assert all(item.priority == "high" for item in maintainability[:3])
+    assert maintainability[3].priority == "medium"

@@ -111,7 +111,7 @@ def test_authoritative_markdown_drives_the_production_review(git_checkout) -> No
     )
 
     evaluations = {item.proposition_id: item for item in report.intent_evaluations}
-    assert len(evaluations) == 20
+    assert len(evaluations) == 21
     assert evaluations["S-001"].status == "divergent"
     assert evaluations["S-007"].status == "divergent"
     assert evaluations["R-001"].status == "declared_unverified"
@@ -480,7 +480,7 @@ def test_registered_collectors_contribute_to_one_report(git_checkout) -> None:
     concern_keys = {r.concern_key for r in report.recommendations}
     assert "trivy_ignore_unfixed" in concern_keys
     assert "wildcard_iam_permissions" in concern_keys
-    assert len(report.coverage) == 8
+    assert len(report.coverage) == 9
     assert all(c.status == "ok" for c in report.coverage)
     assert len(report.evidence) == 2
 
