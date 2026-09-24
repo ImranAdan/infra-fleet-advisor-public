@@ -8,52 +8,32 @@ recommendations for human review.
 
 ## How it works
 
+The owner's declared intent is compiled into deterministic checks, and those
+checks guard the fleet at three moments:
+
 ```mermaid
-flowchart TD
-    subgraph Advisor[Advisor repository]
-        I[Owner intent and policy] --> E[Evaluate registered checks]
-        S[Verified fleet Git commit] --> C[Deterministic collectors]
-        S --> L[Bounded Fleet facade and profile strategies]
-        L --> C
-        C --> E
-        E --> W[Recommendation wording: stub or optional model]
-        W --> V[Validate evidence, limits and lifecycle]
-        V --> R[Report PR: JSON and Markdown]
-    end
-    R --> A{Reviewer decision}
-    A -->|Decline| N[No issue publication]
-    A -->|Merge| P[Separate approval and eligibility checks]
-    P -->|Eligible findings| F[Deduplicated fleet issues linked to report PR]
-    F --> H[Owner selects valuable work]
-    H --> X[Fleet agent proposes fix PR]
-    X --> T[Fleet review and CI]
-    T -. Next review .-> S
+flowchart LR
+    Intent["Owner intent<br/>20 declared positions"] --> Checks["Deterministic checks"]
+    Checks -->|before merge| Gate["Intent gate<br/>on fleet pull requests"]
+    Checks -->|after merge| Report["Nightly report when it changes<br/>then approved fleet issues"]
+    Drills["Check drills"] -.->|prove each check still fires| Checks
 ```
 
-The report PR is the decision record. Issue creation does not start a fixing
-agent. Unsupported intent and incomplete collection remain visible in the
-report rather than becoming automatic development tickets.
+- **Before merge:** the [intent gate](docs/decisions/0007-pre-merge-intent-gate.md)
+  runs the checks on each fleet pull request. It fails a change that would newly
+  break a declared position, or make one impossible to evaluate. Try it locally:
+  `./scripts/intent-gate.sh ../infra-fleet-public BASE_SHA HEAD_SHA /tmp/intent-gate`.
+- **After merge:** a nightly review opens or updates a report PR whenever the
+  report changes. Merging it is the decision to publish eligible findings as
+  fleet issues, and the owner picks which get fixed. See the [end-to-end workflow](docs/WORKFLOW.md).
+- **On the advisor itself:** every check has a [drill](drills/fleet-mutations.yaml),
+  a one-line violation of the real fleet that must make it fire. A check that
+  stops seeing the fleet goes red instead of inflating coverage.
 
-See the [end-to-end workflow](docs/WORKFLOW.md) for the commands and decisions.
-
-## Catch divergence before it merges
-
-The same checks run on fleet pull requests through the
-[intent gate](docs/decisions/0007-pre-merge-intent-gate.md), a read-only
-composite action the fleet pins by SHA. It reviews the base and the merge result, fails when
-the change would newly diverge from a declared position, and explains why in
-the job summary. Try it locally against any two fleet commits:
-
-```bash
-./scripts/intent-gate.sh ../infra-fleet-public BASE_SHA HEAD_SHA /tmp/intent-gate
-```
-
-## Checks that prove they bite
-
-Every registered check has a [drill](drills/fleet-mutations.yaml): a
-one-line violation of the real fleet that must make it diverge. The nightly
-workflow applies each drill in a throwaway worktree, so a check that silently
-stops seeing the fleet goes red instead of inflating coverage.
+The Kubernetes security checks evaluate what each deployment profile actually
+applies: the advisor renders the profiles itself, without running kustomize or
+fleet code. Rollout capacity and container hardening still read the raw
+manifests; see [scope and coverage](docs/status.md).
 
 ## Run a local review
 
