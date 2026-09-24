@@ -324,7 +324,7 @@ def test_declared_autoscaler_drives_bounded_node_groups(tmp_path) -> None:
     for extra in (
         {
             "k8s/infrastructure/autoscaler.yaml": (
-                "spec:\n  chart:\n    spec:\n      chart: cluster-autoscaler\n"
+                "kind: HelmRelease\nspec:\n  chart:\n    spec:\n      chart: cluster-autoscaler\n"
             )
         },
         {
@@ -349,3 +349,26 @@ def test_autoscaler_mentioned_only_in_comments_does_not_count(tmp_path) -> None:
     )
 
     assert fact["autoscaler_declared"] is False
+
+
+def test_inactive_autoscaler_mentions_do_not_count(tmp_path) -> None:
+    disabled = 'resource "helm_release" "k" {\n  count = 0\n  chart = "karpenter"\n}\n'
+    described = 'variable "x" {\n  description = "enable cluster-autoscaler later"\n}\n'
+    [fact] = _scaling(
+        tmp_path,
+        {
+            "infrastructure/staging/eks.tf": EKS % NODE_GROUPS,
+            "infrastructure/staging/autoscaler.tf": disabled + described,
+            "k8s/labels.yaml": "kind: ConfigMap\ndata:\n  owner: karpenter-team\n",
+        },
+    )
+
+    assert fact["autoscaler_declared"] is False
+
+
+def test_incomplete_autoscaler_scan_withholds_scaling_evidence(tmp_path) -> None:
+    files = {"infrastructure/staging/eks.tf": EKS % NODE_GROUPS, "k8s/bad.yaml": "a: [\n"}
+    result = _collect(tmp_path, files)
+
+    assert result.coverage.status == "partial"
+    assert _facts(result, collector.EVIDENCE_KIND_WORKER_SCALING) == []

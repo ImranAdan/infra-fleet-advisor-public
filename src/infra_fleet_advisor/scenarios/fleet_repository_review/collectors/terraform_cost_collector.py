@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+import yaml
+
 from infra_fleet_advisor.core.errors import UnsafePathError
 from infra_fleet_advisor.core.evidence import Evidence, build_evidence
 from infra_fleet_advisor.core.limits import ExecutionLimits
@@ -49,6 +51,57 @@ _EKS_DEFAULT_RETENTION_DAYS = 90
 # A managed node group only scales on demand when something drives it: a
 # cluster-autoscaler or Karpenter installation, or EKS Auto Mode.
 _NODE_AUTOSCALER = re.compile(r"\b(?:cluster-autoscaler|karpenter)\b")
+_HELM_RELEASE_HEADER = re.compile(r'resource\s+"(helm_release)"\s+"([A-Za-z0-9_-]+)"\s*\{')
+
+
+def _declares_autoscaler_in_yaml(text: str) -> bool:
+    """An active Kubernetes declaration: a Flux HelmRelease of the chart, or a
+    Deployment running its image. Mentions in names, labels or docs do not count."""
+    for document in yaml.safe_load_all(text):
+        if not isinstance(document, dict):
+            continue
+        raw_spec = document.get("spec")
+        spec: dict[str, Any] = raw_spec if isinstance(raw_spec, dict) else {}
+        if document.get("kind") == "HelmRelease":
+            chart = spec.get("chart", {})
+            chart_spec = chart.get("spec", {}) if isinstance(chart, dict) else {}
+            name = chart_spec.get("chart") if isinstance(chart_spec, dict) else None
+            if isinstance(name, str) and _NODE_AUTOSCALER.search(name):
+                return True
+        if document.get("kind") == "Deployment":
+            template = spec.get("template", {})
+            pod = template.get("spec", {}) if isinstance(template, dict) else {}
+            containers = pod.get("containers", []) if isinstance(pod, dict) else []
+            if any(
+                isinstance(c, dict)
+                and isinstance(c.get("image"), str)
+                and _NODE_AUTOSCALER.search(c["image"])
+                for c in containers
+                if isinstance(containers, list)
+            ):
+                return True
+    return False
+
+
+def _declares_autoscaler_in_terraform(text: str) -> bool:
+    """An enabled helm_release of the chart, or a Karpenter module."""
+    releases, _ = _iter_resource_blocks(text, _HELM_RELEASE_HEADER)
+    for _kind, _name, body in releases:
+        try:
+            chart, count = _attribute(body, "chart"), _attribute(body, "count", 1)
+        except ValueError:
+            continue
+        if isinstance(chart, str) and _NODE_AUTOSCALER.search(chart) and count != 0:
+            return True
+    modules, _ = _iter_resource_blocks(text, _MODULE_HEADER)
+    for _kind, _name, body in modules:
+        try:
+            source = _attribute(body, "source")
+        except ValueError:
+            continue
+        if isinstance(source, str) and "karpenter" in source:
+            return True
+    return False
 
 
 @dataclass(frozen=True, slots=True)
@@ -465,12 +518,12 @@ def collect(
             continue
 
         if rel_path.endswith((".yaml", ".yml")):
-            code = re.sub(r"(?m)#.*$", "", text)
-            autoscaler_declared = autoscaler_declared or bool(_NODE_AUTOSCALER.search(code))
+            try:
+                autoscaler_declared = autoscaler_declared or _declares_autoscaler_in_yaml(text)
+            except yaml.YAMLError:
+                failures += 1
             continue
-        autoscaler_declared = autoscaler_declared or bool(
-            _NODE_AUTOSCALER.search(_mask_non_code(text, strings=False))
-        )
+        autoscaler_declared = autoscaler_declared or _declares_autoscaler_in_terraform(text)
         resources, unbalanced = _iter_resource_blocks(text, _RESOURCE_HEADER)
         modules, module_unbalanced = _iter_resource_blocks(text, _MODULE_HEADER)
         provider_blocks, provider_unbalanced = _iter_resource_blocks(text, _PROVIDER_HEADER)
@@ -526,8 +579,10 @@ def collect(
             failures += 1
 
     # Node groups are judged after every file is read: an autoscaler declared
-    # anywhere in the tracked scope drives them.
-    for rel_path, name, body in eks_modules:
+    # anywhere in the tracked scope drives them. An absence is evidence only
+    # when that whole scope was read, so an incomplete scan withholds them.
+    scan_complete = not failures and not truncated_count
+    for rel_path, name, body in eks_modules if autoscaler_declared or scan_complete else ():
         try:
             evidence.extend(_worker_scaling_evidence(rel_path, name, body, autoscaler_declared))
         except ValueError:
