@@ -98,7 +98,8 @@ def _declares_autoscaler_in_yaml(text: str) -> bool:
 def _block_enabled(body: str) -> bool:
     """Whether a Terraform block has a statically non-empty instance set."""
     count = _attribute(body, "count", _MISSING)
-    for_each = _attribute(body, "for_each", _MISSING)
+    # A literal collection may span lines; its layout does not change its value.
+    for_each = _object_attribute(body, "for_each", _MISSING)
     if count is not _MISSING and for_each is not _MISSING:
         raise ValueError("block declares both count and for_each")
     if count is not _MISSING:
@@ -113,7 +114,10 @@ def _block_enabled(body: str) -> bool:
 
 
 def _declares_autoscaler_in_terraform(text: str) -> tuple[bool, bool]:
-    """Return (active autoscaler found, scan complete)."""
+    """Return (active autoscaler found, scan complete).
+
+    One definite, enabled autoscaler proves existence, so it settles the scan
+    regardless of uncertain candidates declared before it."""
     complete = True
     releases, unbalanced = _iter_resource_blocks(text, _HELM_RELEASE_HEADER)
     complete = complete and not unbalanced
@@ -128,7 +132,7 @@ def _declares_autoscaler_in_terraform(text: str) -> tuple[bool, bool]:
         elif _NODE_AUTOSCALER.search(chart):
             try:
                 if _block_enabled(body):
-                    return True, complete
+                    return True, True
             except ValueError:
                 complete = False
     modules, _ = _iter_resource_blocks(text, _MODULE_HEADER)
@@ -143,7 +147,7 @@ def _declares_autoscaler_in_terraform(text: str) -> tuple[bool, bool]:
         elif "karpenter" in source:
             try:
                 if _block_enabled(body):
-                    return True, complete
+                    return True, True
             except ValueError:
                 complete = False
     return False, complete
@@ -181,8 +185,8 @@ def _attribute(body: str, name: str, default: Any = None) -> Any:
     return value
 
 
-def _object_attribute(body: str, name: str) -> Any:
-    """Like `_attribute`, but also reads a multi-line `{ ... }` object literal."""
+def _object_attribute(body: str, name: str, default: Any = None) -> Any:
+    """Like `_attribute`, but also reads a multi-line `{ ... }` or `[ ... ]` literal."""
     code = _mask_non_code(body)
     pattern = re.compile(rf"(?<![\w.]){re.escape(name)}\s*=\s*")
     hits = [
@@ -190,11 +194,12 @@ def _object_attribute(body: str, name: str) -> Any:
         for match in pattern.finditer(code)
         if code[: match.start()].count("{") - code[: match.start()].count("}") == 1
     ]
-    if len(hits) != 1 or code[hits[0].end() : hits[0].end() + 1] != "{":
-        return _attribute(body, name)
-    literal, after = _extract_balanced(body, hits[0].end(), "{", "}")
+    opener = code[hits[0].end() : hits[0].end() + 1] if len(hits) == 1 else ""
+    if opener not in {"{", "["}:
+        return _attribute(body, name, default)
+    literal, after = _extract_balanced(body, hits[0].end(), opener, "}" if opener == "{" else "]")
     line_end = body.find("\n", after)
-    if _mask_non_code(body[after : line_end if line_end >= 0 else None]).strip(" \t\r}"):
+    if _mask_non_code(body[after : line_end if line_end >= 0 else None]).strip(" \t\r}]"):
         # The object is only part of a computed expression, e.g. a conditional.
         raise ValueError(f"{name} is not a single literal")
     parser = _LiteralParser(_mask_non_code(literal, strings=False))
@@ -608,6 +613,7 @@ def collect(
     tagged_by_module: dict[str, list[tuple[str, str]]] = {}
     eks_modules: list[tuple[str, str, str]] = []
     autoscaler_declared = False
+    autoscaler_uncertain = False
     scheduled_release: list[str] = []
     failures = 0
     for path in files:
@@ -644,7 +650,7 @@ def collect(
             continue
         declared_here, autoscaler_scan_complete = _declares_autoscaler_in_terraform(text)
         autoscaler_declared = autoscaler_declared or declared_here
-        failures += int(not autoscaler_scan_complete)
+        autoscaler_uncertain = autoscaler_uncertain or not autoscaler_scan_complete
         resources, unbalanced = _iter_resource_blocks(text, _RESOURCE_HEADER)
         modules, module_unbalanced = _iter_resource_blocks(text, _MODULE_HEADER)
         provider_blocks, provider_unbalanced = _iter_resource_blocks(text, _PROVIDER_HEADER)
@@ -720,6 +726,9 @@ def collect(
     # Node groups are judged after every file is read: an autoscaler declared
     # anywhere in the tracked scope drives them. An absence is evidence only
     # when that whole scope was read, so an incomplete scan withholds them.
+    # An uncertain autoscaler only matters when no definite one exists anywhere.
+    if autoscaler_uncertain and not autoscaler_declared:
+        failures += 1
     scan_complete = not failures and not truncated_count
     for rel_path, name, body in eks_modules if autoscaler_declared or scan_complete else ():
         try:

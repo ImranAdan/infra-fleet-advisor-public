@@ -477,3 +477,49 @@ def test_reusable_module_cluster_definitions_are_withheld(tmp_path) -> None:
     result = _collect(tmp_path, {"infrastructure/modules/eks/main.tf": cluster})
 
     assert _facts(result, collector.EVIDENCE_KIND_EKS_ENDPOINT) == []
+
+
+KARPENTER = 'module "%s" {\n  source = "terraform-aws-modules/eks/aws//modules/karpenter"\n%s\n}\n'
+
+
+def test_multiline_literal_for_each_decides_autoscaler_enablement(tmp_path) -> None:
+    for for_each, active in (
+        ('  for_each = {\n    main = "a"\n  }', True),
+        ("  for_each = {\n  }", False),
+        ('  for_each = [\n    "a",\n  ]', True),
+    ):
+        [fact] = _scaling(
+            tmp_path,
+            {
+                "infrastructure/staging/eks.tf": EKS % NODE_GROUPS,
+                "infrastructure/staging/karpenter.tf": KARPENTER % ("k", for_each),
+            },
+        )
+        assert fact["autoscaler_declared"] is active, for_each
+
+
+def test_a_definite_autoscaler_settles_the_scan_in_any_order(tmp_path) -> None:
+    dynamic = KARPENTER % ("maybe", "  count = var.enabled ? 1 : 0")
+    definite = KARPENTER % ("always", "")
+    for text in (dynamic + definite, definite + dynamic):
+        [fact] = _scaling(
+            tmp_path,
+            {
+                "infrastructure/staging/eks.tf": EKS % NODE_GROUPS,
+                "infrastructure/staging/karpenter.tf": text,
+            },
+        )
+        assert fact["autoscaler_declared"] is True
+
+
+def test_uncertainty_in_one_file_does_not_outweigh_a_definite_one_elsewhere(tmp_path) -> None:
+    [fact] = _scaling(
+        tmp_path,
+        {
+            "infrastructure/staging/eks.tf": EKS % NODE_GROUPS,
+            "infrastructure/staging/a_maybe.tf": KARPENTER % ("maybe", "  count = var.x"),
+            "infrastructure/staging/b_always.tf": KARPENTER % ("always", ""),
+        },
+    )
+
+    assert fact["autoscaler_declared"] is True
