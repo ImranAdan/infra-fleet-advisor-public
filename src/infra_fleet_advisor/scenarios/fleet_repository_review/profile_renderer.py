@@ -20,9 +20,31 @@ import yaml
 from infra_fleet_advisor.core.limits import ExecutionLimits
 
 _KUSTOMIZATION_KEYS = {"apiVersion", "kind", "resources", "patches", "images"}
+KUSTOMIZATION_FILES = ("kustomization.yaml", "kustomization.yml", "Kustomization")
 _FLUX_KUSTOMIZATION = "kustomize.toolkit.fluxcd.io/"
+# Flux Kustomization fields that do not change what is applied. Anything else
+# (patches, targetNamespace, components, name affixes, images, commonMetadata)
+# would, and makes the render incomplete.
+_FLUX_SPEC_KEYS = {
+    "interval",
+    "retryInterval",
+    "timeout",
+    "path",
+    "prune",
+    "sourceRef",
+    "wait",
+    "dependsOn",
+    "healthChecks",
+    "postBuild",
+    "force",
+    "suspend",
+    "serviceAccountName",
+}
+# Flux's bootstrap source is the repository Flux was bootstrapped from.
+_BOOTSTRAP_SOURCE = "flux-system"
 _MAX_DEPTH = 8
 _MAX_RESOURCES = 2000
+_MAX_SOURCE_SCAN_FILES = 1000
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,25 +74,33 @@ class _Renderer:
         checkout_root: Path,
         limits: ExecutionLimits,
         tracked_paths: frozenset[str] | None,
+        excluded_paths: frozenset[str] = frozenset(),
     ) -> None:
         self.root = checkout_root
         self.real = checkout_root.resolve()
         self.limits = limits
         self.tracked = tracked_paths
-        self.files_read = 0
+        self.excluded = excluded_paths
+        # One budget of distinct files for every profile rendered here; profiles
+        # share their base, so a cached re-read costs nothing.
+        self.cache: dict[str, str] = {}
 
     def _read(self, rel_path: str) -> str:
+        if rel_path in self.cache:
+            return self.cache[rel_path]
         path = self.root / rel_path
+        if any(rel_path == ex or rel_path.startswith(f"{ex}/") for ex in self.excluded):
+            raise _Incomplete(f"{rel_path} is excluded by policy")
         if self.tracked is not None and rel_path not in self.tracked:
             raise _Incomplete(f"{rel_path} is not part of the verified commit")
         if path.is_symlink() or not path.resolve().is_relative_to(self.real):
             raise _Incomplete(f"{rel_path} is not a regular in-checkout file")
         if not path.is_file() or path.stat().st_size > self.limits.max_manifest_file_bytes:
             raise _Incomplete(f"{rel_path} is unreadable or too large")
-        self.files_read += 1
-        if self.files_read > self.limits.max_manifest_files:
+        if len(self.cache) >= self.limits.max_manifest_files:
             raise _Incomplete("manifest file limit reached")
-        return path.read_text(encoding="utf-8")
+        self.cache[rel_path] = path.read_text(encoding="utf-8")
+        return self.cache[rel_path]
 
     def _local(self, base: str, reference: str) -> str:
         if "://" in reference or reference.startswith(("github.com", "git@")):
@@ -89,10 +119,17 @@ class _Renderer:
     def build(self, directory: str, depth: int = 0) -> list[RenderedResource]:
         if depth > _MAX_DEPTH:
             raise _Incomplete("kustomization nesting limit reached")
-        rel_path = f"{directory}/kustomization.yaml"
+        names = [name for name in KUSTOMIZATION_FILES if (self.root / directory / name).is_file()]
+        if len(names) != 1:
+            raise _Incomplete(f"{directory} has no single kustomization file")
+        rel_path = f"{directory}/{names[0]}"
         document = yaml.safe_load(self._read(rel_path))
         if not isinstance(document, dict) or set(document) - _KUSTOMIZATION_KEYS:
             raise _Incomplete(f"{rel_path} uses unsupported kustomize fields")
+        if not isinstance(document.get("resources") or [], list) or not isinstance(
+            document.get("patches") or [], list
+        ):
+            raise _Incomplete(f"{rel_path} has malformed resources or patches")
         output: list[RenderedResource] = []
         for reference in document.get("resources") or []:
             if not isinstance(reference, str):
@@ -113,7 +150,11 @@ class _Renderer:
         return output
 
     def _apply(self, patch: Any, resources: list[RenderedResource], rel_path: str) -> None:
-        if not isinstance(patch, dict) or set(patch) != {"target", "patch"}:
+        if (
+            not isinstance(patch, dict)
+            or set(patch) != {"target", "patch"}
+            or not isinstance(patch["patch"], str)
+        ):
             raise _Incomplete(f"{rel_path} uses an unsupported patch form")
         target, operations = patch["target"], yaml.safe_load(patch["patch"])
         if not isinstance(target, dict) or set(target) - {"kind", "name", "namespace"}:
@@ -123,6 +164,8 @@ class _Renderer:
         matched = 0
         for index, resource in enumerate(resources):
             metadata = resource.body.get("metadata") or {}
+            if not isinstance(metadata, dict):
+                raise _Incomplete(f"{resource.source_path} has malformed metadata")
             if all(
                 (resource.body.get("kind") if key == "kind" else metadata.get(key)) == value
                 for key, value in target.items()
@@ -173,29 +216,107 @@ def _json_patch(document: dict[str, Any], operation: Any, rel_path: str) -> None
         raise _Incomplete(f"{rel_path} patch {op} {path} cannot apply") from exc
 
 
+def _declared_sources(renderer: _Renderer) -> set[str]:
+    """GitRepository sources the verified checkout itself declares."""
+    names = {_BOOTSTRAP_SOURCE}
+    tracked = renderer.tracked or frozenset()
+    candidates = [path for path in sorted(tracked) if path.endswith((".yaml", ".yml"))]
+    # A substring test precedes any parse, so this scan has its own, larger
+    # bound. An unscanned file can only omit a source, which makes a render
+    # incomplete rather than wrongly complete.
+    for rel_path in candidates[:_MAX_SOURCE_SCAN_FILES]:
+        path = renderer.root / rel_path
+        try:
+            if path.stat().st_size > renderer.limits.max_manifest_file_bytes:
+                continue
+            text = path.read_text(encoding="utf-8")
+            if "kind: GitRepository" not in text:
+                continue
+            for body in yaml.safe_load_all(text):
+                if isinstance(body, dict) and body.get("kind") == "GitRepository":
+                    name = (body.get("metadata") or {}).get("name")
+                    if isinstance(name, str):
+                        names.add(name)
+        except (OSError, UnicodeError, yaml.YAMLError, AttributeError):
+            continue
+    return names
+
+
+def _flux_path(body: dict[str, Any], sources: set[str]) -> str:
+    """The local overlay a Flux Kustomization applies, or _Incomplete."""
+    spec = body.get("spec")
+    if not isinstance(spec, dict) or set(spec) - _FLUX_SPEC_KEYS:
+        raise _Incomplete("a Flux Kustomization uses fields that change what it applies")
+    post_build = spec.get("postBuild") or {}
+    if not isinstance(post_build, dict) or set(post_build) - {"substitute", "substituteFrom"}:
+        raise _Incomplete("a Flux Kustomization uses unsupported postBuild options")
+    source = spec.get("sourceRef")
+    if (
+        not isinstance(source, dict)
+        or source.get("kind") != "GitRepository"
+        or source.get("name") not in sources
+    ):
+        raise _Incomplete("a Flux Kustomization reads a source other than this repository")
+    path = spec.get("path")
+    if not isinstance(path, str):
+        raise _Incomplete("a Flux Kustomization has no path")
+    return path.removeprefix("./")
+
+
+def render_profiles(
+    checkout_root: Path,
+    profiles: list[str],
+    limits: ExecutionLimits,
+    tracked_paths: frozenset[str] | None = None,
+    excluded_paths: frozenset[str] = frozenset(),
+) -> list[ProfileRender]:
+    """Render every profile against one shared file budget."""
+    renderer = _Renderer(checkout_root, limits, tracked_paths, excluded_paths)
+    sources = _declared_sources(renderer)
+    return [_render(renderer, profile, sources) for profile in profiles]
+
+
 def render_profile(
     checkout_root: Path,
     profile: str,
     limits: ExecutionLimits,
     tracked_paths: frozenset[str] | None = None,
 ) -> ProfileRender:
+    return render_profiles(checkout_root, [profile], limits, tracked_paths)[0]
+
+
+def _render(renderer: _Renderer, profile: str, sources: set[str]) -> ProfileRender:
     """Everything the profile's Flux Kustomizations would apply, from Git alone."""
     render = ProfileRender(profile)
-    renderer = _Renderer(checkout_root, limits, tracked_paths)
+    failures = (
+        _Incomplete,
+        yaml.YAMLError,
+        OSError,
+        UnicodeError,
+        AttributeError,
+        TypeError,
+        ValueError,
+        KeyError,
+    )
     try:
-        roots = renderer.build(f"k8s/clusters/{profile}")
-    except (_Incomplete, yaml.YAMLError, OSError, UnicodeError) as exc:
+        queue = [(flux, 0) for flux in renderer.build(f"k8s/clusters/{profile}")]
+    except failures as exc:
         render.gaps.append(str(exc) if isinstance(exc, _Incomplete) else type(exc).__name__)
         return render
-    for flux in roots:
-        body = flux.body
-        if not str(body.get("apiVersion", "")).startswith(_FLUX_KUSTOMIZATION):
-            render.resources.append(flux)
+    # Flux Kustomizations can render further Flux Kustomizations; follow them.
+    while queue:
+        resource, depth = queue.pop(0)
+        if not str(resource.body.get("apiVersion", "")).startswith(_FLUX_KUSTOMIZATION):
+            render.resources.append(resource)
             continue
-        path = str((body.get("spec") or {}).get("path", ""))
         try:
-            overlay = renderer._local("", path.removeprefix("./"))
-            render.resources.extend(renderer.build(overlay))
-        except (_Incomplete, yaml.YAMLError, OSError, UnicodeError) as exc:
+            if depth > _MAX_DEPTH:
+                raise _Incomplete("Flux Kustomization nesting limit reached")
+            overlay = renderer._local("", _flux_path(resource.body, sources))
+            queue.extend((child, depth + 1) for child in renderer.build(overlay))
+        except failures as exc:
             render.gaps.append(str(exc) if isinstance(exc, _Incomplete) else type(exc).__name__)
+        if len(render.resources) + len(queue) > _MAX_RESOURCES:
+            render.gaps.append("rendered resource limit reached")
+            break
     return render

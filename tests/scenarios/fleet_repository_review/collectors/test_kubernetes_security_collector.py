@@ -48,7 +48,8 @@ def _facts(tmp_path: Path, files: dict[str, str], kind: str) -> list[dict[str, o
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
     result = collector.collect(tmp_path, LIMITS)
-    assert result.coverage.status == "ok"
+    # Fixtures without k8s/clusters are evaluated unrendered, never proven.
+    assert result.coverage.error_summary == "no deployment profiles; manifests evaluated unrendered"
     return [dict(item.fact) for item in result.evidence if item.kind == kind]
 
 
@@ -233,7 +234,9 @@ KUSTOMIZE = "apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\n"
 FLUX = """apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata: {name: apps, namespace: flux-system}
-spec: {path: ./k8s/profiles/%s}
+spec:
+  path: ./k8s/profiles/%s
+  sourceRef: {kind: GitRepository, name: flux-system}
 """
 OPEN_PATCH = """apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization

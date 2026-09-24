@@ -28,7 +28,8 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     K8S_SECURITY_COLLECTOR_VERSION,
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.profile_renderer import (
-    render_profile,
+    KUSTOMIZATION_FILES,
+    render_profiles,
 )
 
 _APPLICATIONS = "k8s/applications/"
@@ -37,6 +38,7 @@ _GENERATED = "k8s/flux-system/"
 _ISSUER_ANNOTATIONS = ("cert-manager.io/cluster-issuer", "cert-manager.io/issuer")
 _BROAD_GROUPS = {"system:authenticated", "system:serviceaccounts"}
 _MAX_RESOURCES = 2000
+_MAX_PROFILES = 8
 # Facts that protect: they must hold in every profile. Other booleans are risks
 # that count when any profile has them.
 _PROTECTIVE = frozenset(
@@ -339,7 +341,8 @@ def _combine(per_profile: dict[str, list[Evidence]]) -> list[Evidence]:
             Evidence(
                 evidence_id=first.evidence_id,
                 kind=first.kind,
-                source_path=first.source_path,
+                # Cite the manifest of the profile the excerpt describes.
+                source_path=shown.source_path,
                 locator=first.locator,
                 excerpt=f"[{', '.join(sorted(failing) or profiles)}] {shown.excerpt}"[:280],
                 fact=fact,
@@ -408,27 +411,34 @@ def collect(
     if not (checkout_root / "k8s").is_dir():
         return CollectorResult((), CollectorCoverage(K8S_SECURITY_COLLECTOR_ID, "ok", 0))
     clusters = checkout_root / "k8s" / "clusters"
-    profiles = sorted(
-        path.name
-        for path in (clusters.iterdir() if clusters.is_dir() else ())
-        if (path / "kustomization.yaml").is_file()
+    directories = (
+        sorted(path for path in clusters.iterdir() if path.is_dir()) if (clusters.is_dir()) else []
     )
     reasons: list[str] = []
+    profiles = []
+    for directory in directories:
+        if any((directory / name).is_file() for name in KUSTOMIZATION_FILES):
+            profiles.append(directory.name)
+        else:
+            # Flux can reconcile a directory without a kustomization file; it
+            # would still deploy something this collector did not evaluate.
+            reasons.append(f"{directory.name}: no kustomization file, profile not rendered")
+    if len(profiles) > _MAX_PROFILES:
+        reasons.append(f"{len(profiles) - _MAX_PROFILES} profile(s) omitted by safety limit")
+        profiles = profiles[:_MAX_PROFILES]
     resource_sets: dict[str, list[_Resource]] = {}
     if profiles:
-        for profile in profiles:
-            render = render_profile(checkout_root, profile, limits, tracked_paths)
-            reasons.extend(f"{profile}: {gap}" for gap in render.gaps)
-            resource_sets[profile] = [
-                _Resource(item.source_path, item.body)
-                for item in render.resources
-                if not any(
-                    item.source_path == ex or item.source_path.startswith(f"{ex}/")
-                    for ex in excluded_paths
-                )
+        renders = render_profiles(checkout_root, profiles, limits, tracked_paths, excluded_paths)
+        for render in renders:
+            reasons.extend(f"{render.profile}: {gap}" for gap in render.gaps)
+            resource_sets[render.profile] = [
+                _Resource(item.source_path, item.body) for item in render.resources
             ]
     else:
         resources, gaps = _raw_resources(checkout_root, limits, excluded_paths, tracked_paths)
+        # Without profiles nothing was rendered, so nothing can be proven:
+        # divergences still surface, satisfaction does not.
+        reasons.append("no deployment profiles; manifests evaluated unrendered")
         reasons.extend(gaps)
         resource_sets["manifests"] = resources
 

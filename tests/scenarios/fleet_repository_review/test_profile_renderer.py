@@ -15,7 +15,8 @@ LIMITS = ExecutionLimits(
 KUSTOMIZATION = "apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\n"
 FLUX = (
     "apiVersion: kustomize.toolkit.fluxcd.io/v1\nkind: Kustomization\n"
-    "metadata: {name: apps}\nspec: {path: ./k8s/overlay}\n"
+    "metadata: {name: apps}\n"
+    "spec: {path: ./k8s/overlay, sourceRef: {kind: GitRepository, name: flux-system}}\n"
 )
 CONFIG = "apiVersion: v1\nkind: ConfigMap\nmetadata: {name: c}\ndata: {a: '1', list: [x]}\n"
 
@@ -89,3 +90,60 @@ def test_untracked_files_are_not_rendered(tmp_path: Path) -> None:
 
     assert not render.complete
     assert "not part of the verified commit" in render.gaps[0]
+
+
+def test_malformed_and_unsafe_flux_or_kustomize_input_is_incomplete(tmp_path: Path) -> None:
+    for overlay, gap in (
+        (
+            "resources: [../base]\npatches:\n  - target: {kind: ConfigMap, name: c}\n"
+            "    patch: [1, 2]\n",
+            "unsupported patch form",
+        ),
+        ("resources: 7\n", "malformed resources"),
+    ):
+        render = _profile(tmp_path, overlay)
+        assert any(gap in reason for reason in render.gaps), (overlay, render.gaps)
+
+    for spec, gap in (
+        (
+            "{path: ./k8s/overlay, targetNamespace: other, sourceRef: {kind: GitRepository, "
+            "name: flux-system}}",
+            "fields that change",
+        ),
+        (
+            "{path: ./k8s/overlay, sourceRef: {kind: GitRepository, name: elsewhere}}",
+            "source other than this repository",
+        ),
+    ):
+        flux = FLUX.replace(
+            "spec: {path: ./k8s/overlay, sourceRef: {kind: GitRepository, name: flux-system}}",
+            f"spec: {spec}",
+        )
+        render = _profile(tmp_path, "resources: [../base]\n", {"k8s/clusters/p/apps.yaml": flux})
+        assert any(gap in reason for reason in render.gaps), (spec, render.gaps)
+
+
+def test_nested_flux_kustomizations_and_alternate_filenames_are_followed(tmp_path: Path) -> None:
+    child = FLUX.replace("name: apps", "name: child").replace("k8s/overlay", "k8s/child")
+    render = _profile(
+        tmp_path,
+        "resources: [child.yaml]\n",
+        {
+            "k8s/overlay/child.yaml": child,
+            "k8s/child/kustomization.yml": KUSTOMIZATION + "resources: [../base]\n",
+        },
+    )
+
+    assert render.complete, render.gaps
+    assert [r.body["kind"] for r in render.resources] == ["ConfigMap"]
+
+
+def test_policy_exclusions_stop_the_render(tmp_path: Path) -> None:
+    from infra_fleet_advisor.scenarios.fleet_repository_review.profile_renderer import (
+        render_profiles,
+    )
+
+    _profile(tmp_path, "resources: [../base]\n")
+    [render] = render_profiles(tmp_path, ["p"], LIMITS, excluded_paths=frozenset({"k8s/overlay"}))
+
+    assert any("excluded by policy" in gap for gap in render.gaps)
