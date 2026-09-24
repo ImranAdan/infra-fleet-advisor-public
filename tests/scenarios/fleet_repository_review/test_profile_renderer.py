@@ -124,6 +124,40 @@ def test_malformed_and_unsafe_flux_or_kustomize_input_is_incomplete(tmp_path: Pa
         assert any(gap in reason for reason in render.gaps), (spec, render.gaps)
 
 
+def test_only_explicit_checkout_mirrors_are_rendered(tmp_path: Path) -> None:
+    flux = FLUX.replace("name: flux-system", "name: local-source")
+    source_path = "platform/local/source.yaml"
+    source = (
+        "apiVersion: source.toolkit.fluxcd.io/v1\nkind: GitRepository\n"
+        "metadata:\n  name: local-source\n"
+        "spec: {url: https://example.com/somewhere-else.git}\n"
+    )
+    _profile(
+        tmp_path,
+        "resources: [../base]\n",
+        {"k8s/clusters/p/apps.yaml": flux, source_path: source},
+    )
+    tracked = frozenset(
+        path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*") if path.is_file()
+    )
+
+    untrusted = render_profile(tmp_path, "p", LIMITS, tracked)
+
+    assert not untrusted.complete
+    assert "source other than this repository" in untrusted.gaps[0]
+
+    annotated = source.replace(
+        "  name: local-source\n",
+        '  name: local-source\n  annotations:\n    infra-fleet.io/checkout-mirror: "true"\n',
+    )
+    (tmp_path / source_path).write_text(annotated, encoding="utf-8")
+
+    trusted = render_profile(tmp_path, "p", LIMITS, tracked)
+
+    assert trusted.complete, trusted.gaps
+    assert [resource.body["kind"] for resource in trusted.resources] == ["ConfigMap"]
+
+
 def test_nested_flux_kustomizations_and_alternate_filenames_are_followed(tmp_path: Path) -> None:
     child = FLUX.replace("name: apps", "name: child").replace("k8s/overlay", "k8s/child")
     render = _profile(

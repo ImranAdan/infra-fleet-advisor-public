@@ -42,6 +42,7 @@ _FLUX_SPEC_KEYS = {
 }
 # Flux's bootstrap source is the repository Flux was bootstrapped from.
 _BOOTSTRAP_SOURCE = "flux-system"
+_CHECKOUT_MIRROR_ANNOTATION = "infra-fleet.io/checkout-mirror"
 _MAX_DEPTH = 8
 _MAX_RESOURCES = 2000
 _MAX_SOURCE_SCAN_FILES = 1000
@@ -218,7 +219,7 @@ def _json_patch(document: dict[str, Any], operation: Any, rel_path: str) -> None
 
 
 def _declared_sources(renderer: _Renderer) -> set[str]:
-    """GitRepository sources the verified checkout itself declares."""
+    """GitRepository sources explicitly declared as mirrors of the checkout."""
     names = {_BOOTSTRAP_SOURCE}
     tracked = renderer.tracked or frozenset()
     candidates = [path for path in sorted(tracked) if path.endswith((".yaml", ".yml"))]
@@ -235,8 +236,16 @@ def _declared_sources(renderer: _Renderer) -> set[str]:
                 continue
             for body in yaml.safe_load_all(text):
                 if isinstance(body, dict) and body.get("kind") == "GitRepository":
-                    name = (body.get("metadata") or {}).get("name")
-                    if isinstance(name, str):
+                    metadata = body.get("metadata")
+                    if not isinstance(metadata, dict):
+                        continue
+                    annotations = metadata.get("annotations")
+                    name = metadata.get("name")
+                    if (
+                        isinstance(annotations, dict)
+                        and annotations.get(_CHECKOUT_MIRROR_ANNOTATION) == "true"
+                        and isinstance(name, str)
+                    ):
                         names.add(name)
         except (OSError, UnicodeError, yaml.YAMLError, AttributeError):
             continue
