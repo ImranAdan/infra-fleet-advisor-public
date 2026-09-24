@@ -192,6 +192,7 @@ def test_production_markdown_is_the_authoritative_catalog() -> None:
     assert {item.check_key for item in catalog.propositions if item.check_key is not None} == {
         "application_containers_hardened",
         "aws_cost_allocation_tags",
+        "dependency_updates_configured",
         "deployment_rollout_capacity",
         "ecr_lifecycle_bounded",
         "ecr_publication_scan_gated",

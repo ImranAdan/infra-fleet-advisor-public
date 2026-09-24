@@ -74,8 +74,8 @@ are listed in the [documentation index](docs/README.md).
 ## Current scope
 
 The advisor reviews one public fleet repository. Twenty declared positions span
-security, reliability, cost, and maintainability. Eleven registered checks cover
-workflow credentials, scan-gated ECR publication, literal Terraform IAM policies,
+security, reliability, cost, and maintainability. Twelve registered checks cover
+workflow credentials, scan-gated ECR publication, Dependabot coverage, literal Terraform IAM policies,
 Kubernetes Deployment rollouts and container hardening, staging log retention,
 ECR image lifecycle, cost-allocation tags, the Fleet profile lifecycle, local
 first use, and AWS onboarding and teardown.

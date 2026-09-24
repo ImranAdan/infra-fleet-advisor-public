@@ -12,6 +12,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
     CONCERN_CI_CREDENTIALS_WITHOUT_OIDC,
     CONCERN_CONTAINER_HARDENING_INCOMPLETE,
     CONCERN_COST_TAGS_MISSING,
+    CONCERN_DEPENDENCY_UPDATES_MISSING,
     CONCERN_DEPLOYMENT_ROLLOUT_CAPACITY,
     CONCERN_ECR_PUBLICATION_UNGATED,
     CONCERN_ECR_RETENTION_UNBOUNDED,
@@ -25,9 +26,11 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
     candidate_from_template,
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
+    DEPENDENCY_UPDATE_COLLECTOR_ID,
     EVIDENCE_KIND_CONTAINER_HARDENING,
     EVIDENCE_KIND_COST_TAGS,
     EVIDENCE_KIND_CREDENTIAL_METHOD,
+    EVIDENCE_KIND_DEPENDENCY_UPDATES,
     EVIDENCE_KIND_DEPLOYMENT_ROLLOUT_CAPACITY,
     EVIDENCE_KIND_ECR_LIFECYCLE,
     EVIDENCE_KIND_ECR_PUBLICATION_GATE,
@@ -52,6 +55,7 @@ CHECK_FLEET_AWS_ONBOARDING = "fleet_aws_onboarding"
 CHECK_APPLICATION_CONTAINERS_HARDENED = "application_containers_hardened"
 CHECK_STAGING_LOG_RETENTION_BOUNDED = "staging_log_retention_bounded"
 CHECK_ECR_LIFECYCLE_BOUNDED = "ecr_lifecycle_bounded"
+CHECK_DEPENDENCY_UPDATES_CONFIGURED = "dependency_updates_configured"
 CHECK_AWS_COST_TAGS = "aws_cost_allocation_tags"
 CHECK_ECR_PUBLICATION_SCAN_GATED = "ecr_publication_scan_gated"
 
@@ -212,6 +216,19 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
                 required_facts={"bounded_lifecycle": False},
             ),
             can_prove_satisfaction=True,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_DEPENDENCY_UPDATES_CONFIGURED: IntentCheckDefinition(
+            concern_key=CONCERN_DEPENDENCY_UPDATES_MISSING,
+            rule=ConcernRule(
+                category="security",
+                evidence_kind=EVIDENCE_KIND_DEPENDENCY_UPDATES,
+                collector_id=DEPENDENCY_UPDATE_COLLECTOR_ID,
+                required_facts={"covered_by_dependabot": False},
+            ),
+            # Alerts and security updates are repository settings the template
+            # cannot declare, so full configuration still cannot prove S-010.
+            can_prove_satisfaction=False,
             requires_relevant_evidence=True,
         ),
         CHECK_AWS_COST_TAGS: IntentCheckDefinition(

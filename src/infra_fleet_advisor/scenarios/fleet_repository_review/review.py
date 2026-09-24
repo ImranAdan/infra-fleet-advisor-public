@@ -19,6 +19,7 @@ from infra_fleet_advisor.core.report import (
 )
 from infra_fleet_advisor.provenance.source_verification import SourceProvenance, list_tracked_paths
 from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
+    dependency_update_collector,
     fleet_lifecycle_collector,
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
@@ -35,6 +36,8 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import CONCERN_RULES
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
+    DEPENDENCY_UPDATE_COLLECTOR_ID,
+    DEPENDENCY_UPDATE_COLLECTOR_VERSION,
     FLEET_LIFECYCLE_COLLECTOR_ID,
     FLEET_LIFECYCLE_COLLECTOR_VERSION,
     GHA_COLLECTOR_ID,
@@ -124,12 +127,19 @@ def run_review(
             | list_tracked_paths(checkout_root, "scripts/onboard-aws-profile.sh")
         ),
     )
+    dependency_result = dependency_update_collector.collect(
+        checkout_root,
+        limits,
+        excluded_paths=excluded_paths,
+        tracked_paths=list_tracked_paths(checkout_root, "."),
+    )
     all_evidence: tuple[Evidence, ...] = (
         gha_result.evidence
         + tf_result.evidence
         + tf_cost_result.evidence
         + k8s_result.evidence
         + lifecycle_result.evidence
+        + dependency_result.evidence
     )
     evidence_by_id = {e.evidence_id: e for e in all_evidence}
     coverage: list[CollectorCoverage] = [
@@ -138,6 +148,7 @@ def run_review(
         tf_cost_result.coverage,
         k8s_result.coverage,
         lifecycle_result.coverage,
+        dependency_result.coverage,
     ]
 
     if intent_catalog is None:
@@ -193,6 +204,7 @@ def run_review(
             TF_COST_COLLECTOR_ID: TF_COST_COLLECTOR_VERSION,
             K8S_DEPLOYMENT_COLLECTOR_ID: K8S_DEPLOYMENT_COLLECTOR_VERSION,
             FLEET_LIFECYCLE_COLLECTOR_ID: FLEET_LIFECYCLE_COLLECTOR_VERSION,
+            DEPENDENCY_UPDATE_COLLECTOR_ID: DEPENDENCY_UPDATE_COLLECTOR_VERSION,
         },
         model_identifier=synthesis_response.model_identifier,
         run_started_at=run_started_at,

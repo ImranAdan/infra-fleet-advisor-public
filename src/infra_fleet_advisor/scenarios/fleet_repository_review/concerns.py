@@ -23,6 +23,7 @@ CONCERN_FLEET_AWS_ONBOARDING_INCOMPLETE = "fleet_aws_onboarding_incomplete"
 CONCERN_CONTAINER_HARDENING_INCOMPLETE = "container_hardening_incomplete"
 CONCERN_LOG_RETENTION_UNBOUNDED = "staging_log_retention_unbounded"
 CONCERN_ECR_RETENTION_UNBOUNDED = "ecr_image_retention_unbounded"
+CONCERN_DEPENDENCY_UPDATES_MISSING = "dependency_updates_not_configured"
 CONCERN_COST_TAGS_MISSING = "cost_allocation_tags_missing"
 CONCERN_ECR_PUBLICATION_UNGATED = "ecr_publication_not_scan_gated"
 
@@ -328,6 +329,29 @@ CONCERN_TEMPLATES: dict[str, ConcernTemplate] = {
         confidence=0.9,
         confidence_explanation=(
             "Joined from literal repository and lifecycle-policy resources in one root module."
+        ),
+    ),
+    CONCERN_DEPENDENCY_UPDATES_MISSING: ConcernTemplate(
+        category="security",
+        priority="medium",
+        title="Tracked dependency manifests have no Dependabot update entry",
+        summary=(
+            "A tracked manifest directory (a Dockerfile, Python requirements, Terraform "
+            "providers, workflows) has no matching Dependabot package-ecosystem entry."
+        ),
+        impact=(
+            "Pinned versions and image digests in that directory never receive routine or "
+            "security update pull requests and silently age."
+        ),
+        suggested_change=(
+            "Add a monthly Dependabot entry for that ecosystem and directory, grouped like the "
+            "existing entries, or remove the unused manifest."
+        ),
+        trade_offs="More dependency pull requests to review each month.",
+        confidence=0.9,
+        confidence_explanation=(
+            "Matched tracked file names against the committed Dependabot configuration; "
+            "repository alert settings are outside the template."
         ),
     ),
     CONCERN_COST_TAGS_MISSING: ConcernTemplate(
