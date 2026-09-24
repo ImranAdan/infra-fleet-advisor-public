@@ -208,3 +208,73 @@ def test_policy_exclusions_stop_the_render(tmp_path: Path) -> None:
     [render] = render_profiles(tmp_path, ["p"], LIMITS, excluded_paths=frozenset({"k8s/overlay"}))
 
     assert any("excluded by policy" in gap for gap in render.gaps)
+
+
+def test_config_map_generator_and_namespace_render_like_kustomize(tmp_path: Path) -> None:
+    render = _profile(
+        tmp_path,
+        "namespace: observability\ngeneratorOptions:\n  disableNameSuffixHash: true\n"
+        "  labels: {grafana_dashboard: '1'}\n"
+        "configMapGenerator:\n  - name: dash\n    files: [board.json, renamed.json=other.json]\n"
+        "    literals: [mode=live]\n",
+        {"k8s/overlay/board.json": '{"a": 1}', "k8s/overlay/other.json": "{}"},
+    )
+
+    assert render.complete, render.gaps
+    [config] = [r for r in render.resources if r.body["metadata"]["name"] == "dash"]
+    assert config.body["metadata"] == {
+        "name": "dash",
+        "namespace": "observability",
+        "labels": {"grafana_dashboard": "1"},
+    }
+    assert config.body["data"] == {"board.json": '{"a": 1}', "renamed.json": "{}", "mode": "live"}
+
+
+def test_hashed_or_unknown_generators_are_incomplete(tmp_path: Path) -> None:
+    for overlay in (
+        "configMapGenerator:\n  - name: dash\n    literals: [a=b]\n",
+        "generatorOptions: {disableNameSuffixHash: true}\n"
+        "configMapGenerator:\n  - name: dash\n    envs: [x.env]\n",
+    ):
+        render = _profile(tmp_path, overlay)
+        assert not render.complete, overlay
+
+
+def test_flux_substitutes_what_git_declares_and_keeps_the_rest(tmp_path: Path) -> None:
+    flux = FLUX.replace(
+        "sourceRef: {kind: GitRepository, name: flux-system}}",
+        "sourceRef: {kind: GitRepository, name: flux-system},"
+        " postBuild: {substitute: {TIER: gold},"
+        " substituteFrom: [{kind: ConfigMap, name: app}, {kind: ConfigMap, name: runtime}]}}",
+    )
+    app = (
+        "apiVersion: v1\nkind: ConfigMap\nmetadata: {name: app, namespace: flux-system}\n"
+        "data: {APP_NAME: shop, APP_PORT: '8080', TIER: silver}\n"
+    )
+    deployment = (
+        "apiVersion: apps/v1\nkind: Deployment\nmetadata: {name: '${APP_NAME}'}\n"
+        "spec: {port: '${APP_PORT}', image: '${REGISTRY}/${APP_NAME}',"
+        " tier: '${TIER}', mode: '${MODE:=safe}'}\n"
+    )
+    render = _profile(
+        tmp_path,
+        "resources: [deploy.yaml]\n",
+        {
+            "k8s/clusters/p/kustomization.yaml": KUSTOMIZATION + "resources: [app.yaml, apps.yaml]\n",
+            "k8s/clusters/p/app.yaml": app,
+            "k8s/clusters/p/apps.yaml": flux,
+            "k8s/overlay/deploy.yaml": deployment,
+        },
+    )
+
+    assert render.complete, render.gaps
+    [deploy] = [r for r in render.resources if r.body["kind"] == "Deployment"]
+    assert deploy.body["metadata"]["name"] == "shop"
+    # An exact variable is re-read as YAML, as Flux substitutes before parsing;
+    # `runtime` is created outside Git, so REGISTRY stays a literal.
+    assert deploy.body["spec"] == {
+        "port": 8080,
+        "image": "${REGISTRY}/shop",
+        "tier": "gold",
+        "mode": "safe",
+    }

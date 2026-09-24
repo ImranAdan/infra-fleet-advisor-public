@@ -11,6 +11,7 @@ literal, and HelmRelease chart output is not rendered.
 """
 
 import copy
+import re
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -19,7 +20,30 @@ import yaml
 
 from infra_fleet_advisor.core.limits import ExecutionLimits
 
-_KUSTOMIZATION_KEYS = {"apiVersion", "kind", "resources", "patches", "images"}
+_KUSTOMIZATION_KEYS = {
+    "apiVersion",
+    "kind",
+    "resources",
+    "patches",
+    "images",
+    "namespace",
+    "configMapGenerator",
+    "generatorOptions",
+}
+# Kinds a kustomization's `namespace` leaves alone. ponytail: the kinds this
+# fleet declares; an unlisted cluster-scoped kind would gain a stray namespace.
+_CLUSTER_SCOPED_KINDS = {
+    "Namespace",
+    "ClusterRole",
+    "ClusterRoleBinding",
+    "CustomResourceDefinition",
+    "ClusterPolicy",
+    "StorageClass",
+    "PriorityClass",
+    "ValidatingWebhookConfiguration",
+    "MutatingWebhookConfiguration",
+}
+_VARIABLE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::?[=-]([^}]*))?\}")
 KUSTOMIZATION_FILES = ("kustomization.yaml", "kustomization.yml", "Kustomization")
 _FLUX_KUSTOMIZATION = "kustomize.toolkit.fluxcd.io/"
 # Flux Kustomization fields that do not change what is applied. Anything else
@@ -146,10 +170,64 @@ class _Renderer:
                         output.append(RenderedResource(target, body))
             if len(output) > _MAX_RESOURCES:
                 raise _Incomplete("rendered resource limit reached")
+        output.extend(self._generate(directory, rel_path, document))
         for patch in document.get("patches") or []:
             self._apply(patch, output, rel_path)
+        namespace = document.get("namespace")
+        if namespace is not None:
+            if not isinstance(namespace, str):
+                raise _Incomplete(f"{rel_path} has a malformed namespace")
+            output = [_with_namespace(resource, namespace) for resource in output]
         # `images` rewrites container image references only; no evaluated fact
         # depends on the image, so it needs no rendering here.
+        return output
+
+    def _generate(
+        self, directory: str, rel_path: str, document: dict[str, Any]
+    ) -> list[RenderedResource]:
+        """ConfigMaps from configMapGenerator: files and literals, no name hash."""
+        generators = document.get("configMapGenerator") or []
+        options = document.get("generatorOptions") or {}
+        if not generators:
+            return []
+        if (
+            not isinstance(generators, list)
+            or not isinstance(options, dict)
+            or set(options) - {"disableNameSuffixHash", "labels", "annotations"}
+        ):
+            raise _Incomplete(f"{rel_path} uses an unsupported generator form")
+        # A hashed name cannot be reproduced here, and every reference to it
+        # would be rewritten by kustomize; only stable names are rendered.
+        if options.get("disableNameSuffixHash") is not True:
+            raise _Incomplete(f"{rel_path} generates hashed names")
+        output = []
+        for generator in generators:
+            if (
+                not isinstance(generator, dict)
+                or set(generator) - {"name", "namespace", "files", "literals"}
+                or not isinstance(generator.get("name"), str)
+            ):
+                raise _Incomplete(f"{rel_path} uses an unsupported generator form")
+            data: dict[str, str] = {}
+            for entry in generator.get("files") or []:
+                if not isinstance(entry, str):
+                    raise _Incomplete(f"{rel_path} has a malformed generator file")
+                key, _, source = entry.rpartition("=")
+                source_path = self._local(directory, source)
+                data[key or PurePosixPath(source).name] = self._read(source_path)
+            for entry in generator.get("literals") or []:
+                if not isinstance(entry, str) or "=" not in entry:
+                    raise _Incomplete(f"{rel_path} has a malformed generator literal")
+                key, _, value = entry.partition("=")
+                data[key] = value
+            metadata: dict[str, Any] = {"name": generator["name"]}
+            for field_name in ("labels", "annotations"):
+                if options.get(field_name):
+                    metadata[field_name] = dict(options[field_name])
+            if generator.get("namespace"):
+                metadata["namespace"] = generator["namespace"]
+            body = {"apiVersion": "v1", "kind": "ConfigMap", "metadata": metadata, "data": data}
+            output.append(RenderedResource(rel_path, body))
         return output
 
     def _apply(self, patch: Any, resources: list[RenderedResource], rel_path: str) -> None:
@@ -180,6 +258,81 @@ class _Renderer:
                 matched += 1
         if not matched:
             raise _Incomplete(f"{rel_path} patch matches no resource")
+
+
+def _with_namespace(resource: RenderedResource, namespace: str) -> RenderedResource:
+    if resource.body.get("kind") in _CLUSTER_SCOPED_KINDS:
+        return resource
+    body = copy.deepcopy(resource.body)
+    metadata = body.setdefault("metadata", {})
+    if not isinstance(metadata, dict):
+        raise _Incomplete(f"{resource.source_path} has malformed metadata")
+    metadata["namespace"] = namespace
+    return RenderedResource(resource.source_path, body, resource.patch_path)
+
+
+def _substitute(value: Any, variables: dict[str, str]) -> Any:
+    """Flux postBuild substitution for the variables Git declares.
+
+    A variable Git does not declare (such as one a bootstrap script creates)
+    stays literal, as the render did before substitution existed. A scalar that
+    is exactly one variable is re-read as YAML, since Flux substitutes text
+    before parsing: `port: ${APP_PORT}` becomes an integer.
+    """
+    if isinstance(value, dict):
+        return {key: _substitute(item, variables) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_substitute(item, variables) for item in value]
+    if not isinstance(value, str) or "${" not in value:
+        return value
+
+    def replace(match: re.Match[str]) -> str:
+        name, default = match.group(1), match.group(2)
+        if name in variables:
+            return variables[name]
+        return default if default is not None else match.group(0)
+
+    replaced = _VARIABLE.sub(replace, value)
+    if _VARIABLE.fullmatch(value) and replaced != value:
+        try:
+            parsed = yaml.safe_load(replaced)
+        except yaml.YAMLError:
+            return replaced
+        return parsed if isinstance(parsed, (str, int, float, bool)) else replaced
+    return replaced
+
+
+def _flux_variables(body: dict[str, Any], known: list[RenderedResource]) -> dict[str, str]:
+    """Variables a Flux Kustomization substitutes, as far as Git declares them."""
+    spec = body.get("spec") or {}
+    post_build = spec.get("postBuild") or {}
+    metadata = body.get("metadata") or {}
+    namespace = metadata.get("namespace") if isinstance(metadata, dict) else None
+    variables: dict[str, str] = {}
+    sources = post_build.get("substituteFrom") or []
+    if not isinstance(sources, list):
+        raise _Incomplete("a Flux Kustomization has malformed substituteFrom")
+    # Later sources override earlier ones, and inline values override all.
+    for source in sources:
+        if not isinstance(source, dict) or source.get("kind") not in {"ConfigMap", "Secret"}:
+            raise _Incomplete("a Flux Kustomization has malformed substituteFrom")
+        if source["kind"] != "ConfigMap":
+            continue
+        for resource in known:
+            meta = resource.body.get("metadata") or {}
+            if (
+                resource.body.get("kind") == "ConfigMap"
+                and isinstance(meta, dict)
+                and meta.get("name") == source.get("name")
+                and meta.get("namespace") == namespace
+                and isinstance(resource.body.get("data"), dict)
+            ):
+                variables.update({str(k): str(v) for k, v in resource.body["data"].items()})
+    inline = post_build.get("substitute") or {}
+    if not isinstance(inline, dict):
+        raise _Incomplete("a Flux Kustomization has malformed substitute")
+    variables.update({str(k): str(v) for k, v in inline.items()})
+    return variables
 
 
 def _json_patch(document: dict[str, Any], operation: Any, rel_path: str) -> None:
@@ -338,7 +491,19 @@ def _render(renderer: _Renderer, profile: str, sources: set[tuple[str, str]]) ->
             if depth > _MAX_DEPTH:
                 raise _Incomplete("Flux Kustomization nesting limit reached")
             overlay = renderer._local("", _flux_path(resource.body, sources))
-            queue.extend((child, depth + 1) for child in renderer.build(overlay))
+            known = render.resources + [pending for pending, _depth in queue]
+            variables = _flux_variables(resource.body, known)
+            queue.extend(
+                (
+                    RenderedResource(
+                        child.source_path,
+                        _substitute(child.body, variables),
+                        child.patch_path,
+                    ),
+                    depth + 1,
+                )
+                for child in renderer.build(overlay)
+            )
         except failures as exc:
             render.gaps.append(str(exc) if isinstance(exc, _Incomplete) else type(exc).__name__)
         if len(render.resources) + len(queue) > _MAX_RESOURCES:
