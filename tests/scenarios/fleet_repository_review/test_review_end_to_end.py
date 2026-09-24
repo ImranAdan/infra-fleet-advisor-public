@@ -482,7 +482,7 @@ def test_registered_collectors_contribute_to_one_report(git_checkout) -> None:
     concern_keys = {r.concern_key for r in report.recommendations}
     assert "trivy_ignore_unfixed" in concern_keys
     assert "wildcard_iam_permissions" in concern_keys
-    assert len(report.coverage) == 6
+    assert len(report.coverage) == 7
     assert all(c.status == "ok" for c in report.coverage)
     assert len(report.evidence) == 2
 

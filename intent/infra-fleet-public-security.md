@@ -2,7 +2,7 @@
 
 - Format: `1`
 - Intent ID: `infra_fleet_public_security`
-- Version: `1.4`
+- Version: `1.5`
 - Category: `security`
 
 Source: [`infra-fleet-public@d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0`](https://github.com/ImranAdan/infra-fleet-public/tree/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0)
@@ -50,6 +50,11 @@ tester, and same-workload peers.
 
 Evidence: [NetworkPolicy](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/k8s/applications/load-harness/networkpolicy.yaml)
 
+### Evaluation
+
+- Check: `application_ingress_restricted`
+- Priority: `high`
+
 ## S-004 · Network egress
 
 ### Intent
@@ -57,6 +62,11 @@ Evidence: [NetworkPolicy](https://github.com/ImranAdan/infra-fleet-public/blob/d
 Permissive application egress is accepted for the current staging environment.
 
 Evidence: [current egress policy](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/k8s/applications/load-harness/networkpolicy.yaml)
+
+### Evaluation
+
+- Check: `permissive_egress_bounded`
+- Priority: `medium`
 
 ## S-005 · External transport
 
@@ -70,6 +80,11 @@ Evidence: [TLS and optional DNS](https://github.com/ImranAdan/infra-fleet-public
 Caveat: the template defaults to a reserved `.invalid` hostname and port-forward
 access. New public exposure remains blocked by the documented ingress-controller
 migration, and repository desired state cannot prove a certificate is live.
+
+### Evaluation
+
+- Check: `public_ingress_https`
+- Priority: `high`
 
 ## S-006 · Staging API exposure
 
@@ -118,6 +133,11 @@ control for those routes; otherwise CSRF exposure remains.
 Automatic Kubernetes service-account token mounting is accepted for the current application.
 
 Evidence: [documented token-mount decision](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/SECURITY-CONCERNS.md)
+
+### Evaluation
+
+- Check: `mounted_token_unprivileged`
+- Priority: `medium`
 
 ## S-010 · Security updates
 

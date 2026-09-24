@@ -24,6 +24,10 @@ CONCERN_CONTAINER_HARDENING_INCOMPLETE = "container_hardening_incomplete"
 CONCERN_LOG_RETENTION_UNBOUNDED = "staging_log_retention_unbounded"
 CONCERN_ECR_RETENTION_UNBOUNDED = "ecr_image_retention_unbounded"
 CONCERN_DEPENDENCY_UPDATES_MISSING = "dependency_updates_not_configured"
+CONCERN_INGRESS_UNRESTRICTED = "application_ingress_unrestricted"
+CONCERN_EGRESS_ACCEPTANCE_EXCEEDED = "permissive_egress_beyond_applications"
+CONCERN_INGRESS_HTTP_ALLOWED = "public_ingress_allows_plain_http"
+CONCERN_SERVICE_ACCOUNT_GRANTS_ACCESS = "mounted_token_grants_access"
 CONCERN_WORKER_SCALING_STATIC = "worker_group_not_demand_scaled"
 CONCERN_COST_TAGS_MISSING = "cost_allocation_tags_missing"
 CONCERN_ECR_PUBLICATION_UNGATED = "ecr_publication_not_scan_gated"
@@ -354,6 +358,85 @@ CONCERN_TEMPLATES: dict[str, ConcernTemplate] = {
             "Matched tracked file names against the committed Dependabot configuration; "
             "repository alert settings are outside the template."
         ),
+    ),
+    CONCERN_INGRESS_UNRESTRICTED: ConcernTemplate(
+        category="security",
+        priority="high",
+        title="Application pods accept ingress beyond declared peers",
+        summary=(
+            "An application Deployment is not selected by an ingress NetworkPolicy, or a "
+            "selecting policy has a rule with no peers or an ipBlock peer."
+        ),
+        impact="Any pod or address that can route to the workload can reach it.",
+        suggested_change=(
+            "Select the pods with an Ingress NetworkPolicy whose every rule names peers by "
+            "namespaceSelector or podSelector; policies are additive, so remove open rules."
+        ),
+        trade_offs="New legitimate callers need an explicit rule before they can connect.",
+        confidence=0.9,
+        confidence_explanation=(
+            "Evaluated with label-selector semantics over raw manifests; overlays are not rendered."
+        ),
+    ),
+    CONCERN_EGRESS_ACCEPTANCE_EXCEEDED: ConcernTemplate(
+        category="security",
+        priority="medium",
+        title="Permissive egress extends beyond application workloads",
+        summary=(
+            "An owner-managed NetworkPolicy outside the application namespaces allows egress "
+            "to any destination, which the accepted staging trade-off does not cover."
+        ),
+        impact="A compromised platform pod can reach any destination the node can.",
+        suggested_change=(
+            "Scope the policy's egress rules to named namespaces or pods, or record a separate "
+            "owner decision accepting permissive egress for that namespace."
+        ),
+        trade_offs="Tight egress needs every dependency, including DNS, listed explicitly.",
+        confidence=0.9,
+        confidence_explanation="Read from the policy's egress rules and namespace.",
+    ),
+    CONCERN_INGRESS_HTTP_ALLOWED: ConcernTemplate(
+        category="security",
+        priority="high",
+        title="Public ingress can serve application traffic over plain HTTP",
+        summary=(
+            "An Ingress does not cover every host with TLS from a cert-manager issuer, or it "
+            "disables the HTTP-to-HTTPS redirect."
+        ),
+        impact=(
+            "Once a real hostname is configured, credentials and session cookies can cross the "
+            "internet unencrypted."
+        ),
+        suggested_change=(
+            "Cover every host with a cert-manager TLS entry and keep the HTTPS redirect on; "
+            "route in-cluster analysis traffic to the service or an internal listener instead."
+        ),
+        trade_offs=(
+            "Canary analysis that currently measures HTTP through the public ingress needs an "
+            "internal path, or it measures redirects instead of the canary."
+        ),
+        confidence=0.85,
+        confidence_explanation="Read from Ingress hosts, TLS entries and annotations.",
+    ),
+    CONCERN_SERVICE_ACCOUNT_GRANTS_ACCESS: ConcernTemplate(
+        category="security",
+        priority="high",
+        title="Mounted service-account token grants Kubernetes API access",
+        summary=(
+            "An application pod mounts its service-account token and that account, its "
+            "namespace group or all service accounts are bound to a Role or ClusterRole."
+        ),
+        impact=(
+            "The accepted automatic token mount is no longer harmless: a compromised pod can "
+            "use the token against the Kubernetes API."
+        ),
+        suggested_change=(
+            "Set automountServiceAccountToken: false on the pod, or give it a dedicated "
+            "service account without bindings."
+        ),
+        trade_offs="A workload that genuinely needs API access must say so in its own intent.",
+        confidence=0.9,
+        confidence_explanation="Joined from pod spec and tracked RoleBinding subjects.",
     ),
     CONCERN_WORKER_SCALING_STATIC: ConcernTemplate(
         category="cost",
