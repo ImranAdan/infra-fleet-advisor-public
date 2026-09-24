@@ -8,6 +8,7 @@ import yaml
 from infra_fleet_advisor.core.errors import UnsafePathError
 from infra_fleet_advisor.core.evidence import Evidence, build_evidence
 from infra_fleet_advisor.core.limits import ExecutionLimits
+from infra_fleet_advisor.core.paths import validate_repo_relative_path
 from infra_fleet_advisor.core.report import CollectorCoverage
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     EVIDENCE_KIND_CREDENTIAL_METHOD,
@@ -19,6 +20,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
 
 _CREDENTIALS_ACTION = "aws-actions/configure-aws-credentials"
 _TRIVY_ACTION = "aquasecurity/trivy-action"
+_LOCAL_ACTION = re.compile(r"^\./([A-Za-z0-9_.][A-Za-z0-9_./-]*)$")
 _ECR_LOGIN_ACTION = "aws-actions/amazon-ecr-login"
 _DOCKER_LOGIN_ACTION = "docker/login-action"
 _ECR_LOGIN_COMMAND = re.compile(r"\becr\s+get-login-password\b")
@@ -286,6 +288,55 @@ def _publication_evidence(workflow: dict[str, Any], rel_path: str) -> list[Evide
     return evidence
 
 
+def _local_action_steps(
+    checkout_root: Path,
+    uses: str,
+    limits: ExecutionLimits,
+    tracked_paths: frozenset[str] | None,
+    excluded_paths: frozenset[str] = frozenset(),
+) -> tuple[str, list[dict[str, Any]]] | None:
+    """Steps of a tracked local composite action a workflow step calls.
+
+    Credentials obtained inside a `./` action are as real as ones in the
+    workflow. Returns None for a non-local `uses:`; raises ValueError when a
+    local action cannot be read from the verified commit, or when it calls a
+    further local action, which is not followed and so leaves coverage partial.
+    ponytail: one level only; add recursion with a visited set if the fleet
+    grows nested local actions."""
+    match = _LOCAL_ACTION.fullmatch(uses)
+    if match is None:
+        return None
+    directory = match.group(1).rstrip("/")
+    checkout_real = checkout_root.resolve()
+    for name in ("action.yml", "action.yaml"):
+        rel_path = validate_repo_relative_path(f"{directory}/{name}")
+        path = checkout_root / rel_path
+        if not path.is_file():
+            continue
+        if _is_excluded(rel_path, excluded_paths):
+            return rel_path, []  # excluded content is never evidence
+        if tracked_paths is not None and rel_path not in tracked_paths:
+            raise ValueError("local action is not part of the verified commit")
+        if path.is_symlink() or not path.resolve().is_relative_to(checkout_real):
+            raise ValueError("local action is not a regular in-checkout file")
+        if path.stat().st_size > limits.max_file_bytes:
+            raise ValueError("local action exceeds max_file_bytes")
+        action = yaml.safe_load(path.read_text(encoding="utf-8"))
+        runs = action.get("runs") if isinstance(action, dict) else None
+        if not isinstance(runs, dict) or runs.get("using") != "composite":
+            return rel_path, []
+        steps = runs.get("steps")
+        if not isinstance(steps, list) or not all(isinstance(step, dict) for step in steps):
+            raise ValueError("local composite action steps are malformed")
+        if any(
+            isinstance(step.get("uses"), str) and _LOCAL_ACTION.fullmatch(step["uses"])
+            for step in steps
+        ):
+            raise ValueError("nested local action is not followed")
+        return rel_path, steps
+    raise ValueError("local action has no action.yml")
+
+
 def _is_excluded(rel_path: str, excluded_paths: frozenset[str]) -> bool:
     return any(
         rel_path == excluded or rel_path.startswith(f"{excluded}/") for excluded in excluded_paths
@@ -352,6 +403,29 @@ def collect(
                 item = _build_step_evidence(rel_path, locator, step, has_id_token_write)
                 if item is not None:
                     evidence.append(item)
+                uses = step.get("uses")
+                try:
+                    local = (
+                        _local_action_steps(
+                            checkout_root, uses, limits, tracked_paths, excluded_paths
+                        )
+                        if isinstance(uses, str)
+                        else None
+                    )
+                except ValueError:
+                    failures += 1
+                    continue
+                if local is None:
+                    continue
+                action_path, action_steps = local
+                for index, action_step in enumerate(action_steps):
+                    # The composite runs with the calling job's permissions, and
+                    # each caller is its own credential path.
+                    item = _build_step_evidence(
+                        action_path, f"{locator} -> steps[{index}]", action_step, has_id_token_write
+                    )
+                    if item is not None:
+                        evidence.append(item)
             evidence.extend(_publication_evidence(workflow, rel_path))
         except (OSError, yaml.YAMLError, UnsafePathError):
             failures += 1

@@ -1,0 +1,60 @@
+# Canary mutations for infra-fleet-public. Each drill is one deliberate,
+# literal violation of a declared position in the real fleet. `drill` applies
+# it in a throwaway worktree and expects the named proposition to diverge, so
+# a check that silently stops seeing the fleet (a moved file, a renamed block)
+# fails loudly instead of inflating coverage. Data only: `find` and `replace`
+# are literal text, every occurrence in `path` is replaced, and a `find` that
+# no longer matches marks the drill stale rather than passing it.
+drills:
+  - proposition: S-001
+    path: .github/workflows/infra-apply.yml
+    find: "id-token: write"
+    replace: "id-token: none"
+  - proposition: S-002
+    path: k8s/applications/load-harness/deployment.yaml
+    find: "allowPrivilegeEscalation: false"
+    replace: "allowPrivilegeEscalation: true"
+  - proposition: S-007
+    path: infrastructure/permanent/github-oidc.tf
+    find: 'Action    = "ecr:GetAuthorizationToken"'
+    replace: 'Action    = "ecr:*"'
+  - proposition: S-010
+    path: .github/dependabot.yml
+    find: 'directory: "/platform/local/git-server"'
+    replace: 'directory: "/platform/local/elsewhere"'
+  - proposition: S-011
+    path: .github/workflows/load-harness-ci.yml
+    find: "exit-code: 1"
+    replace: "exit-code: 0"
+  - proposition: R-001
+    path: k8s/applications/load-harness/deployment.yaml
+    find: "maxUnavailable: 0"
+    replace: "maxUnavailable: 1"
+  - proposition: C-002
+    path: infrastructure/staging/eks.tf
+    find: "max_size       = 2"
+    replace: "max_size       = 1"
+  - proposition: C-003
+    path: infrastructure/staging/eks.tf
+    find: "cloudwatch_log_group_retention_in_days = 14"
+    replace: "cloudwatch_log_group_retention_in_days = 90"
+  - proposition: C-004
+    path: infrastructure/permanent/ecr.tf
+    find: 'tagStatus   = "any"'
+    replace: 'tagStatus   = "tagged"'
+  - proposition: C-005
+    path: infrastructure/staging/main.tf
+    find: "tags = local.cost_tags"
+    replace: "tags = {}"
+  - proposition: M-001
+    path: fleet
+    find: "render|setup|up|"
+    replace: "render|up|"
+  - proposition: M-002
+    path: scripts/fleet-profiles/local.sh
+    find: "Next: ./fleet up --profile local"
+    replace: "Then start the local profile"
+  - proposition: M-003
+    path: scripts/fleet-profiles/aws-staging.sh
+    find: '"confirm_destroy=$confirmation"'
+    replace: "'confirm_destroy=destroy staging'"

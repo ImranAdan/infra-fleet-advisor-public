@@ -1,5 +1,6 @@
 import argparse
 import json
+import subprocess  # noqa: S404 - only for CalledProcessError
 import sys
 from collections.abc import Sequence
 from dataclasses import asdict
@@ -18,6 +19,8 @@ from infra_fleet_advisor.runtime.composition import (
     RunInputs,
     compose_and_run,
 )
+from infra_fleet_advisor.runtime.drill import drills_passed, load_drills, run_drills
+from infra_fleet_advisor.runtime.drill import to_markdown as drill_markdown
 from infra_fleet_advisor.runtime.fleet_feedback import (
     MAX_FEEDBACK_PR_HISTORY,
     build_feedback_plan,
@@ -62,6 +65,7 @@ EXIT_PROVENANCE_ERROR = 3
 EXIT_PIPELINE_ERROR = 4
 EXIT_UNSAFE_OUTPUT_ERROR = 5
 EXIT_INTENT_REGRESSION = 6
+EXIT_DRILL_FAILED = 7
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -83,6 +87,15 @@ def _build_parser() -> argparse.ArgumentParser:
     gate.add_argument("--base-report", required=True, type=Path)
     gate.add_argument("--head-report", required=True, type=Path)
     gate.add_argument("--summary", type=Path, default=None)
+    drill = sub.add_parser(
+        "drill", help="Apply canary violations to the fleet and confirm each check fires"
+    )
+    drill.add_argument("--checkout", required=True, type=Path)
+    drill.add_argument("--drills", required=True, type=Path)
+    drill.add_argument("--policy", required=True, type=Path)
+    drill.add_argument("--intent-dir", required=True, type=Path)
+    drill.add_argument("--output-dir", required=True, type=Path)
+    drill.add_argument("--summary", type=Path, default=None)
     remediate = sub.add_parser(
         "remediate", help="Apply mechanical fixes a published report already justifies"
     )
@@ -248,6 +261,64 @@ def main(argv: Sequence[str] | None = None) -> int:
             with args.summary.open("a", encoding="utf-8") as handle:
                 handle.write(summary)
         return EXIT_OK if gate_result.passed else EXIT_INTENT_REGRESSION
+
+    if args.command == "drill":
+
+        def review_once(worktree: Path, sha: str, output_dir: Path) -> None:
+            code = main(
+                [
+                    "review",
+                    "--checkout",
+                    str(worktree),
+                    "--sha",
+                    sha,
+                    "--policy",
+                    str(args.policy),
+                    "--intent-dir",
+                    str(args.intent_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--synthesizer",
+                    "stub",
+                ]
+            )
+            if code != EXIT_OK:
+                raise PolicyError(f"review of a drill commit failed with exit code {code}")
+
+        checkout_real = args.checkout.resolve()
+        destinations = [args.output_dir] + ([args.summary] if args.summary else [])
+        if any(
+            path.resolve() == checkout_real or path.resolve().is_relative_to(checkout_real)
+            for path in destinations
+        ):
+            print("drill error: output must be outside the fleet checkout", file=sys.stderr)
+            return EXIT_UNSAFE_OUTPUT_ERROR
+        try:
+            args.output_dir.mkdir(parents=True, exist_ok=True)
+            drill_results = run_drills(
+                args.checkout.resolve(),
+                load_drills(args.drills),
+                review_once,
+                args.output_dir.resolve(),
+            )
+        except PolicyError as exc:
+            print(f"drill error: {exc}", file=sys.stderr)
+            return EXIT_POLICY_ERROR
+        except subprocess.CalledProcessError as exc:
+            # The command line names machine paths; report only what failed.
+            print(
+                f"drill error: git {exc.cmd[5] if len(exc.cmd) > 5 else ''} failed", file=sys.stderr
+            )
+            return EXIT_PIPELINE_ERROR
+        except OSError as exc:
+            print(f"drill error: {type(exc).__name__} while preparing a drill", file=sys.stderr)
+            return EXIT_PIPELINE_ERROR
+        drill_summary = drill_markdown(drill_results)
+        print(drill_summary)
+        if args.summary is not None:
+            with args.summary.open("a", encoding="utf-8") as handle:
+                handle.write(drill_summary)
+        return EXIT_OK if drills_passed(drill_results) else EXIT_DRILL_FAILED
 
     if args.command == "report-readiness":
         try:

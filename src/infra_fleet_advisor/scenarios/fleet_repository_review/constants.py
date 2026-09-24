@@ -16,7 +16,7 @@ EVIDENCE_KIND_DEPENDENCY_UPDATES = "dependency_update_coverage"
 EVIDENCE_KIND_ECR_PUBLICATION_GATE = "gha_ecr_publication_gate"
 
 GHA_COLLECTOR_ID = "github_actions_workflow_collector"
-GHA_COLLECTOR_VERSION = "1.4.0"
+GHA_COLLECTOR_VERSION = "1.5.0"
 
 TF_IAM_COLLECTOR_ID = "terraform_iam_collector"
 TF_IAM_COLLECTOR_VERSION = "1.4.0"
