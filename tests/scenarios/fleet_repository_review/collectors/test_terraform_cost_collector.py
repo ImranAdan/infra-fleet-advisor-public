@@ -207,24 +207,51 @@ def test_untracked_terraform_downloads_are_not_evidence(tmp_path) -> None:
 
 
 PROVIDER = 'provider "aws" {\n  region = "eu-west-2"\n%s\n}\n'
+COMPLETE_DEFAULTS = (
+    '  default_tags {\n    tags = {\n      Environment = "staging"\n'
+    '      Service     = "fleet"\n      Owner       = "platform"\n    }\n  }'
+)
+PARTIAL_TAGS = 'resource "aws_s3_bucket" "logs" {\n  tags = { Environment = "staging" }\n}\n'
 
 
-def test_provider_default_tags_must_carry_cost_allocation_keys(tmp_path) -> None:
-    cases = {
-        "": (False, "environment, owner, service"),
-        '  default_tags {\n    tags = {\n      Environment = "staging"\n'
-        '      Service     = "fleet"\n      Owner       = "platform"\n    }\n  }': (True, ""),
-        '  default_tags {\n    tags = { environment = "staging", service = "fleet" }\n  }': (
-            False,
-            "owner",
-        ),
-    }
-    for block, (declared, missing) in cases.items():
-        result = _collect(tmp_path, {"infrastructure/staging/main.tf": PROVIDER % block})
-        assert result.coverage.status == "ok"
-        [fact] = _facts(result, collector.EVIDENCE_KIND_COST_TAGS)
-        assert fact["declares_cost_allocation_tags"] is declared
-        assert fact["missing_cost_tags"] == missing
+def _tag_fact(tmp_path: Path, files: dict[str, str]) -> dict[str, object]:
+    result = _collect(tmp_path, files)
+    assert result.coverage.status == "ok"
+    [fact] = _facts(result, collector.EVIDENCE_KIND_COST_TAGS)
+    return fact
+
+
+def test_resource_lacking_keys_the_defaults_lack_is_proven_untagged(tmp_path) -> None:
+    fact = _tag_fact(
+        tmp_path,
+        {"infrastructure/staging/main.tf": PROVIDER % "" + PARTIAL_TAGS},
+    )
+
+    assert fact["cost_tags_incomplete"] is True
+    assert fact["untagged_resources"] == "aws_s3_bucket.logs"
+    assert fact["missing_default_tags"] == "environment, owner, service"
+
+
+def test_complete_defaults_cover_partially_tagged_resources(tmp_path) -> None:
+    fact = _tag_fact(
+        tmp_path,
+        {"infrastructure/staging/main.tf": PROVIDER % COMPLETE_DEFAULTS + PARTIAL_TAGS},
+    )
+
+    assert fact["default_tags_complete"] is True
+    assert fact["cost_tags_incomplete"] is False
+
+
+def test_missing_defaults_alone_are_not_a_divergence(tmp_path) -> None:
+    self_tagged = (
+        'resource "aws_s3_bucket" "logs" {\n  tags = {\n    Environment = "staging"\n'
+        '    Service = "fleet"\n    Owner = "platform"\n  }\n}\n'
+        'resource "aws_s3_bucket" "computed" {\n  tags = merge(local.a, local.b)\n}\n'
+    )
+    fact = _tag_fact(tmp_path, {"infrastructure/staging/main.tf": PROVIDER % "" + self_tagged})
+
+    assert fact["default_tags_complete"] is False
+    assert fact["cost_tags_incomplete"] is False
 
 
 def test_default_tags_resolve_one_local_reference(tmp_path) -> None:
@@ -233,7 +260,7 @@ def test_default_tags_resolve_one_local_reference(tmp_path) -> None:
         '    Environment = local.environment\n    Service = "fleet"\n'
         '    Owner = "platform"\n  }\n}\n'
     )
-    result = _collect(
+    fact = _tag_fact(
         tmp_path,
         {
             "infrastructure/staging/locals.tf": locals_tf,
@@ -242,19 +269,21 @@ def test_default_tags_resolve_one_local_reference(tmp_path) -> None:
         },
     )
 
-    assert result.coverage.status == "ok"
-    [fact] = _facts(result, collector.EVIDENCE_KIND_COST_TAGS)
-    assert fact["declares_cost_allocation_tags"] is True
+    assert fact["default_tags_complete"] is True
 
 
 def test_computed_default_tags_are_partial_not_assumed(tmp_path) -> None:
-    result = _collect(
-        tmp_path,
-        {
-            "infrastructure/staging/main.tf": PROVIDER
-            % "  default_tags {\n    tags = merge(local.a, local.b)\n  }"
-        },
-    )
+    for tags in (
+        "merge(local.a, local.b)",
+        '{ Environment = "s", Service = "f", Owner = "p" } == {} ? {} : {}',
+    ):
+        result = _collect(
+            tmp_path,
+            {
+                "infrastructure/staging/main.tf": PROVIDER
+                % f"  default_tags {{\n    tags = {tags}\n  }}"
+            },
+        )
 
-    assert result.coverage.status == "partial"
-    assert _facts(result, collector.EVIDENCE_KIND_COST_TAGS) == []
+        assert result.coverage.status == "partial", tags
+        assert _facts(result, collector.EVIDENCE_KIND_COST_TAGS) == []

@@ -333,14 +333,14 @@ CONCERN_TEMPLATES: dict[str, ConcernTemplate] = {
     CONCERN_COST_TAGS_MISSING: ConcernTemplate(
         category="cost",
         priority="medium",
-        title="AWS provider does not apply cost-allocation tags by default",
+        title="Terraform resources lack cost-allocation tags",
         summary=(
-            "An AWS provider block has no default_tags carrying environment, service and owner "
-            "keys, so billed resources in that root module cannot be attributed consistently."
+            "Resources in a root module set tags that lack an environment, service or owner "
+            "key, and the AWS provider's default_tags do not supply the missing keys."
         ),
         impact=(
-            "Cost Explorer cannot split the bill by environment, service or owner, and "
-            "resources that forget a per-resource tag map go unattributed."
+            "Billed usage of the listed resources, and of any other resource that does not tag "
+            "itself, may go unattributed when the bill is split by environment, service or owner."
         ),
         suggested_change=(
             "Add default_tags { tags = { Environment, Service, Owner } } to every aws provider, "

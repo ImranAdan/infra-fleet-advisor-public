@@ -29,6 +29,7 @@ _RESOURCE_HEADER = re.compile(
     r'\s+"([A-Za-z0-9_-]+)"\s*\{'
 )
 _MODULE_HEADER = re.compile(r'(module)\s+"([A-Za-z0-9_-]+)"\s*\{')
+_TAGGABLE_HEADER = re.compile(r'resource\s+"(aws_[A-Za-z0-9_]+)"\s+"([A-Za-z0-9_-]+)"\s*\{')
 _PROVIDER_HEADER = re.compile(r'(provider)\s+"(aws)"\s*\{')
 _LOCALS_HEADER = re.compile(r"(locals)\s*()\{")
 _DEFAULT_TAGS_HEADER = re.compile(r"(default_tags)\s*()\{")
@@ -89,7 +90,11 @@ def _object_attribute(body: str, name: str) -> Any:
     ]
     if len(hits) != 1 or code[hits[0].end() : hits[0].end() + 1] != "{":
         return _attribute(body, name)
-    literal, _ = _extract_balanced(body, hits[0].end(), "{", "}")
+    literal, after = _extract_balanced(body, hits[0].end(), "{", "}")
+    line_end = body.find("\n", after)
+    if _mask_non_code(body[after : line_end if line_end >= 0 else None]).strip(" \t\r}"):
+        # The object is only part of a computed expression, e.g. a conditional.
+        raise ValueError(f"{name} is not a single literal")
     parser = _LiteralParser(_mask_non_code(literal, strings=False))
     value = parser.value()
     if parser.index != len(parser.tokens):
@@ -97,33 +102,57 @@ def _object_attribute(body: str, name: str) -> Any:
     return value
 
 
-def _tag_evidence(rel_path: str, provider_body: str, locals_bodies: list[str]) -> Evidence:
-    """Record which cost-allocation keys one AWS provider applies by default."""
+def _resolve_tags(value: Any, locals_bodies: list[str]) -> dict[str, Any]:
+    """A literal tag map, or one level of `local.name`, the usual home for shared tags."""
+    if isinstance(value, _Traversal):
+        reference = _LOCAL_REFERENCE.fullmatch(value.value)
+        if reference is None:
+            raise ValueError("tags reference a non-local value")
+        found = [
+            resolved
+            for body in locals_bodies
+            if (resolved := _object_attribute(body, reference.group(1))) is not None
+        ]
+        if len(found) != 1:
+            raise ValueError("tags reference an unresolved value")
+        value = found[0]
+    if not isinstance(value, dict):
+        raise ValueError("tags are not a literal object")
+    return value
+
+
+def _tag_evidence(
+    rel_path: str,
+    provider_body: str,
+    locals_bodies: list[str],
+    tagged_blocks: list[tuple[str, str]],
+) -> Evidence:
+    """Which cost-allocation keys one AWS provider applies by default, and which
+    resources in its root module provably carry none of the missing keys.
+
+    Absent default_tags alone proves nothing: a resource may tag itself. A block
+    counts as untagged only when its own readable `tags` lack a key the defaults
+    also lack; unreadable tag expressions are skipped rather than assumed."""
     alias = _attribute(provider_body, "alias")
     locator = "provider.aws" + (f".{alias}" if isinstance(alias, str) else "")
     blocks, unbalanced = _iter_resource_blocks(provider_body, _DEFAULT_TAGS_HEADER)
     if unbalanced or len(blocks) > 1:
         raise ValueError("default_tags is malformed")
-    tags: Any = {}
-    if blocks:
-        tags = _object_attribute(blocks[0][2], "tags")
-        if isinstance(tags, _Traversal):
-            # Resolve one level of `local.name`, the usual home for shared tags.
-            reference = _LOCAL_REFERENCE.fullmatch(tags.value)
-            if reference is None:
-                raise ValueError("default tags reference a non-local value")
-            found = [
-                value
-                for body in locals_bodies
-                if (value := _object_attribute(body, reference.group(1))) is not None
-            ]
-            if len(found) != 1:
-                raise ValueError("default tags reference an unresolved value")
-            tags = found[0]
-    if not isinstance(tags, dict):
-        raise ValueError("default tags are not a literal object")
-    keys = sorted(str(key) for key in tags)
-    missing = sorted(_COST_TAG_KEYS - {key.lower() for key in keys})
+    defaults = (
+        _resolve_tags(_object_attribute(blocks[0][2], "tags"), locals_bodies) if blocks else {}
+    )
+    missing = _COST_TAG_KEYS - {str(key).lower() for key in defaults}
+    untagged = []
+    if missing and not isinstance(alias, str):
+        for address, body in tagged_blocks:
+            try:
+                if _attribute(body, "provider") is not None:
+                    continue
+                tags = _resolve_tags(_object_attribute(body, "tags"), locals_bodies)
+            except ValueError:
+                continue
+            if missing - {str(key).lower() for key in tags}:
+                untagged.append(address)
     root_module = PurePosixPath(rel_path).parent.as_posix()
     return build_evidence(
         collector_id=TF_COST_COLLECTOR_ID,
@@ -132,13 +161,14 @@ def _tag_evidence(rel_path: str, provider_body: str, locals_bodies: list[str]) -
         source_path=rel_path,
         locator=locator,
         excerpt=(
-            f"{locator} default_tags: {', '.join(keys[:10]) or 'none'}"
-            + (f"; missing {', '.join(missing)}" if missing else "")
+            f"{locator} default_tags lack: {', '.join(sorted(missing)) or 'nothing'}"
+            + (f"; untagged: {', '.join(untagged[:5])}" if untagged else "")
         ),
         fact={
-            "has_default_tags": bool(blocks),
-            "missing_cost_tags": ", ".join(missing),
-            "declares_cost_allocation_tags": not missing,
+            "default_tags_complete": not missing,
+            "missing_default_tags": ", ".join(sorted(missing)),
+            "untagged_resources": ", ".join(untagged[:5]),
+            "cost_tags_incomplete": bool(untagged),
         },
         identity_parts=(root_module, locator),
     )
@@ -347,6 +377,7 @@ def collect(
     policies: list[tuple[str, str, str]] = []
     providers: list[tuple[str, str, str]] = []
     locals_by_module: dict[str, list[str]] = {}
+    tagged_by_module: dict[str, list[tuple[str, str]]] = {}
     failures = 0
     for path in files:
         rel_path = path.relative_to(checkout_root).as_posix()
@@ -371,6 +402,14 @@ def collect(
         failures += unbalanced + module_unbalanced + provider_unbalanced + locals_unbalanced
         providers.extend((rel_path, module, body) for _kw, _name, body in provider_blocks)
         locals_by_module.setdefault(module, []).extend(body for _kw, _n, body in locals_blocks)
+        taggable, taggable_unbalanced = _iter_resource_blocks(text, _TAGGABLE_HEADER)
+        failures += taggable_unbalanced
+        tagged_by_module.setdefault(module, []).extend(
+            (f"{kind}.{name}", body) for kind, name, body in taggable if "tags" in body
+        )
+        tagged_by_module[module].extend(
+            (f"module.{name}", body) for _kw, name, body in modules if "tags" in body
+        )
         for resource_type, name, body in resources:
             try:
                 if resource_type == "aws_cloudwatch_log_group":
@@ -398,7 +437,14 @@ def collect(
 
     for rel_path, module, body in providers:
         try:
-            evidence.append(_tag_evidence(rel_path, body, locals_by_module.get(module, [])))
+            evidence.append(
+                _tag_evidence(
+                    rel_path,
+                    body,
+                    locals_by_module.get(module, []),
+                    tagged_by_module.get(module, []),
+                )
+            )
         except ValueError:
             failures += 1
 

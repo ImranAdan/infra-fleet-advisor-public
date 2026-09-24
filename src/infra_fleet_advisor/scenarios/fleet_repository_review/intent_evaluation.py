@@ -220,10 +220,11 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
                 category="cost",
                 evidence_kind=EVIDENCE_KIND_COST_TAGS,
                 collector_id=TF_COST_COLLECTOR_ID,
-                required_facts={"declares_cost_allocation_tags": False},
+                required_facts={"cost_tags_incomplete": True},
             ),
-            # Provider defaults do not reach every billed resource (for example
-            # instances launched by node groups), so presence cannot prove C-005.
+            # Divergence needs a resource whose readable tags lack a key the
+            # provider defaults also lack. Defaults do not reach every billed
+            # resource (for example node-group instances), so none can prove C-005.
             can_prove_satisfaction=False,
             requires_relevant_evidence=True,
         ),

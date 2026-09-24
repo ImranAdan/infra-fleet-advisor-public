@@ -181,17 +181,21 @@ under `infrastructure/staging/` and cannot prove satisfaction, because AWS
 services create log groups the repository never declares.
 
 The same collector records, per `provider "aws"` block, which of the
-environment, service and owner keys its `default_tags` apply, resolving one
-level of `local.name` from the same root module. Computed tags such as `merge()`
-make coverage partial. C-005 is divergence-only because provider defaults do
-not reach every billed resource.
+environment, service and owner keys its `default_tags` lack, and which
+resources or modules in that root module set their own `tags` without those
+keys. Tag maps are read as literals or one level of `local.name`; computed
+provider defaults make coverage partial, and computed resource tags are skipped
+rather than assumed. C-005 diverges only on such a provably untagged block, and
+is divergence-only because defaults do not reach every billed resource.
 
 For S-011 the workflow collector emits one record per job that logs in to ECR
 (`amazon-ecr-login`, `docker/login-action` with an ECR registry, or
-`aws ecr get-login-password`). The job is gated when an unconditional Trivy step
-with `CRITICAL,HIGH` and a non-zero `exit-code` runs earlier in the job, or in a
-job reached through `needs` where no job on the path uses `always()`,
-`failure()` or `cancelled()` in its condition.
+`aws ecr get-login-password`) and then pushes an image. The job is gated when an
+unconditional Trivy image vulnerability scan (`image-ref` set, `CRITICAL,HIGH`,
+non-zero `exit-code`) runs earlier in the job with no status override on the
+login or push steps, or in a job reached through `needs` where no job on the
+path uses `always()`, `failure()` or `cancelled()`. The scanned `image-ref` is
+not matched to the pushed image.
 
 Workflow and Terraform source-file budgets apply after policy exclusions and
 tracked-path filtering. Downloaded `.terraform` files are local tool state and
