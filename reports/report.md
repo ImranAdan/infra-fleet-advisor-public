@@ -1,10 +1,10 @@
 # Infra Fleet Advisor report
 
-- Source: `infra-fleet-public` @ `fdf43d351709c8fde6affe03892a331a20909e56`
+- Source: `infra-fleet-public` @ `197405ff88fc4595cb24c407a3e6d1c3e281fb57`
 - Advisor version: `0.1.0` · Policy version: `1.1`
-- Model: `stub-synthesizer-v1` · Run started: `2026-09-24T07:20:23.337886+00:00`
+- Model: `stub-synthesizer-v1` · Run started: `2026-09-24T07:28:56.280676+00:00`
 - Intent catalog: `intent-md-v1:b1a817bee07eb70d3ac8c53b403565a2429f0b4c3d1e74c777f08c50d22faaaa`
-- Lifecycle: 3 new, 0 unchanged, 4 resolved, 0 suppressed (0 rejected)
+- Lifecycle: 0 new, 1 unchanged, 6 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
 
@@ -17,7 +17,7 @@
 
 ## Intent evaluation
 
-**Coverage:** 13 of 20 positions have a check — 3 satisfied, 3 divergent, 7 checked but unproven; 7 declared without a check.
+**Coverage:** 13 of 20 positions have a check — 3 satisfied, 1 divergent, 9 checked but unproven; 7 declared without a check.
 
 - `declared_unverified` `infra_fleet_public_cost/C-001` — Staging application worker capacity scales to zero outside an owner-defined
   usage window. A delayed startup of up to 30 minutes is acceptable when it avoids
@@ -36,11 +36,10 @@
   untagged images and bounds the number or age of retained images. Images retained
   for rollback or audit have an explicit exception.
   - Category: `cost` · Priority: `medium` · Check: `ecr_lifecycle_bounded` · Reason: `complete_evidence_supports_intent`
-- `divergent` `infra_fleet_public_cost/C-005` — Terraform-managed AWS resources that support tagging declare consistent
+- `declared_unverified` `infra_fleet_public_cost/C-005` — Terraform-managed AWS resources that support tagging declare consistent
   environment, service, and owner tags so billed usage can be attributed. Any
   resource that cannot carry these tags is reported as an explicit coverage gap.
-  - Category: `cost` · Priority: `medium` · Check: `aws_cost_allocation_tags` · Reason: `evidence_conflicts_with_intent`
-  - Evidence: `terraform_cost_collector:444d9162e4a0b4b7`, `terraform_cost_collector:716686c2cfdaac9d`
+  - Category: `cost` · Priority: `medium` · Check: `aws_cost_allocation_tags` · Reason: `collector_cannot_prove_satisfaction`
 - `declared_unverified` `infra_fleet_public_maintainability/M-001` — Every supported deployment profile exposes the same three lifecycle commands:
   \`./fleet setup --profile \<profile\>\` prepares and validates the target,
   \`./fleet up --profile \<profile\>\` brings the platform to a ready state, and
@@ -138,7 +137,7 @@
   
   Evidence: \[documented token-mount decision\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/SECURITY-CONCERNS.md)
   - Category: `security` · Priority: `not_declared` · Check: `not_declared` · Reason: `check_not_declared`
-- `divergent` `infra_fleet_public_security/S-010` — Repository owners enable dependency alerts and security-update pull requests;
+- `declared_unverified` `infra_fleet_public_security/S-010` — Repository owners enable dependency alerts and security-update pull requests;
   routine version checks run monthly, while review and deployment remain an owned
   operational decision.
   
@@ -146,8 +145,7 @@
   
   Caveat: repository-level alert and security-update settings cannot be declared
   by the template, and this proposition defines no remediation SLA.
-  - Category: `security` · Priority: `medium` · Check: `dependency_updates_configured` · Reason: `evidence_conflicts_with_intent`
-  - Evidence: `dependency_update_collector:393b67d709c744d8`, `dependency_update_collector:c75dced6323eba06`
+  - Category: `security` · Priority: `medium` · Check: `dependency_updates_configured` · Reason: `collector_cannot_prove_satisfaction`
 - `declared_unverified` `infra_fleet_public_security/S-011` — Trivy blocks ECR publication when an image has any fixed Critical or High vulnerability; a documented exception is required to permit one.
   
   Evidence: \[Trivy publication gate\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/.github/workflows/load-harness-ci.yml)
@@ -160,7 +158,7 @@
 
 ## Recommendations
 
-### #1 [new] EKS worker group cannot scale on demand
+### #1 [unchanged] EKS worker group cannot scale on demand
 
 - Category: `cost` · Priority: `high` · Confidence: 0.85
 - Fingerprint: `fp_7ec808b779a06a62a8f1b78f`
@@ -174,7 +172,7 @@ A staging managed node group declares size bounds, but nothing in the repository
 
 **Trade-offs:** An autoscaler adds a controller, IAM permissions and scale-up latency; a zero minimum delays the first workload after idle periods.
 
-### #2 [new] Tracked dependency manifests lack monthly Dependabot updates
+### [resolved] Tracked dependency manifests lack monthly Dependabot updates
 
 - Category: `security` · Priority: `medium` · Confidence: 0.90
 - Fingerprint: `fp_32aef5c30310be194e284fe4`
@@ -188,7 +186,7 @@ A tracked manifest directory (a Dockerfile, Python requirements, pinned Terrafor
 
 **Trade-offs:** More dependency pull requests to review each month.
 
-### #3 [new] Terraform resources lack cost-allocation tags
+### [resolved] Terraform resources lack cost-allocation tags
 
 - Category: `cost` · Priority: `medium` · Confidence: 0.90
 - Fingerprint: `fp_b342e48d905647ef74ddc267`
