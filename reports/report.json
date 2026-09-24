@@ -3,7 +3,7 @@
     {
       "collector_id": "github_actions_workflow_collector",
       "error_summary": null,
-      "evidence_count": 13,
+      "evidence_count": 14,
       "status": "ok"
     },
     {
@@ -15,7 +15,7 @@
     {
       "collector_id": "terraform_cost_collector",
       "error_summary": null,
-      "evidence_count": 2,
+      "evidence_count": 5,
       "status": "ok"
     },
     {
@@ -29,9 +29,43 @@
       "error_summary": null,
       "evidence_count": 3,
       "status": "ok"
+    },
+    {
+      "collector_id": "dependency_update_collector",
+      "error_summary": null,
+      "evidence_count": 7,
+      "status": "ok"
     }
   ],
   "evidence": [
+    {
+      "collector_id": "dependency_update_collector",
+      "collector_version": "1.0.0",
+      "evidence_id": "dependency_update_collector:393b67d709c744d8",
+      "excerpt": "pip manifests in /: no Dependabot entry",
+      "fact": {
+        "covered_by_dependabot": false,
+        "interval": "",
+        "updated_monthly": false
+      },
+      "kind": "dependency_update_coverage",
+      "locator": "pip:/",
+      "source_path": "requirements-dev.txt"
+    },
+    {
+      "collector_id": "dependency_update_collector",
+      "collector_version": "1.0.0",
+      "evidence_id": "dependency_update_collector:c75dced6323eba06",
+      "excerpt": "docker manifests in platform/local/git-server: no Dependabot entry",
+      "fact": {
+        "covered_by_dependabot": false,
+        "interval": "",
+        "updated_monthly": false
+      },
+      "kind": "dependency_update_coverage",
+      "locator": "docker:platform/local/git-server",
+      "source_path": "platform/local/git-server/Dockerfile"
+    },
     {
       "collector_id": "fleet_lifecycle_collector",
       "collector_version": "1.4.0",
@@ -52,6 +86,36 @@
     },
     {
       "collector_id": "terraform_cost_collector",
+      "collector_version": "1.2.0",
+      "evidence_id": "terraform_cost_collector:444d9162e4a0b4b7",
+      "excerpt": "provider.aws default_tags lack: environment, owner, service; untagged: aws_ecr_repository.load_harness, aws_iam_openid_connect_provider.github_actions, aws_iam_role.github_actions, aws_iam_policy.github_actions, aws_iam_policy.github_actions_supporting",
+      "fact": {
+        "cost_tags_incomplete": true,
+        "default_tags_complete": false,
+        "missing_default_tags": "environment, owner, service",
+        "untagged_resources": "aws_ecr_repository.load_harness, aws_iam_openid_connect_provider.github_actions, aws_iam_role.github_actions, aws_iam_policy.github_actions, aws_iam_policy.github_actions_supporting"
+      },
+      "kind": "tf_cost_allocation_tags",
+      "locator": "provider.aws",
+      "source_path": "infrastructure/permanent/main.tf"
+    },
+    {
+      "collector_id": "terraform_cost_collector",
+      "collector_version": "1.2.0",
+      "evidence_id": "terraform_cost_collector:716686c2cfdaac9d",
+      "excerpt": "provider.aws default_tags lack: environment, owner, service; untagged: aws_iam_policy.alb_controller, module.alb_controller_role, module.eks, aws_iam_policy.flux_image_reflector, module.flux_image_reflector_role",
+      "fact": {
+        "cost_tags_incomplete": true,
+        "default_tags_complete": false,
+        "missing_default_tags": "environment, owner, service",
+        "untagged_resources": "aws_iam_policy.alb_controller, module.alb_controller_role, module.eks, aws_iam_policy.flux_image_reflector, module.flux_image_reflector_role"
+      },
+      "kind": "tf_cost_allocation_tags",
+      "locator": "provider.aws",
+      "source_path": "infrastructure/staging/main.tf"
+    },
+    {
+      "collector_id": "terraform_cost_collector",
       "collector_version": "1.0.0",
       "evidence_id": "terraform_cost_collector:d2d6fa1dfde83257",
       "excerpt": "module.eks (terraform-aws-modules/eks/aws 21.25.0): control-plane log group retention 90 days",
@@ -61,6 +125,22 @@
       },
       "kind": "tf_log_retention",
       "locator": "module.eks.aws_cloudwatch_log_group.this",
+      "source_path": "infrastructure/staging/eks.tf"
+    },
+    {
+      "collector_id": "terraform_cost_collector",
+      "collector_version": "1.2.0",
+      "evidence_id": "terraform_cost_collector:d31a3916e8b5bd2a",
+      "excerpt": "module.eks.eks_managed_node_groups.default: min 1, max 2; node autoscaler not declared",
+      "fact": {
+        "autoscaler_declared": false,
+        "demand_scaled": false,
+        "explicit_max": true,
+        "max_size": 2,
+        "min_size": 1
+      },
+      "kind": "tf_worker_scaling",
+      "locator": "module.eks.eks_managed_node_groups.default",
       "source_path": "infrastructure/staging/eks.tf"
     },
     {
@@ -104,14 +184,16 @@
     },
     {
       "category": "cost",
-      "check_key": null,
+      "check_key": "worker_groups_demand_scaled",
       "document_id": "infra_fleet_public_cost",
-      "evidence_ids": [],
+      "evidence_ids": [
+        "terraform_cost_collector:d31a3916e8b5bd2a"
+      ],
       "priority": "high",
       "proposition_id": "C-002",
-      "reason": "check_not_declared",
+      "reason": "evidence_conflicts_with_intent",
       "statement": "Every non-production EKS worker group declares demand-driven scaling with a zero\nminimum where its workloads permit it and an explicit bounded maximum. Any\nalways-on baseline must name the workload that requires it.",
-      "status": "declared_unverified"
+      "status": "divergent"
     },
     {
       "category": "cost",
@@ -137,14 +219,17 @@
     },
     {
       "category": "cost",
-      "check_key": null,
+      "check_key": "aws_cost_allocation_tags",
       "document_id": "infra_fleet_public_cost",
-      "evidence_ids": [],
+      "evidence_ids": [
+        "terraform_cost_collector:444d9162e4a0b4b7",
+        "terraform_cost_collector:716686c2cfdaac9d"
+      ],
       "priority": "medium",
       "proposition_id": "C-005",
-      "reason": "check_not_declared",
+      "reason": "evidence_conflicts_with_intent",
       "statement": "Terraform-managed AWS resources that support tagging declare consistent\nenvironment, service, and owner tags so billed usage can be attributed. Any\nresource that cannot carry these tags is reported as an explicit coverage gap.",
-      "status": "declared_unverified"
+      "status": "divergent"
     },
     {
       "category": "maintainability",
@@ -291,45 +376,111 @@
     },
     {
       "category": "security",
-      "check_key": null,
+      "check_key": "dependency_updates_configured",
       "document_id": "infra_fleet_public_security",
-      "evidence_ids": [],
-      "priority": null,
+      "evidence_ids": [
+        "dependency_update_collector:393b67d709c744d8",
+        "dependency_update_collector:c75dced6323eba06"
+      ],
+      "priority": "medium",
       "proposition_id": "S-010",
-      "reason": "check_not_declared",
+      "reason": "evidence_conflicts_with_intent",
       "statement": "Repository owners enable dependency alerts and security-update pull requests;\nroutine version checks run monthly, while review and deployment remain an owned\noperational decision.\n\nEvidence: [Dependabot operating model](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/DEPENDABOT.md)\n\nCaveat: repository-level alert and security-update settings cannot be declared\nby the template, and this proposition defines no remediation SLA.",
-      "status": "declared_unverified"
+      "status": "divergent"
     },
     {
       "category": "security",
-      "check_key": null,
+      "check_key": "ecr_publication_scan_gated",
       "document_id": "infra_fleet_public_security",
       "evidence_ids": [],
-      "priority": null,
+      "priority": "high",
       "proposition_id": "S-011",
-      "reason": "check_not_declared",
+      "reason": "collector_cannot_prove_satisfaction",
       "statement": "Trivy blocks ECR publication when an image has any fixed Critical or High vulnerability; a documented exception is required to permit one.\n\nEvidence: [Trivy publication gate](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/.github/workflows/load-harness-ci.yml)\n\nCaveat: the workflow sets `ignore-unfixed: true`, so unfixed Critical/High\nfindings do not block, and the gate applies to ECR publication, not to\ndeployment. The proposition text above has been narrowed to match; a `Yes`\ndoes not imply a deployment-time gate exists.",
       "status": "declared_unverified"
     }
   ],
-  "new_count": 0,
+  "new_count": 3,
   "provenance": {
     "advisor_version": "0.1.0",
     "collector_versions": {
+      "dependency_update_collector": "1.0.0",
       "fleet_lifecycle_collector": "1.4.0",
-      "github_actions_workflow_collector": "1.3.0",
+      "github_actions_workflow_collector": "1.4.0",
       "kubernetes_deployment_collector": "1.1.0",
-      "terraform_cost_collector": "1.0.0",
+      "terraform_cost_collector": "1.2.0",
       "terraform_iam_collector": "1.4.0"
     },
-    "intent_digest": "intent-md-v1:e9386fb7406828b843cb906fd839177e90e13867a69dd2fbda512028fa48549f",
+    "intent_digest": "intent-md-v1:b1a817bee07eb70d3ac8c53b403565a2429f0b4c3d1e74c777f08c50d22faaaa",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.1",
-    "run_started_at": "2026-09-23T23:31:10.212127+00:00",
+    "run_started_at": "2026-09-24T07:20:23.337886+00:00",
     "source_commit_sha": "fdf43d351709c8fde6affe03892a331a20909e56",
     "source_label": "infra-fleet-public"
   },
   "recommendations": [
+    {
+      "category": "cost",
+      "concern_key": "worker_group_not_demand_scaled",
+      "confidence": 0.85,
+      "confidence_explanation": "Node group bounds are literal module inputs; autoscaler presence is a bounded text scan of tracked Terraform and Kubernetes manifests.",
+      "evidence_ids": [
+        "terraform_cost_collector:d31a3916e8b5bd2a"
+      ],
+      "fingerprint": "fp_7ec808b779a06a62a8f1b78f",
+      "impact": "Capacity stays at the desired size regardless of load: pods scaled out by the HPA can stay pending, and idle capacity is never released.",
+      "owner_accepted_trade_off": null,
+      "priority": "high",
+      "rank": 1,
+      "rank_rationale": "priority=high, category_weight=5, confidence=0.85",
+      "status": "new",
+      "suggested_change": "Declare a node autoscaler for the staging cluster (cluster-autoscaler with a pod identity role, Karpenter, or EKS Auto Mode), keep an explicit bounded max_size, and lower min_size to zero unless a named workload needs an always-on node.",
+      "summary": "A staging managed node group declares size bounds, but nothing in the repository drives them: no cluster-autoscaler, Karpenter or EKS Auto Mode is declared, or the maximum is not explicit and above the minimum.",
+      "title": "EKS worker group cannot scale on demand",
+      "trade_offs": "An autoscaler adds a controller, IAM permissions and scale-up latency; a zero minimum delays the first workload after idle periods."
+    },
+    {
+      "category": "security",
+      "concern_key": "dependency_updates_not_configured",
+      "confidence": 0.9,
+      "confidence_explanation": "Matched tracked file names against the committed Dependabot configuration; repository alert settings are outside the template.",
+      "evidence_ids": [
+        "dependency_update_collector:c75dced6323eba06",
+        "dependency_update_collector:393b67d709c744d8"
+      ],
+      "fingerprint": "fp_32aef5c30310be194e284fe4",
+      "impact": "Pinned versions and image digests in that directory never receive routine or security update pull requests and silently age.",
+      "owner_accepted_trade_off": null,
+      "priority": "medium",
+      "rank": 2,
+      "rank_rationale": "priority=medium, category_weight=10, confidence=0.90",
+      "status": "new",
+      "suggested_change": "Add a monthly Dependabot entry for that ecosystem and directory, grouped like the existing entries, or remove the unused manifest.",
+      "summary": "A tracked manifest directory (a Dockerfile, Python requirements, pinned Terraform, workflows) has no matching Dependabot entry, or its entry is not scheduled monthly.",
+      "title": "Tracked dependency manifests lack monthly Dependabot updates",
+      "trade_offs": "More dependency pull requests to review each month."
+    },
+    {
+      "category": "cost",
+      "concern_key": "cost_allocation_tags_missing",
+      "confidence": 0.9,
+      "confidence_explanation": "Read from literal provider default_tags, resolving one level of local reference.",
+      "evidence_ids": [
+        "terraform_cost_collector:444d9162e4a0b4b7",
+        "terraform_cost_collector:716686c2cfdaac9d"
+      ],
+      "fingerprint": "fp_b342e48d905647ef74ddc267",
+      "impact": "Billed usage of the listed resources, and of any other resource that does not tag itself, may go unattributed when the bill is split by environment, service or owner.",
+      "owner_accepted_trade_off": null,
+      "priority": "medium",
+      "rank": 3,
+      "rank_rationale": "priority=medium, category_weight=5, confidence=0.90",
+      "status": "new",
+      "suggested_change": "Add default_tags { tags = { Environment, Service, Owner } } to every aws provider, for example from a shared local, and activate the keys as cost-allocation tags.",
+      "summary": "Resources in a root module set tags that lack an environment, service or owner key, and the AWS provider's default_tags do not supply the missing keys.",
+      "title": "Terraform resources lack cost-allocation tags",
+      "trade_offs": "Changing default tags updates every taggable resource on the next apply; some resources, such as instances launched by node groups, still need tag propagation."
+    },
     {
       "category": "maintainability",
       "concern_key": "fleet_aws_onboarding_incomplete",

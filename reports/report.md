@@ -2,30 +2,32 @@
 
 - Source: `infra-fleet-public` @ `fdf43d351709c8fde6affe03892a331a20909e56`
 - Advisor version: `0.1.0` · Policy version: `1.1`
-- Model: `stub-synthesizer-v1` · Run started: `2026-09-23T23:31:10.212127+00:00`
-- Intent catalog: `intent-md-v1:e9386fb7406828b843cb906fd839177e90e13867a69dd2fbda512028fa48549f`
-- Lifecycle: 0 new, 0 unchanged, 4 resolved, 0 suppressed (0 rejected)
+- Model: `stub-synthesizer-v1` · Run started: `2026-09-24T07:20:23.337886+00:00`
+- Intent catalog: `intent-md-v1:b1a817bee07eb70d3ac8c53b403565a2429f0b4c3d1e74c777f08c50d22faaaa`
+- Lifecycle: 3 new, 0 unchanged, 4 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
 
-- `github_actions_workflow_collector`: ok (13 evidence)
+- `github_actions_workflow_collector`: ok (14 evidence)
 - `terraform_iam_collector`: ok (0 evidence)
-- `terraform_cost_collector`: ok (2 evidence)
+- `terraform_cost_collector`: ok (5 evidence)
 - `kubernetes_deployment_collector`: ok (14 evidence)
 - `fleet_lifecycle_collector`: ok (3 evidence)
+- `dependency_update_collector`: ok (7 evidence)
 
 ## Intent evaluation
 
-**Coverage:** 9 of 20 positions have a check — 3 satisfied, 0 divergent, 6 checked but unproven; 11 declared without a check.
+**Coverage:** 13 of 20 positions have a check — 3 satisfied, 3 divergent, 7 checked but unproven; 7 declared without a check.
 
 - `declared_unverified` `infra_fleet_public_cost/C-001` — Staging application worker capacity scales to zero outside an owner-defined
   usage window. A delayed startup of up to 30 minutes is acceptable when it avoids
   paying for otherwise idle compute.
   - Category: `cost` · Priority: `high` · Check: `not_declared` · Reason: `check_not_declared`
-- `declared_unverified` `infra_fleet_public_cost/C-002` — Every non-production EKS worker group declares demand-driven scaling with a zero
+- `divergent` `infra_fleet_public_cost/C-002` — Every non-production EKS worker group declares demand-driven scaling with a zero
   minimum where its workloads permit it and an explicit bounded maximum. Any
   always-on baseline must name the workload that requires it.
-  - Category: `cost` · Priority: `high` · Check: `not_declared` · Reason: `check_not_declared`
+  - Category: `cost` · Priority: `high` · Check: `worker_groups_demand_scaled` · Reason: `evidence_conflicts_with_intent`
+  - Evidence: `terraform_cost_collector:d31a3916e8b5bd2a`
 - `declared_unverified` `infra_fleet_public_cost/C-003` — Every staging CloudWatch log group managed by the fleet has an explicit
   retention period of no more than 30 days. Longer retention requires a documented
   operational or compliance reason.
@@ -34,10 +36,11 @@
   untagged images and bounds the number or age of retained images. Images retained
   for rollback or audit have an explicit exception.
   - Category: `cost` · Priority: `medium` · Check: `ecr_lifecycle_bounded` · Reason: `complete_evidence_supports_intent`
-- `declared_unverified` `infra_fleet_public_cost/C-005` — Terraform-managed AWS resources that support tagging declare consistent
+- `divergent` `infra_fleet_public_cost/C-005` — Terraform-managed AWS resources that support tagging declare consistent
   environment, service, and owner tags so billed usage can be attributed. Any
   resource that cannot carry these tags is reported as an explicit coverage gap.
-  - Category: `cost` · Priority: `medium` · Check: `not_declared` · Reason: `check_not_declared`
+  - Category: `cost` · Priority: `medium` · Check: `aws_cost_allocation_tags` · Reason: `evidence_conflicts_with_intent`
+  - Evidence: `terraform_cost_collector:444d9162e4a0b4b7`, `terraform_cost_collector:716686c2cfdaac9d`
 - `declared_unverified` `infra_fleet_public_maintainability/M-001` — Every supported deployment profile exposes the same three lifecycle commands:
   \`./fleet setup --profile \<profile\>\` prepares and validates the target,
   \`./fleet up --profile \<profile\>\` brings the platform to a ready state, and
@@ -135,7 +138,7 @@
   
   Evidence: \[documented token-mount decision\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/SECURITY-CONCERNS.md)
   - Category: `security` · Priority: `not_declared` · Check: `not_declared` · Reason: `check_not_declared`
-- `declared_unverified` `infra_fleet_public_security/S-010` — Repository owners enable dependency alerts and security-update pull requests;
+- `divergent` `infra_fleet_public_security/S-010` — Repository owners enable dependency alerts and security-update pull requests;
   routine version checks run monthly, while review and deployment remain an owned
   operational decision.
   
@@ -143,7 +146,8 @@
   
   Caveat: repository-level alert and security-update settings cannot be declared
   by the template, and this proposition defines no remediation SLA.
-  - Category: `security` · Priority: `not_declared` · Check: `not_declared` · Reason: `check_not_declared`
+  - Category: `security` · Priority: `medium` · Check: `dependency_updates_configured` · Reason: `evidence_conflicts_with_intent`
+  - Evidence: `dependency_update_collector:393b67d709c744d8`, `dependency_update_collector:c75dced6323eba06`
 - `declared_unverified` `infra_fleet_public_security/S-011` — Trivy blocks ECR publication when an image has any fixed Critical or High vulnerability; a documented exception is required to permit one.
   
   Evidence: \[Trivy publication gate\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/.github/workflows/load-harness-ci.yml)
@@ -152,9 +156,51 @@
   findings do not block, and the gate applies to ECR publication, not to
   deployment. The proposition text above has been narrowed to match; a \`Yes\`
   does not imply a deployment-time gate exists.
-  - Category: `security` · Priority: `not_declared` · Check: `not_declared` · Reason: `check_not_declared`
+  - Category: `security` · Priority: `high` · Check: `ecr_publication_scan_gated` · Reason: `collector_cannot_prove_satisfaction`
 
 ## Recommendations
+
+### #1 [new] EKS worker group cannot scale on demand
+
+- Category: `cost` · Priority: `high` · Confidence: 0.85
+- Fingerprint: `fp_7ec808b779a06a62a8f1b78f`
+- Evidence: `terraform_cost_collector:d31a3916e8b5bd2a`
+
+A staging managed node group declares size bounds, but nothing in the repository drives them: no cluster-autoscaler, Karpenter or EKS Auto Mode is declared, or the maximum is not explicit and above the minimum.
+
+**Impact:** Capacity stays at the desired size regardless of load: pods scaled out by the HPA can stay pending, and idle capacity is never released.
+
+**Suggested change:** Declare a node autoscaler for the staging cluster (cluster-autoscaler with a pod identity role, Karpenter, or EKS Auto Mode), keep an explicit bounded max_size, and lower min_size to zero unless a named workload needs an always-on node.
+
+**Trade-offs:** An autoscaler adds a controller, IAM permissions and scale-up latency; a zero minimum delays the first workload after idle periods.
+
+### #2 [new] Tracked dependency manifests lack monthly Dependabot updates
+
+- Category: `security` · Priority: `medium` · Confidence: 0.90
+- Fingerprint: `fp_32aef5c30310be194e284fe4`
+- Evidence: `dependency_update_collector:c75dced6323eba06`, `dependency_update_collector:393b67d709c744d8`
+
+A tracked manifest directory (a Dockerfile, Python requirements, pinned Terraform, workflows) has no matching Dependabot entry, or its entry is not scheduled monthly.
+
+**Impact:** Pinned versions and image digests in that directory never receive routine or security update pull requests and silently age.
+
+**Suggested change:** Add a monthly Dependabot entry for that ecosystem and directory, grouped like the existing entries, or remove the unused manifest.
+
+**Trade-offs:** More dependency pull requests to review each month.
+
+### #3 [new] Terraform resources lack cost-allocation tags
+
+- Category: `cost` · Priority: `medium` · Confidence: 0.90
+- Fingerprint: `fp_b342e48d905647ef74ddc267`
+- Evidence: `terraform_cost_collector:444d9162e4a0b4b7`, `terraform_cost_collector:716686c2cfdaac9d`
+
+Resources in a root module set tags that lack an environment, service or owner key, and the AWS provider's default_tags do not supply the missing keys.
+
+**Impact:** Billed usage of the listed resources, and of any other resource that does not tag itself, may go unattributed when the bill is split by environment, service or owner.
+
+**Suggested change:** Add default_tags { tags = { Environment, Service, Owner } } to every aws provider, for example from a shared local, and activate the keys as cost-allocation tags.
+
+**Trade-offs:** Changing default tags updates every taggable resource on the next apply; some resources, such as instances launched by node groups, still need tag propagation.
 
 ### [resolved] AWS staging lifecycle lacks a declared onboarding or teardown control
 
