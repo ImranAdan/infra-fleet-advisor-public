@@ -3,7 +3,7 @@
     {
       "collector_id": "github_actions_workflow_collector",
       "error_summary": null,
-      "evidence_count": 14,
+      "evidence_count": 18,
       "status": "ok"
     },
     {
@@ -400,7 +400,7 @@
     "collector_versions": {
       "dependency_update_collector": "1.0.0",
       "fleet_lifecycle_collector": "1.4.0",
-      "github_actions_workflow_collector": "1.4.0",
+      "github_actions_workflow_collector": "1.5.0",
       "kubernetes_deployment_collector": "1.1.0",
       "terraform_cost_collector": "1.2.0",
       "terraform_iam_collector": "1.4.0"
@@ -408,8 +408,8 @@
     "intent_digest": "intent-md-v1:b1a817bee07eb70d3ac8c53b403565a2429f0b4c3d1e74c777f08c50d22faaaa",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.1",
-    "run_started_at": "2026-09-24T07:28:56.280676+00:00",
-    "source_commit_sha": "197405ff88fc4595cb24c407a3e6d1c3e281fb57",
+    "run_started_at": "2026-09-24T08:14:31.967990+00:00",
+    "source_commit_sha": "e667b9910595a2d961a56f8528180852afa0ca23",
     "source_label": "infra-fleet-public"
   },
   "recommendations": [
