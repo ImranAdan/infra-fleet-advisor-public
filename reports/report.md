@@ -1,14 +1,14 @@
 # Infra Fleet Advisor report
 
-- Source: `infra-fleet-public` @ `197405ff88fc4595cb24c407a3e6d1c3e281fb57`
+- Source: `infra-fleet-public` @ `e667b9910595a2d961a56f8528180852afa0ca23`
 - Advisor version: `0.1.0` · Policy version: `1.1`
-- Model: `stub-synthesizer-v1` · Run started: `2026-09-24T07:28:56.280676+00:00`
+- Model: `stub-synthesizer-v1` · Run started: `2026-09-24T08:14:31.967990+00:00`
 - Intent catalog: `intent-md-v1:b1a817bee07eb70d3ac8c53b403565a2429f0b4c3d1e74c777f08c50d22faaaa`
 - Lifecycle: 0 new, 1 unchanged, 6 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
 
-- `github_actions_workflow_collector`: ok (14 evidence)
+- `github_actions_workflow_collector`: ok (18 evidence)
 - `terraform_iam_collector`: ok (0 evidence)
 - `terraform_cost_collector`: ok (5 evidence)
 - `kubernetes_deployment_collector`: ok (14 evidence)
