@@ -56,7 +56,9 @@ class StubSynthesizer:
     model_identifier = "stub-synthesizer-v1"
 
     def synthesize(self, projection: EvidenceProjection) -> SynthesisResponse:
-        candidates: list[RawRecommendationCandidate] = []
+        # One candidate per concern citing all its supporting evidence, matching
+        # how a compiled intent divergence groups the same facts.
+        evidence_by_concern: dict[str, list[str]] = {}
         configured_rules = projection.policy_context.concern_rules
         rules = CONCERN_RULES if configured_rules is None else configured_rules
         for item in projection.evidence:
@@ -72,9 +74,9 @@ class StubSynthesizer:
                     continue
                 if any(item.fact.get(key) != value for key, value in rule.required_facts.items()):
                     continue
-                candidates.append(
-                    candidate_from_template(concern_key, (item.evidence_id,), rule.priority)
-                )
-        return SynthesisResponse(
-            recommendations=tuple(candidates), model_identifier=self.model_identifier
+                evidence_by_concern.setdefault(concern_key, []).append(item.evidence_id)
+        candidates = tuple(
+            candidate_from_template(concern_key, tuple(evidence_ids), rules[concern_key].priority)
+            for concern_key, evidence_ids in sorted(evidence_by_concern.items())
         )
+        return SynthesisResponse(recommendations=candidates, model_identifier=self.model_identifier)

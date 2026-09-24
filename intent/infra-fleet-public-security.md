@@ -2,7 +2,7 @@
 
 - Format: `1`
 - Intent ID: `infra_fleet_public_security`
-- Version: `1.3`
+- Version: `1.4`
 - Category: `security`
 
 Source: [`infra-fleet-public@d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0`](https://github.com/ImranAdan/infra-fleet-public/tree/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0)
@@ -131,6 +131,11 @@ Evidence: [Dependabot operating model](https://github.com/ImranAdan/infra-fleet-
 
 Caveat: repository-level alert and security-update settings cannot be declared
 by the template, and this proposition defines no remediation SLA.
+
+### Evaluation
+
+- Check: `dependency_updates_configured`
+- Priority: `medium`
 
 ## S-011 · Image scanning
 

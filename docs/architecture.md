@@ -188,6 +188,13 @@ provider defaults make coverage partial, and computed resource tags are skipped
 rather than assumed. C-005 diverges only on such a provably untagged block, and
 is divergence-only because defaults do not reach every billed resource.
 
+The dependency update collector classifies tracked file names from the
+verified commit into Dependabot ecosystems by a closed rule, groups them by
+directory, and matches each group to a `package-ecosystem` entry by `directory`
+or `directories` glob. Terraform files are read only to skip local modules that
+pin nothing. A missing configuration leaves every group uncovered; a malformed
+one makes coverage partial.
+
 For S-011 the workflow collector emits one record per job that logs in to ECR
 (`amazon-ecr-login`, `docker/login-action` with an ECR registry, or
 `aws ecr get-login-password`) and then pushes an image. The job is gated when an

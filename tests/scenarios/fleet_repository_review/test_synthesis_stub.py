@@ -54,7 +54,7 @@ def test_stub_ignores_evidence_that_does_not_trigger_a_concern() -> None:
     assert response.recommendations == ()
 
 
-def test_stub_emits_one_candidate_per_triggering_item() -> None:
+def test_stub_groups_triggering_items_into_one_candidate_per_concern() -> None:
     ev1 = build_evidence(
         collector_id="c",
         collector_version="1.0.0",
@@ -76,8 +76,9 @@ def test_stub_emits_one_candidate_per_triggering_item() -> None:
     response = StubSynthesizer().synthesize(
         EvidenceProjection(policy_context=CONTEXT, evidence=(ev1, ev2))
     )
-    assert len(response.recommendations) == 2
-    assert all(r.concern_key == CONCERN_TRIVY_IGNORE_UNFIXED for r in response.recommendations)
+    [candidate] = response.recommendations
+    assert candidate.concern_key == CONCERN_TRIVY_IGNORE_UNFIXED
+    assert set(candidate.evidence_ids) == {ev1.evidence_id, ev2.evidence_id}
 
 
 def test_stub_triggers_on_iam_wildcard_evidence() -> None:

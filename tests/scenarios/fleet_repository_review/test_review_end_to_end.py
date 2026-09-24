@@ -129,11 +129,14 @@ def test_authoritative_markdown_drives_the_production_review(git_checkout) -> No
     assert evaluations["M-002"].reason == "no_relevant_evidence"
     assert evaluations["M-003"].status == "declared_unverified"
     assert evaluations["M-003"].reason == "no_relevant_evidence"
-    assert {item.status for key, item in evaluations.items() if key not in {"S-001", "S-007"}} == {
-        "declared_unverified"
-    }
+    # The fixture has workflows but no Dependabot configuration.
+    assert evaluations["S-010"].status == "divergent"
+    assert {
+        item.status for key, item in evaluations.items() if key not in {"S-001", "S-007", "S-010"}
+    } == {"declared_unverified"}
     assert {item.concern_key for item in report.recommendations} == {
         "ci_credentials_without_oidc",
+        "dependency_updates_not_configured",
         "wildcard_iam_permissions",
     }
 
@@ -478,7 +481,7 @@ def test_registered_collectors_contribute_to_one_report(git_checkout) -> None:
     concern_keys = {r.concern_key for r in report.recommendations}
     assert "trivy_ignore_unfixed" in concern_keys
     assert "wildcard_iam_permissions" in concern_keys
-    assert len(report.coverage) == 5
+    assert len(report.coverage) == 6
     assert all(c.status == "ok" for c in report.coverage)
     assert len(report.evidence) == 2
 
