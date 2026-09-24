@@ -29,6 +29,9 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
     kubernetes_deployment_collector as k8s_deployment_collector,
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
+    kubernetes_security_collector as k8s_security_collector,
+)
+from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
     terraform_cost_collector as tf_cost_collector,
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
@@ -44,6 +47,8 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     GHA_COLLECTOR_VERSION,
     K8S_DEPLOYMENT_COLLECTOR_ID,
     K8S_DEPLOYMENT_COLLECTOR_VERSION,
+    K8S_SECURITY_COLLECTOR_ID,
+    K8S_SECURITY_COLLECTOR_VERSION,
     TF_COST_COLLECTOR_ID,
     TF_COST_COLLECTOR_VERSION,
     TF_IAM_COLLECTOR_ID,
@@ -121,6 +126,12 @@ def run_review(
         excluded_paths=excluded_paths,
         tracked_paths=list_tracked_paths(checkout_root, "k8s"),
     )
+    k8s_security_result = k8s_security_collector.collect(
+        checkout_root,
+        limits,
+        excluded_paths=excluded_paths,
+        tracked_paths=list_tracked_paths(checkout_root, "k8s"),
+    )
     lifecycle_result = fleet_lifecycle_collector.collect(
         checkout_root,
         limits,
@@ -142,6 +153,7 @@ def run_review(
         + tf_result.evidence
         + tf_cost_result.evidence
         + k8s_result.evidence
+        + k8s_security_result.evidence
         + lifecycle_result.evidence
         + dependency_result.evidence
     )
@@ -151,6 +163,7 @@ def run_review(
         tf_result.coverage,
         tf_cost_result.coverage,
         k8s_result.coverage,
+        k8s_security_result.coverage,
         lifecycle_result.coverage,
         dependency_result.coverage,
     ]
@@ -207,6 +220,7 @@ def run_review(
             TF_IAM_COLLECTOR_ID: TF_IAM_COLLECTOR_VERSION,
             TF_COST_COLLECTOR_ID: TF_COST_COLLECTOR_VERSION,
             K8S_DEPLOYMENT_COLLECTOR_ID: K8S_DEPLOYMENT_COLLECTOR_VERSION,
+            K8S_SECURITY_COLLECTOR_ID: K8S_SECURITY_COLLECTOR_VERSION,
             FLEET_LIFECYCLE_COLLECTOR_ID: FLEET_LIFECYCLE_COLLECTOR_VERSION,
             DEPENDENCY_UPDATE_COLLECTOR_ID: DEPENDENCY_UPDATE_COLLECTOR_VERSION,
         },

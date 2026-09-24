@@ -16,10 +16,14 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
     CONCERN_DEPLOYMENT_ROLLOUT_CAPACITY,
     CONCERN_ECR_PUBLICATION_UNGATED,
     CONCERN_ECR_RETENTION_UNBOUNDED,
+    CONCERN_EGRESS_ACCEPTANCE_EXCEEDED,
     CONCERN_FLEET_AWS_ONBOARDING_INCOMPLETE,
     CONCERN_FLEET_LIFECYCLE_INCOMPLETE,
     CONCERN_FLEET_LOCAL_FIRST_USE_INCOMPLETE,
+    CONCERN_INGRESS_HTTP_ALLOWED,
+    CONCERN_INGRESS_UNRESTRICTED,
     CONCERN_LOG_RETENTION_UNBOUNDED,
+    CONCERN_SERVICE_ACCOUNT_GRANTS_ACCESS,
     CONCERN_TEMPLATES,
     CONCERN_TRIVY_IGNORE_UNFIXED,
     CONCERN_WILDCARD_IAM_PERMISSIONS,
@@ -35,14 +39,19 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     EVIDENCE_KIND_DEPLOYMENT_ROLLOUT_CAPACITY,
     EVIDENCE_KIND_ECR_LIFECYCLE,
     EVIDENCE_KIND_ECR_PUBLICATION_GATE,
+    EVIDENCE_KIND_EGRESS_ACCEPTANCE,
     EVIDENCE_KIND_FLEET_LIFECYCLE,
     EVIDENCE_KIND_IAM_WILDCARD,
+    EVIDENCE_KIND_INGRESS_HTTPS,
+    EVIDENCE_KIND_INGRESS_RESTRICTION,
     EVIDENCE_KIND_LOG_RETENTION,
+    EVIDENCE_KIND_SERVICE_ACCOUNT_PRIVILEGE,
     EVIDENCE_KIND_TRIVY_GATE,
     EVIDENCE_KIND_WORKER_SCALING,
     FLEET_LIFECYCLE_COLLECTOR_ID,
     GHA_COLLECTOR_ID,
     K8S_DEPLOYMENT_COLLECTOR_ID,
+    K8S_SECURITY_COLLECTOR_ID,
     TF_COST_COLLECTOR_ID,
     TF_IAM_COLLECTOR_ID,
 )
@@ -58,6 +67,10 @@ CHECK_APPLICATION_CONTAINERS_HARDENED = "application_containers_hardened"
 CHECK_STAGING_LOG_RETENTION_BOUNDED = "staging_log_retention_bounded"
 CHECK_ECR_LIFECYCLE_BOUNDED = "ecr_lifecycle_bounded"
 CHECK_DEPENDENCY_UPDATES_CONFIGURED = "dependency_updates_configured"
+CHECK_APPLICATION_INGRESS_RESTRICTED = "application_ingress_restricted"
+CHECK_PERMISSIVE_EGRESS_BOUNDED = "permissive_egress_bounded"
+CHECK_PUBLIC_INGRESS_HTTPS = "public_ingress_https"
+CHECK_SERVICE_ACCOUNT_UNPRIVILEGED = "mounted_token_unprivileged"
 CHECK_WORKER_GROUPS_DEMAND_SCALED = "worker_groups_demand_scaled"
 CHECK_AWS_COST_TAGS = "aws_cost_allocation_tags"
 CHECK_ECR_PUBLICATION_SCAN_GATED = "ecr_publication_scan_gated"
@@ -231,6 +244,52 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
             ),
             # Alerts and security updates are repository settings the template
             # cannot declare, so full configuration still cannot prove S-010.
+            can_prove_satisfaction=False,
+            requires_relevant_evidence=True,
+        ),
+        # Raw manifests only: an unrendered overlay could add a policy, binding or
+        # annotation, so these four Kubernetes security checks are divergence-only.
+        CHECK_APPLICATION_INGRESS_RESTRICTED: IntentCheckDefinition(
+            concern_key=CONCERN_INGRESS_UNRESTRICTED,
+            rule=ConcernRule(
+                category="security",
+                evidence_kind=EVIDENCE_KIND_INGRESS_RESTRICTION,
+                collector_id=K8S_SECURITY_COLLECTOR_ID,
+                required_facts={"ingress_restricted": False},
+            ),
+            can_prove_satisfaction=False,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_PERMISSIVE_EGRESS_BOUNDED: IntentCheckDefinition(
+            concern_key=CONCERN_EGRESS_ACCEPTANCE_EXCEEDED,
+            rule=ConcernRule(
+                category="security",
+                evidence_kind=EVIDENCE_KIND_EGRESS_ACCEPTANCE,
+                collector_id=K8S_SECURITY_COLLECTOR_ID,
+                required_facts={"acceptance_bounded": False},
+            ),
+            can_prove_satisfaction=False,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_PUBLIC_INGRESS_HTTPS: IntentCheckDefinition(
+            concern_key=CONCERN_INGRESS_HTTP_ALLOWED,
+            rule=ConcernRule(
+                category="security",
+                evidence_kind=EVIDENCE_KIND_INGRESS_HTTPS,
+                collector_id=K8S_SECURITY_COLLECTOR_ID,
+                required_facts={"https_enforced": False},
+            ),
+            can_prove_satisfaction=False,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_SERVICE_ACCOUNT_UNPRIVILEGED: IntentCheckDefinition(
+            concern_key=CONCERN_SERVICE_ACCOUNT_GRANTS_ACCESS,
+            rule=ConcernRule(
+                category="security",
+                evidence_kind=EVIDENCE_KIND_SERVICE_ACCOUNT_PRIVILEGE,
+                collector_id=K8S_SECURITY_COLLECTOR_ID,
+                required_facts={"token_grants_nothing": False},
+            ),
             can_prove_satisfaction=False,
             requires_relevant_evidence=True,
         ),

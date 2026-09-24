@@ -93,11 +93,15 @@ are listed in the [documentation index](docs/README.md).
 ## Current scope
 
 The advisor reviews one public fleet repository. Twenty declared positions span
-security, reliability, cost, and maintainability. Thirteen registered checks cover
-workflow credentials, scan-gated ECR publication, Dependabot coverage, literal Terraform IAM policies,
-Kubernetes Deployment rollouts and container hardening, staging log retention,
-ECR image lifecycle, cost-allocation tags, demand-driven worker scaling, the Fleet profile lifecycle, local
-first use, and AWS onboarding and teardown.
+security, reliability, cost, and maintainability. Seventeen registered checks cover
+workflow credentials (including local composite actions), scan-gated ECR
+publication, Dependabot coverage, literal Terraform IAM policies, Kubernetes
+rollouts, container hardening, ingress restriction, bounded egress, HTTPS on
+public ingress and service-account token privilege, staging log retention, ECR
+image lifecycle, cost-allocation tags, demand-driven worker scaling, the Fleet
+profile lifecycle, local first use, and AWS onboarding and teardown. Accepted
+risks are checked as guardrails: the check proves the conditions that made the
+risk acceptable still hold.
 Positions without a trusted check remain explicitly unverified. Repository
 analysis does not establish live infrastructure health.
 

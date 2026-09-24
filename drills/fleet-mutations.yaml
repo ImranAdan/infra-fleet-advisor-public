@@ -58,3 +58,19 @@ drills:
     path: scripts/fleet-profiles/aws-staging.sh
     find: '"confirm_destroy=$confirmation"'
     replace: "'confirm_destroy=destroy staging'"
+  - proposition: S-003
+    path: k8s/applications/load-harness/networkpolicy.yaml
+    find: "    - Ingress\n    - Egress"
+    replace: "    - Egress"
+  - proposition: S-004
+    path: k8s/applications/load-harness/networkpolicy.yaml
+    find: "namespace: applications"
+    replace: "namespace: observability"
+  - proposition: S-005
+    path: k8s/profiles/aws-staging/applications/ingress-nginx.yaml
+    find: 'cert-manager.io/cluster-issuer: "letsencrypt-prod"'
+    replace: 'example.invalid/issuer: "none"'
+  - proposition: S-009
+    path: k8s/applications/load-harness/hpa.yaml
+    find: "# Horizontal Pod Autoscaler for load-harness"
+    replace: "apiVersion: rbac.authorization.k8s.io/v1\nkind: RoleBinding\nmetadata:\n  name: drill-default-view\n  namespace: applications\nsubjects:\n  - kind: ServiceAccount\n    name: default\nroleRef:\n  apiGroup: rbac.authorization.k8s.io\n  kind: ClusterRole\n  name: view\n---\n# Horizontal Pod Autoscaler for load-harness"

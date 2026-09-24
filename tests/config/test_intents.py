@@ -191,6 +191,7 @@ def test_production_markdown_is_the_authoritative_catalog() -> None:
     assert len(catalog.propositions) == 20
     assert {item.check_key for item in catalog.propositions if item.check_key is not None} == {
         "application_containers_hardened",
+        "application_ingress_restricted",
         "aws_cost_allocation_tags",
         "dependency_updates_configured",
         "deployment_rollout_capacity",
@@ -199,8 +200,11 @@ def test_production_markdown_is_the_authoritative_catalog() -> None:
         "fleet_aws_onboarding",
         "fleet_local_first_use",
         "fleet_profiles_expose_lifecycle",
+        "mounted_token_unprivileged",
+        "permissive_egress_bounded",
         "github_actions_uses_oidc",
         "persistent_iam_avoids_wildcards",
+        "public_ingress_https",
         "staging_log_retention_bounded",
         "worker_groups_demand_scaled",
     }
