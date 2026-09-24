@@ -23,6 +23,7 @@ class Position:
     status: str
     statement: str
     evidence: tuple[str, ...]
+    check_key: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,7 +42,7 @@ class GateResult:
         return not self.regressions and not self.obscured
 
 
-def _load(path: Path) -> dict[str, Any]:
+def load_report(path: Path) -> dict[str, Any]:
     try:
         if path.stat().st_size > _MAX_REPORT_BYTES:
             raise PolicyError("report exceeds the gate size limit")
@@ -53,7 +54,7 @@ def _load(path: Path) -> dict[str, Any]:
     return report
 
 
-def _positions(report: dict[str, Any]) -> dict[str, Position]:
+def positions(report: dict[str, Any]) -> dict[str, Position]:
     evidence = {
         item.get("evidence_id"): item
         for item in report.get("evidence", [])
@@ -74,16 +75,17 @@ def _positions(report: dict[str, Any]) -> dict[str, Position]:
                 for entry in cited
                 if isinstance(entry, dict)
             ),
+            check_key=item.get("check_key") if isinstance(item.get("check_key"), str) else None,
         )
     return positions
 
 
 def compare_reports(base_path: Path, head_path: Path) -> GateResult:
-    base, head = _load(base_path), _load(head_path)
+    base, head = load_report(base_path), load_report(head_path)
     base_digest = base.get("provenance", {}).get("intent_digest")
     if not base_digest or base_digest != head.get("provenance", {}).get("intent_digest"):
         raise PolicyError("base and head reports must evaluate the same intent catalog")
-    before, after = _positions(base), _positions(head)
+    before, after = positions(base), positions(head)
     regressions: list[Position] = []
     obscured: list[Position] = []
     resolutions: list[Position] = []

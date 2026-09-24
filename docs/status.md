@@ -82,6 +82,17 @@ composite actions such as `.github/actions/setup-aws-terraform`, which the
 Terraform apply workflows use. The workflow collector now follows tracked
 local composite actions one level deep.
 
+## Ratchet guard
+
+Drills prove each check can fire; the ratchet guard proves an advisor change
+did not quietly lose ground. On every pull request, `scripts/ratchet-guard.sh`
+reviews one fleet commit twice, with the base advisor's code, catalog and policy
+and with the proposed ones, and `infra-fleet-advisor ratchet` compares them.
+The fleet is held constant, so every difference is the advisor's doing. It
+fails (exit 8) on lost proof, a lost check, or a divergence that became
+satisfied; new proof and new findings are reported. A slip can be right, such
+as a fixed false positive, so the pull request must say why.
+
 ## Model support
 
 `stub` is the default and runs the deterministic checks with templated wording.
