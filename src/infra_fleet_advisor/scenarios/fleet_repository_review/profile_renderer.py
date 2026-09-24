@@ -51,6 +51,7 @@ _MAX_SOURCE_SCAN_FILES = 1000
 class RenderedResource:
     source_path: str
     body: dict[str, Any]
+    patch_path: str | None = None
 
 
 @dataclass(slots=True)
@@ -173,7 +174,7 @@ class _Renderer:
                 body = copy.deepcopy(resource.body)
                 for operation in operations:
                     _json_patch(body, operation, rel_path)
-                resources[index] = RenderedResource(resource.source_path, body)
+                resources[index] = RenderedResource(resource.source_path, body, rel_path)
                 matched += 1
         if not matched:
             raise _Incomplete(f"{rel_path} patch matches no resource")

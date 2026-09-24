@@ -94,6 +94,10 @@ def test_profile_overlay_cannot_hide_rollout_or_hardening_divergence(git_checkou
     assert rollout.fact["profiles"] == "safe, weak"
     assert rollout.fact["failing_profiles"] == "weak"
     assert hardening.fact["failing_profiles"] == "weak"
+    assert rollout.source_path == "k8s/applications/hardened.yaml"
+    assert hardening.source_path == "k8s/applications/hardened.yaml"
+    assert "rendered patch=k8s/profiles/weak/applications/kustomization.yaml" in rollout.excerpt
+    assert "rendered patch=k8s/profiles/weak/applications/kustomization.yaml" in hardening.excerpt
 
 
 def test_incomplete_profile_cannot_prove_deployment_controls(git_checkout) -> None:

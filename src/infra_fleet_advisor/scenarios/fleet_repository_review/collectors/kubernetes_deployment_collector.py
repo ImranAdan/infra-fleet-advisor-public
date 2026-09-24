@@ -86,7 +86,7 @@ def _list_items(document: Mapping[Any, Any]) -> tuple[tuple[Mapping[Any, Any], .
 
 
 def _build_deployment_evidence(
-    resource: Mapping[Any, Any], rel_path: str
+    resource: Mapping[Any, Any], rel_path: str, patch_path: str | None = None
 ) -> tuple[Evidence | None, bool]:
     if resource.get("kind") != "Deployment":
         return None, False
@@ -172,6 +172,7 @@ def _build_deployment_evidence(
                 f"Deployment {resource_name}: replicas={replicas_value}, "
                 f"strategy={strategy_type}, maxUnavailable={max_unavailable_text}, "
                 f"maxSurge={max_surge_text}"
+                + (f"; rendered patch={patch_path}" if patch_path else "")
             ),
             fact={
                 "replicas": replicas_value,
@@ -218,7 +219,7 @@ def _is_hardened(container: Mapping[Any, Any], pod_context: Mapping[Any, Any]) -
 
 
 def _build_hardening_evidence(
-    resource: Mapping[Any, Any], rel_path: str
+    resource: Mapping[Any, Any], rel_path: str, patch_path: str | None = None
 ) -> tuple[Evidence | None, bool]:
     """Assumes the rollout evidence for this Deployment already validated its shape."""
     metadata = resource["metadata"]
@@ -249,6 +250,7 @@ def _build_hardening_evidence(
                 f"Deployment {resource_name}: {len(containers) - len(weak)}/{len(containers)} "
                 "containers non-root, no privilege escalation, all capabilities dropped"
                 + (f"; not hardened: {', '.join(weak[:10])}" if weak else "")
+                + (f"; rendered patch={patch_path}" if patch_path else "")
             ),
             fact={"containers": len(containers), "all_containers_hardened": not weak},
             identity_parts=("apps/v1", "Deployment", namespace, name, "securityContext"),
@@ -258,7 +260,7 @@ def _build_hardening_evidence(
 
 
 def _evaluate_documents(
-    documents: Iterable[tuple[Any, str]],
+    documents: Iterable[tuple[Any, str, str | None]],
 ) -> tuple[tuple[Evidence, ...], int, bool]:
     failures = 0
     deployment_limit_reached = False
@@ -266,7 +268,7 @@ def _evaluate_documents(
     seen_ids: set[str] = set()
     duplicate_ids: set[str] = set()
 
-    for document, rel_path in documents:
+    for document, rel_path, patch_path in documents:
         if document is None:
             continue
         if not isinstance(document, Mapping):
@@ -275,11 +277,11 @@ def _evaluate_documents(
         resources, list_failed = _list_items(document)
         failures += int(list_failed)
         for resource in resources:
-            rollout, item_failed = _build_deployment_evidence(resource, rel_path)
+            rollout, item_failed = _build_deployment_evidence(resource, rel_path, patch_path)
             failures += int(item_failed)
             if rollout is None:
                 continue
-            hardening, item_failed = _build_hardening_evidence(resource, rel_path)
+            hardening, item_failed = _build_hardening_evidence(resource, rel_path, patch_path)
             failures += int(item_failed)
             for item in (rollout, hardening):
                 if item is None:
@@ -343,7 +345,7 @@ def _collect_raw(
     files = eligible_files[: limits.max_manifest_files]
     omitted_files = len(eligible_files) - len(files)
     failures = 0
-    documents: list[tuple[Any, str]] = []
+    documents: list[tuple[Any, str, str | None]] = []
 
     for path in files:
         rel_path = path.relative_to(checkout_root).as_posix()
@@ -359,7 +361,7 @@ def _collect_raw(
             failures += 1
             continue
 
-        documents.extend((document, rel_path) for document in parsed)
+        documents.extend((document, rel_path, None) for document in parsed)
 
     evidence, evaluation_failures, deployment_limit_reached = _evaluate_documents(documents)
     failures += evaluation_failures
@@ -479,7 +481,10 @@ def collect(
     per_profile: dict[str, tuple[Evidence, ...]] = {}
     for render in render_profiles(checkout_root, profiles, limits, tracked_paths, excluded_paths):
         reasons.extend(f"{render.profile}: {gap}" for gap in render.gaps)
-        documents = ((resource.body, resource.source_path) for resource in render.resources)
+        documents = (
+            (resource.body, resource.source_path, resource.patch_path)
+            for resource in render.resources
+        )
         evidence, failures, limit_reached = _evaluate_documents(documents)
         per_profile[render.profile] = evidence
         if failures:

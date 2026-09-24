@@ -201,7 +201,8 @@ Kubernetes deployment and security facts come from rendered profiles.
 `profile_renderer` builds each `k8s/clusters/<profile>` the way Flux would,
 following every Flux `Kustomization`'s local `spec.path` and applying the closed
 kustomize subset the fleet uses, in pure Python: no kustomize binary, no network,
-no plugins. Rendered objects keep their source file for citation. Facts are
+no plugins. Rendered objects retain their source manifest and the last
+kustomization patch that changed them for review. Facts are
 combined per object across profiles, a protective fact holding only if it holds
 in every profile, so evidence identities do not change with the number of
 profiles while a violation introduced by one profile's patch is still caught
