@@ -25,7 +25,10 @@ def _fleet(tmp_path: Path, extra: dict[str, str] | None = None, apps=("shop", "b
     files = {
         "k8s/fleet-app/fleet-app.yaml": _contract(apps[0]),
         "k8s/applications/kustomization.yaml": f"resources: [platform, {apps[0]}]\n",
-        "k8s/applications/platform/hpa.yaml": "metadata: {name: '${APP_NAME}'}\n",
+        "k8s/applications/platform/hpa.yaml": (
+            "kind: HorizontalPodAutoscaler\n"
+            "metadata: {name: '${APP_NAME}', namespace: applications}\n"
+        ),
         "scripts/build.sh": 'docker build -t "$APP_NAME" .\n',
         **{f"k8s/applications/{a}/fleet-app.yaml": _contract(a) for a in apps},
         **{f"k8s/applications/{a}/deployment.yaml": f"metadata: {{name: {a}}}\n" for a in apps},
@@ -47,6 +50,7 @@ def test_a_platform_that_names_no_app_with_two_contracts_is_swappable(tmp_path: 
         "contract_present": True,
         "application_count": 2,
         "platform_files_naming_an_app": 0,
+        "platform_objects_with_literal_names": 0,
         "swappable": True,
     }
     assert evidence.source_path == "k8s/fleet-app/fleet-app.yaml"
@@ -106,3 +110,58 @@ def test_a_checkout_without_applications_yields_no_evidence(tmp_path: Path) -> N
     result = collector.collect(tmp_path, LIMITS)
     assert result.evidence == ()
     assert result.coverage.status == "ok"
+
+
+def test_a_platform_object_with_a_new_literal_name_is_coupling(tmp_path: Path) -> None:
+    result = _fleet(
+        tmp_path,
+        {
+            "k8s/applications/platform/hpa.yaml": (
+                "kind: HorizontalPodAutoscaler\n"
+                "metadata: {name: backend, namespace: applications}\n"
+            )
+        },
+    )
+
+    [evidence] = result.evidence
+    assert evidence.fact["swappable"] is False
+    assert evidence.fact["platform_objects_with_literal_names"] == 1
+    assert evidence.source_path == "k8s/applications/platform/hpa.yaml"
+
+
+def test_an_excluded_contract_leaves_the_verdict_unknown(tmp_path: Path) -> None:
+    _fleet(tmp_path)
+    result = collector.collect(tmp_path, LIMITS, excluded_paths=frozenset({"k8s/fleet-app"}))
+
+    [evidence] = result.evidence
+    assert result.coverage.status == "partial"
+    assert "swappable" not in evidence.fact
+
+
+def test_readable_coupling_decides_even_when_a_contract_is_unknown(tmp_path: Path) -> None:
+    _fleet(tmp_path, {"policies/images.yaml": "allow: registry/blog:\n"})
+    result = collector.collect(tmp_path, LIMITS, excluded_paths=frozenset({"k8s/fleet-app"}))
+
+    assert result.evidence[0].fact["swappable"] is False
+
+
+def test_a_missing_selected_contract_is_cited_at_a_tracked_file(tmp_path: Path) -> None:
+    _fleet(tmp_path)
+    (tmp_path / "k8s/fleet-app/fleet-app.yaml").unlink()
+
+    [evidence] = collector.collect(tmp_path, LIMITS).evidence
+    assert evidence.fact["swappable"] is False
+    assert evidence.source_path == "k8s/applications/kustomization.yaml"
+
+
+def test_controller_objects_outside_the_app_namespace_are_not_app_bound(tmp_path: Path) -> None:
+    result = _fleet(
+        tmp_path,
+        {
+            "k8s/flux-system/gotk.yaml": (
+                "kind: NetworkPolicy\nmetadata: {name: allow-egress, namespace: flux-system}\n"
+            )
+        },
+    )
+
+    assert result.evidence[0].fact["swappable"] is True

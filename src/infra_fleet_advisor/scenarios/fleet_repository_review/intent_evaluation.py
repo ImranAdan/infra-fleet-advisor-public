@@ -395,9 +395,10 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
                 collector_id=APP_CONTRACT_COLLECTOR_ID,
                 required_facts={"swappable": False},
             ),
-            # The search covers every tracked platform file, so a complete scan
-            # that finds no name, with contracts for two apps, proves the claim.
-            can_prove_satisfaction=True,
+            # Coupling is provable (a known name, or a literal name on an
+            # app-bound object); its absence is not, since a script could name
+            # an application no contract declares.
+            can_prove_satisfaction=False,
             requires_relevant_evidence=True,
         ),
     }
