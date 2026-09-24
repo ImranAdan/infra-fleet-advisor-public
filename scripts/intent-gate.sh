@@ -21,6 +21,13 @@ for sha in "$base_sha" "$head_sha"; do
   fi
 done
 
+# Reports must never land in the fleet checkout: the review leaves it unchanged.
+case "$output" in /*) ;; *) output="$PWD/$output" ;; esac
+case "$output/" in
+  "$fleet"/*)
+    echo "OUTPUT_DIR must be outside the fleet checkout." >&2
+    exit 2 ;;
+esac
 mkdir -p "$output"
 worktrees=$(mktemp -d)
 cleanup() {

@@ -59,21 +59,38 @@ def test_gate_separates_new_resolved_and_persisting_divergences(tmp_path: Path) 
 
     assert [p.key for p in result.regressions] == ["cost/C-003"]
     assert [p.key for p in result.resolutions] == ["cost/C-002"]
+    assert result.obscured == ()
     assert [p.key for p in result.persisting] == ["cost/C-001"]
     assert result.degraded_collectors == ("cost",)
     assert not result.passed
     markdown = to_markdown(result)
-    assert "fails: 1 declared position(s)" in markdown
+    assert "fails: 1 position(s) would newly diverge" in markdown
     assert "Position C-003" in markdown and "second line" not in markdown
     # Fleet-derived evidence is inert text in the job summary.
     assert "<b>" not in markdown and "&#64;ops" in markdown
 
 
 def test_gate_passes_when_nothing_newly_diverges(tmp_path: Path) -> None:
-    base = _report(tmp_path / "base.json", {"C-001": "divergent"})
-    head = _report(tmp_path / "head.json", {"C-001": "declared_unverified"})
+    base = _report(tmp_path / "base.json", {"C-001": "divergent", "C-002": "declared_unverified"})
+    head = _report(tmp_path / "head.json", {"C-001": "divergent", "C-002": "satisfied"})
 
     assert compare_reports(base, head).passed
+
+
+def test_losing_a_decisive_result_fails_instead_of_resolving(tmp_path: Path) -> None:
+    base = _report(tmp_path / "base.json", {"C-001": "divergent", "C-002": "satisfied"})
+    head = _report(
+        tmp_path / "head.json",
+        {"C-001": "declared_unverified", "C-002": "declared_unverified"},
+        coverage="partial",
+    )
+
+    result = compare_reports(base, head)
+
+    assert [p.key for p in result.obscured] == ["cost/C-001", "cost/C-002"]
+    assert result.resolutions == ()
+    assert not result.passed
+    assert "No longer evaluable" in to_markdown(result)
 
 
 def test_gate_refuses_reports_from_different_catalogs(tmp_path: Path) -> None:

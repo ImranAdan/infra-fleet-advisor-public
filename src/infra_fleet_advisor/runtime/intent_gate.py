@@ -28,6 +28,7 @@ class Position:
 @dataclass(frozen=True, slots=True)
 class GateResult:
     regressions: tuple[Position, ...]
+    obscured: tuple[Position, ...]
     resolutions: tuple[Position, ...]
     persisting: tuple[Position, ...]
     degraded_collectors: tuple[str, ...]
@@ -37,7 +38,7 @@ class GateResult:
 
     @property
     def passed(self) -> bool:
-        return not self.regressions
+        return not self.regressions and not self.obscured
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -84,13 +85,18 @@ def compare_reports(base_path: Path, head_path: Path) -> GateResult:
         raise PolicyError("base and head reports must evaluate the same intent catalog")
     before, after = _positions(base), _positions(head)
     regressions: list[Position] = []
+    obscured: list[Position] = []
     resolutions: list[Position] = []
     persisting: list[Position] = []
     for key, position in sorted(after.items()):
-        was_divergent = before.get(key) is not None and before[key].status == "divergent"
+        was = before[key].status if key in before else "declared_unverified"
         if position.status == "divergent":
-            (persisting if was_divergent else regressions).append(position)
-        elif was_divergent:
+            (persisting if was == "divergent" else regressions).append(position)
+        elif position.status == "declared_unverified" and was != "declared_unverified":
+            # Losing a decisive result is not a fix: a change that makes a
+            # collector incomplete could otherwise hide a new divergence.
+            obscured.append(position)
+        elif was == "divergent" and position.status == "satisfied":
             resolutions.append(position)
     base_ok = {
         item.get("collector_id")
@@ -112,6 +118,7 @@ def compare_reports(base_path: Path, head_path: Path) -> GateResult:
 
     return GateResult(
         regressions=tuple(regressions),
+        obscured=tuple(obscured),
         resolutions=tuple(resolutions),
         persisting=tuple(persisting),
         degraded_collectors=degraded,
@@ -122,11 +129,13 @@ def compare_reports(base_path: Path, head_path: Path) -> GateResult:
 
 
 def to_markdown(result: GateResult) -> str:
-    verdict = (
-        "passes: no declared position newly diverges"
-        if result.passed
-        else f"fails: {len(result.regressions)} declared position(s) would newly diverge"
-    )
+    if result.passed:
+        verdict = "passes: no declared position newly diverges or loses its evidence"
+    else:
+        verdict = (
+            f"fails: {len(result.regressions)} position(s) would newly diverge and "
+            f"{len(result.obscured)} would lose their evaluated result"
+        )
     lines = [f"## Intent gate {verdict}", ""]
 
     def section(title: str, positions: tuple[Position, ...], with_evidence: bool) -> None:
@@ -143,6 +152,11 @@ def to_markdown(result: GateResult) -> str:
         lines.append("")
 
     section("Newly divergent", result.regressions, with_evidence=True)
+    section(
+        "No longer evaluable (the change hides the result the base had)",
+        result.obscured,
+        with_evidence=False,
+    )
     section("Resolved by this change", result.resolutions, with_evidence=False)
     section("Already divergent on the base", result.persisting, with_evidence=False)
     if result.degraded_collectors:

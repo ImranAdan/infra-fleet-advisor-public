@@ -21,9 +21,12 @@ break a declared position is seen before it merges.
 2. The action reviews the pull request's merge commit and its first parent (the
    base as it would be merged) with the `stub`
    synthesizer and the advisor's own policy and intent, then `gate` compares
-   the two reports. It fails only when a position that was not divergent on the
-   base is divergent on the head. Resolutions, pre-existing divergences and
-   lost collector coverage are reported in the job summary but do not fail.
+   the two reports. It fails when a position that was not divergent on the
+   base is divergent on the head, and when a position with a decisive result
+   on the base (satisfied or divergent) becomes unevaluable on the head: a
+   change must not hide a divergence by making a collector incomplete. Only a
+   move from divergent to satisfied counts as resolved. Pre-existing
+   divergences and lost collector coverage are reported without failing.
 3. The gate is read-only: the workflow holds `contents: read`, creates no
    issue, comment, report PR or label, calls no model, and never applies
    anything. Its verdict is the check status and its explanation is the job
