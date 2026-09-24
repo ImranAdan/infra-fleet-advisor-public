@@ -27,6 +27,9 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     K8S_SECURITY_COLLECTOR_ID,
     K8S_SECURITY_COLLECTOR_VERSION,
 )
+from infra_fleet_advisor.scenarios.fleet_repository_review.profile_evidence import (
+    combine_profiles,
+)
 from infra_fleet_advisor.scenarios.fleet_repository_review.profile_renderer import (
     KUSTOMIZATION_FILES,
     render_profiles,
@@ -312,47 +315,6 @@ def _evaluate(resources: list[_Resource]) -> tuple[list[Evidence], int]:
     )
 
 
-def _combine(per_profile: dict[str, list[Evidence]]) -> list[Evidence]:
-    """One record per object: protective facts hold everywhere, risks anywhere."""
-    grouped: dict[str, list[tuple[str, Evidence]]] = {}
-    for profile, items in per_profile.items():
-        for item in items:
-            grouped.setdefault(item.evidence_id, []).append((profile, item))
-    combined = []
-    for entries in grouped.values():
-        first = entries[0][1]
-        fact: dict[str, bool | str | int] = {}
-        for key, value in first.fact.items():
-            values = [item.fact.get(key) for _profile, item in entries]
-            if isinstance(value, bool):
-                fact[key] = all(values) if key in _PROTECTIVE else any(values)
-            else:
-                fact[key] = ", ".join(sorted({str(v) for v in values}))
-        failing = [
-            profile
-            for profile, item in entries
-            if any(item.fact.get(key) is False for key in _PROTECTIVE & set(item.fact))
-        ]
-        profiles = sorted(profile for profile, _item in entries)
-        fact["profiles"] = ", ".join(profiles)
-        fact["failing_profiles"] = ", ".join(sorted(failing))
-        shown = next((item for profile, item in entries if profile in failing), first)
-        combined.append(
-            Evidence(
-                evidence_id=first.evidence_id,
-                kind=first.kind,
-                # Cite the manifest of the profile the excerpt describes.
-                source_path=shown.source_path,
-                locator=first.locator,
-                excerpt=f"[{', '.join(sorted(failing) or profiles)}] {shown.excerpt}"[:280],
-                fact=fact,
-                collector_id=first.collector_id,
-                collector_version=first.collector_version,
-            )
-        )
-    return combined
-
-
 def _raw_resources(
     checkout_root: Path,
     limits: ExecutionLimits,
@@ -452,7 +414,7 @@ def collect(
         failures += profile_failures
     if failures:
         reasons.append(f"{failures} manifest or resource(s) could not be evaluated")
-    ordered = tuple(sorted(_combine(per_profile), key=lambda item: item.evidence_id))
+    ordered = combine_profiles(per_profile, _PROTECTIVE)
     return CollectorResult(
         ordered,
         CollectorCoverage(

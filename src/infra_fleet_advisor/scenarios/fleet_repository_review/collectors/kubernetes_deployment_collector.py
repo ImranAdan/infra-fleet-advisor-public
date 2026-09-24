@@ -24,6 +24,9 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     K8S_DEPLOYMENT_COLLECTOR_ID,
     K8S_DEPLOYMENT_COLLECTOR_VERSION,
 )
+from infra_fleet_advisor.scenarios.fleet_repository_review.profile_evidence import (
+    combine_profiles,
+)
 from infra_fleet_advisor.scenarios.fleet_repository_review.profile_renderer import (
     KUSTOMIZATION_FILES,
     render_profiles,
@@ -34,10 +37,10 @@ _PERCENT = re.compile(r"^(0|[1-9][0-9]*)%$")
 _MAX_DEPLOYMENT_EVIDENCE = 500
 _MAX_INT_OR_PERCENT = 2_147_483_647
 _MAX_PROFILES = 8
-_PROTECTIVE_FACT = {
-    EVIDENCE_KIND_DEPLOYMENT_ROLLOUT_CAPACITY: "retains_healthy_capacity",
-    EVIDENCE_KIND_CONTAINER_HARDENING: "all_containers_hardened",
-}
+# Facts that protect: each must hold in every rendered profile.
+_PROTECTIVE = frozenset(
+    {"retains_healthy_capacity", "all_containers_have_readiness_probe", "all_containers_hardened"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -389,50 +392,6 @@ def _collect_raw(
     )
 
 
-def _combine_profiles(per_profile: dict[str, tuple[Evidence, ...]]) -> tuple[Evidence, ...]:
-    """Keep resource identities stable while requiring controls in every profile."""
-    grouped: dict[str, list[tuple[str, Evidence]]] = {}
-    for profile, evidence in per_profile.items():
-        for item in evidence:
-            grouped.setdefault(item.evidence_id, []).append((profile, item))
-
-    combined: list[Evidence] = []
-    for evidence_id in sorted(grouped):
-        entries = grouped[evidence_id]
-        first = entries[0][1]
-        protective_fact = _PROTECTIVE_FACT[first.kind]
-        fact: dict[str, bool | str | int] = {}
-        for key, value in first.fact.items():
-            values = [item.fact.get(key) for _profile, item in entries]
-            if key == protective_fact:
-                fact[key] = all(item is True for item in values)
-            elif all(item == values[0] for item in values):
-                fact[key] = value
-            else:
-                fact[key] = ", ".join(sorted({str(item) for item in values}))
-
-        failing = sorted(
-            profile for profile, item in entries if item.fact.get(protective_fact) is not True
-        )
-        profiles = sorted(profile for profile, _item in entries)
-        fact["profiles"] = ", ".join(profiles)
-        fact["failing_profiles"] = ", ".join(failing)
-        shown = next((item for profile, item in entries if profile in failing), first)
-        combined.append(
-            Evidence(
-                evidence_id=first.evidence_id,
-                kind=first.kind,
-                source_path=shown.source_path,
-                locator=first.locator,
-                excerpt=f"[{', '.join(failing or profiles)}] {shown.excerpt}"[:280],
-                fact=fact,
-                collector_id=first.collector_id,
-                collector_version=first.collector_version,
-            )
-        )
-    return tuple(combined)
-
-
 def _mark_unrendered(result: CollectorResult, reasons: list[str]) -> CollectorResult:
     summary_parts = [*reasons, "no deployment profiles; manifests evaluated unrendered"]
     if result.coverage.error_summary:
@@ -526,7 +485,7 @@ def collect(
             + ", ".join(missing_profiles)
         )
 
-    evidence = _combine_profiles(per_profile)
+    evidence = combine_profiles(per_profile, _PROTECTIVE)
     if len(evidence) > _MAX_DEPLOYMENT_EVIDENCE:
         evidence = evidence[:_MAX_DEPLOYMENT_EVIDENCE]
         reasons.append("deployment evidence omitted by safety limit")
