@@ -315,3 +315,51 @@ def test_dense_needs_graph_is_evaluated_without_path_explosion(tmp_path: Path) -
     jobs += "  push:\n    runs-on: x\n    needs: [j39]\n    steps:\n" + LOGIN
 
     assert _gate(tmp_path, "on: push\njobs:\n" + jobs) == [False]
+
+
+def _credentials(tmp_path: Path, workflow: str, action: str | None) -> list[dict[str, object]]:
+    (tmp_path / ".github" / "workflows").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".github" / "workflows" / "apply.yml").write_text(workflow, encoding="utf-8")
+    if action is not None:
+        (tmp_path / ".github" / "actions" / "aws").mkdir(parents=True, exist_ok=True)
+        (tmp_path / ".github" / "actions" / "aws" / "action.yml").write_text(
+            action, encoding="utf-8"
+        )
+    result = gha_collector.collect(tmp_path, LIMITS)
+    assert result.coverage.status == "ok"
+    return [
+        {"path": item.source_path, **item.fact}
+        for item in result.evidence
+        if item.kind == "gha_credential_method"
+    ]
+
+
+COMPOSITE = (
+    "runs:\n  using: composite\n  steps:\n"
+    "    - uses: aws-actions/configure-aws-credentials@v6\n"
+    "      with:\n        role-to-assume: ${{ inputs.role }}\n"
+)
+
+
+def test_credentials_inside_a_local_composite_action_are_evidence(tmp_path: Path) -> None:
+    workflow = (
+        "on: push\njobs:\n  apply:\n    runs-on: x\n    permissions:\n      id-token: %s\n"
+        "    steps:\n      - uses: ./.github/actions/aws\n"
+    )
+
+    [granted] = _credentials(tmp_path, workflow % "write", COMPOSITE)
+    [withheld] = _credentials(tmp_path, workflow % "none", None)
+
+    assert granted["path"] == ".github/actions/aws/action.yml"
+    assert granted["uses_oidc_only"] is True
+    assert withheld["uses_oidc_only"] is False
+
+
+def test_missing_local_action_makes_coverage_partial(tmp_path: Path) -> None:
+    (tmp_path / ".github" / "workflows").mkdir(parents=True)
+    (tmp_path / ".github" / "workflows" / "apply.yml").write_text(
+        "on: push\njobs:\n  a:\n    runs-on: x\n    steps:\n      - uses: ./.github/actions/gone\n",
+        encoding="utf-8",
+    )
+
+    assert gha_collector.collect(tmp_path, LIMITS).coverage.status == "partial"

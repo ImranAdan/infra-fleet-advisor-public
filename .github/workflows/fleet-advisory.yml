@@ -267,3 +267,44 @@ jobs:
               --title "chore(advisory): fleet report for ${TARGET_REPO}@${sha:0:7}" \
               --body-file "$RUNNER_TEMP/pr-body.md"
           fi
+
+  # Canary drills: apply each declared violation in drills/ to a throwaway
+  # worktree of the reviewed fleet and require its check to fire. A check that
+  # stops seeing the fleet, or a drill the fleet has outgrown, turns this job red
+  # instead of silently inflating coverage. Read-only and independent of the
+  # report: it never blocks or writes a report pull request.
+  drills:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the advisor
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Check out the fleet under review
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ env.TARGET_REPO }}
+          ref: ${{ inputs.target_ref || 'main' }}
+          path: target
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.11"
+
+      - name: Install the advisor from the lockfile
+        run: |
+          pip install "uv==0.9.14"
+          uv sync --frozen --no-dev
+
+      - name: Run the check drills
+        run: |
+          uv run --frozen infra-fleet-advisor drill \
+            --checkout target --drills drills/fleet-mutations.yaml \
+            --policy policy.yaml --intent-dir intent \
+            --output-dir "$RUNNER_TEMP/drills" --summary "$GITHUB_STEP_SUMMARY"

@@ -48,6 +48,13 @@ the job summary. Try it locally against any two fleet commits:
 ./scripts/intent-gate.sh ../infra-fleet-public BASE_SHA HEAD_SHA /tmp/intent-gate
 ```
 
+## Checks that prove they bite
+
+Every registered check has a [drill](drills/fleet-mutations.yaml): a
+one-line violation of the real fleet that must make it diverge. The nightly
+workflow applies each drill in a throwaway worktree, so a check that silently
+stops seeing the fleet goes red instead of inflating coverage.
+
 ## Run a local review
 
 Requires Git, Python 3.11+, `uv`, and Make. Clone both repositories alongside

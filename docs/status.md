@@ -63,6 +63,22 @@ writes, the next `up` command, or leaves the teardown workflow's
 Complete controls remain unverified: static text cannot prove any AWS, HCP
 Terraform or GitHub call succeeds.
 
+## Check drills
+
+`drills/fleet-mutations.yaml` lists one literal, declared violation of the real
+fleet per registered check. `infra-fleet-advisor drill` applies each in a
+throwaway worktree, runs the ordinary review and requires the named
+proposition to diverge; the nightly advisory workflow runs them as a separate,
+read-only job. A drill reports `caught`, `missed` (the check no longer sees the
+fleet), `stale` (the fleet no longer contains the drill's text) or
+`already divergent` (the position cannot regress). Coverage counts a check
+only as far as its drill proves it bites.
+
+The first run found S-001 blind to credentials obtained inside local
+composite actions such as `.github/actions/setup-aws-terraform`, which the
+Terraform apply workflows use. The workflow collector now follows tracked
+local composite actions one level deep.
+
 ## Model support
 
 `stub` is the default and runs the deterministic checks with templated wording.
