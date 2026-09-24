@@ -60,3 +60,26 @@ def test_non_flask_applications_are_not_evidence(tmp_path: Path) -> None:
     path.write_text("print('hi')\n", encoding="utf-8")
 
     assert collector.collect(tmp_path, LIMITS).evidence == ()
+
+
+def test_only_unconditional_straight_line_assignments_count(tmp_path: Path) -> None:
+    factory = (
+        "def create_app():\n    app = Flask(__name__)\n"
+        '    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"\n'
+    )
+    assert _fact(tmp_path, factory)["csrf_compensated"] is True
+    for hidden in (
+        'if False:\n    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"',
+        'def outer():\n    def inner():\n        app.config["SESSION_COOKIE_SAMESITE"] = "Lax"',
+    ):
+        assert _fact(tmp_path, hidden)["csrf_compensated"] is False, hidden
+
+
+def test_negative_evidence_is_anchored_to_the_flask_file(tmp_path: Path) -> None:
+    path = tmp_path / "applications" / "web" / "src" / "app.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(APP % "", encoding="utf-8")
+
+    [evidence] = collector.collect(tmp_path, LIMITS).evidence
+
+    assert evidence.source_path == "applications/web/src/app.py"

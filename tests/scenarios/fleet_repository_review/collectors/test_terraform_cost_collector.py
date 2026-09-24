@@ -419,6 +419,12 @@ def test_staging_capacity_needs_a_scheduled_release(tmp_path) -> None:
     assert fact["scheduled_release"] is True
 
     (tmp_path / ".github" / "workflows" / "local.yml").unlink()
+    minimum_only = 'resource "aws_autoscaling_schedule" "night" {\n  min_size = 0\n}\n'
+    [fact] = _facts(
+        _collect(tmp_path, {"infrastructure/staging/schedule.tf": minimum_only}),
+        collector.EVIDENCE_KIND_IDLE_CAPACITY,
+    )
+    assert fact["scheduled_release"] is False
     schedule = (
         'resource "aws_autoscaling_schedule" "night" {\n  min_size = 0\n  desired_capacity = 0\n}\n'
     )
@@ -427,3 +433,10 @@ def test_staging_capacity_needs_a_scheduled_release(tmp_path) -> None:
         collector.EVIDENCE_KIND_IDLE_CAPACITY,
     )
     assert fact["scheduled_release"] is True
+
+
+def test_reusable_module_cluster_definitions_are_withheld(tmp_path) -> None:
+    cluster = 'resource "aws_eks_cluster" "c" {\n  vpc_config {\n    subnet_ids = []\n  }\n}\n'
+    result = _collect(tmp_path, {"infrastructure/modules/eks/main.tf": cluster})
+
+    assert _facts(result, collector.EVIDENCE_KIND_EKS_ENDPOINT) == []

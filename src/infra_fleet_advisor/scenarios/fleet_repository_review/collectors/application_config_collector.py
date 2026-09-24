@@ -1,8 +1,11 @@
 """Security-relevant literal configuration in tracked Flask applications.
 
 Source is parsed with `ast` and never imported or executed. Only literal
-assignments of the form `app.config["KEY"] = <constant>` are read; the last
-one in a module wins, matching run order within that module.
+assignments of the form `app.config["KEY"] = <constant>` are read, and only as
+unconditional statements directly in the module body or directly in a
+top-level function body (the app-factory pattern). Assignments under if, for,
+try, with or a nested scope may never run, so they are not evidence. The last
+one wins, matching run order.
 """
 
 import ast
@@ -27,9 +30,18 @@ class CollectorResult:
     coverage: CollectorCoverage
 
 
+def _straight_line_statements(tree: ast.Module) -> list[ast.stmt]:
+    statements: list[ast.stmt] = []
+    for node in tree.body:
+        statements.append(node)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            statements.extend(node.body)
+    return statements
+
+
 def _config_assignments(tree: ast.Module) -> dict[str, object]:
     found: dict[str, object] = {}
-    for node in ast.walk(tree):
+    for node in _straight_line_statements(tree):
         if not isinstance(node, ast.Assign) or len(node.targets) != 1:
             continue
         target = node.targets[0]
@@ -69,8 +81,10 @@ def collect(
     failures = 0
     apps: dict[str, dict[str, object]] = {}
     first_file: dict[str, str] = {}
-    flask_apps: set[str] = set()
-    for path in sorted(root.rglob("*.py")):
+    flask_files: dict[str, str] = {}
+    sources = sorted(root.rglob("*.py"))
+    truncated = len(sources) > limits.max_manifest_files
+    for path in sources[: limits.max_manifest_files]:
         rel_path = path.relative_to(checkout_root).as_posix()
         parts = PurePosixPath(rel_path).parts
         if "tests" in parts or (tracked_paths is not None and rel_path not in tracked_paths):
@@ -88,14 +102,14 @@ def collect(
             failures += 1
             continue
         if _uses_flask(tree):
-            flask_apps.add(app)
+            flask_files.setdefault(app, rel_path)
         assignments = _config_assignments(tree)
         if assignments:
             apps.setdefault(app, {}).update(assignments)
             first_file.setdefault(app, rel_path)
 
     evidence = []
-    for app in sorted(flask_apps):
+    for app in sorted(flask_files):
         config = apps.get(app, {})
         samesite = config.get("SESSION_COOKIE_SAMESITE")
         httponly = config.get("SESSION_COOKIE_HTTPONLY", True)  # Flask's default
@@ -105,7 +119,9 @@ def collect(
                 collector_id=APP_CONFIG_COLLECTOR_ID,
                 collector_version=APP_CONFIG_COLLECTOR_VERSION,
                 kind=EVIDENCE_KIND_SESSION_COOKIE,
-                source_path=first_file.get(app, app),
+                # Without an assignment, the Flask-importing file anchors the
+                # negative evidence rather than a bare directory.
+                source_path=first_file.get(app, flask_files[app]),
                 locator=f"{app} session cookie",
                 excerpt=f"{app}: SameSite={samesite!s:.40}, HttpOnly={httponly!s:.40}",
                 fact={
@@ -120,8 +136,18 @@ def collect(
         tuple(evidence),
         CollectorCoverage(
             APP_CONFIG_COLLECTOR_ID,
-            "partial" if failures else "ok",
+            "partial" if failures or truncated else "ok",
             len(evidence),
-            f"{failures} application source file(s) could not be parsed" if failures else None,
+            "; ".join(
+                reason
+                for reason in (
+                    f"{failures} application source file(s) could not be parsed"
+                    if failures
+                    else "",
+                    "application source files omitted by safety limit" if truncated else "",
+                )
+                if reason
+            )
+            or None,
         ),
     )

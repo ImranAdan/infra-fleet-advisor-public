@@ -355,8 +355,12 @@ def _worker_scaling_evidence(
     return evidence
 
 
-def _endpoint_evidence(rel_path: str, locator: str, public: bool) -> Evidence:
+def _endpoint_evidence(rel_path: str, locator: str, public: bool) -> Evidence | None:
     root_module = PurePosixPath(rel_path).parent.as_posix()
+    if "modules" in PurePosixPath(root_module).parts:
+        # A reusable module's environment is its caller's; withhold rather than
+        # guess from where the definition lives.
+        return None
     staging = root_module == _STAGING or root_module.startswith(f"{_STAGING}/")
     return build_evidence(
         collector_id=TF_COST_COLLECTOR_ID,
@@ -625,18 +629,14 @@ def collect(
                 if resource_type == "aws_cloudwatch_log_group":
                     evidence.append(_log_group_evidence(rel_path, name, body))
                 elif resource_type == "aws_eks_cluster":
-                    evidence.append(
-                        _endpoint_evidence(
-                            rel_path,
-                            f"resource.aws_eks_cluster.{name}",
-                            _cluster_endpoint_public(body),
-                        )
+                    exposure = _endpoint_evidence(
+                        rel_path, f"resource.aws_eks_cluster.{name}", _cluster_endpoint_public(body)
                     )
+                    if exposure is not None:
+                        evidence.append(exposure)
                 elif resource_type == "aws_autoscaling_schedule":
-                    to_zero = 0 in (
-                        _attribute(body, "min_size"),
-                        _attribute(body, "desired_capacity"),
-                    )
+                    # Lowering only the minimum leaves desired capacity running.
+                    to_zero = _attribute(body, "desired_capacity") == 0
                     if to_zero and module.startswith(_STAGING):
                         scheduled_release.append(f"aws_autoscaling_schedule.{name}")
                 elif resource_type == "aws_ecr_repository":
@@ -659,7 +659,9 @@ def collect(
                 public = _attribute(body, "endpoint_public_access", False)
                 if not isinstance(public, bool):
                     raise ValueError("endpoint_public_access is not a literal")
-                evidence.append(_endpoint_evidence(rel_path, f"module.{name}", public))
+                exposure = _endpoint_evidence(rel_path, f"module.{name}", public)
+                if exposure is not None:
+                    evidence.append(exposure)
             except ValueError:
                 failures += 1
                 continue
