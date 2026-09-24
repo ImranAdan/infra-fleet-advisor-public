@@ -48,7 +48,8 @@ def _facts(tmp_path: Path, files: dict[str, str], kind: str) -> list[dict[str, o
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
     result = collector.collect(tmp_path, LIMITS)
-    assert result.coverage.status == "ok"
+    # Fixtures without k8s/clusters are evaluated unrendered, never proven.
+    assert result.coverage.error_summary == "no deployment profiles; manifests evaluated unrendered"
     return [dict(item.fact) for item in result.evidence if item.kind == kind]
 
 
@@ -78,7 +79,8 @@ def test_unselected_pods_are_not_restricted(tmp_path) -> None:
         EVIDENCE_KIND_INGRESS_RESTRICTION,
     )
 
-    assert fact == {"selected_by_ingress_policy": False, "ingress_restricted": False}
+    assert fact["selected_by_ingress_policy"] is False
+    assert fact["ingress_restricted"] is False
 
 
 def test_permissive_egress_is_bounded_to_application_namespaces(tmp_path) -> None:
@@ -219,3 +221,55 @@ def test_resource_count_is_bounded(tmp_path, monkeypatch) -> None:
 
     assert result.coverage.status == "partial"
     assert "safety limit" in (result.coverage.error_summary or "")
+
+
+def _write(root, files: dict[str, str]) -> None:
+    for rel_path, text in files.items():
+        path = root / rel_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+
+KUSTOMIZE = "apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\n"
+FLUX = """apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: apps, namespace: flux-system}
+spec:
+  path: ./k8s/profiles/%s
+  sourceRef: {kind: GitRepository, name: flux-system}
+"""
+OPEN_PATCH = """apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources: [../../applications]
+patches:
+  - target: {kind: NetworkPolicy, name: web}
+    patch: |-
+      - op: replace
+        path: /spec/ingress/0/from/0
+        value: {ipBlock: {cidr: 0.0.0.0/0}}
+"""
+
+
+def test_a_profile_patch_that_opens_ingress_is_divergent_in_that_profile(tmp_path) -> None:
+    base = KUSTOMIZE + "resources: [app.yaml, policy.yaml]\n"
+    passthrough = KUSTOMIZE + "resources: [../../applications]\n"
+    files = {
+        "k8s/applications/kustomization.yaml": base,
+        "k8s/applications/app.yaml": DEPLOYMENT,
+        "k8s/applications/policy.yaml": POLICY % ("applications", SCOPED),
+        "k8s/profiles/safe/kustomization.yaml": passthrough,
+        "k8s/profiles/open/kustomization.yaml": OPEN_PATCH,
+    }
+    for profile in ("safe", "open"):
+        files[f"k8s/clusters/{profile}/kustomization.yaml"] = KUSTOMIZE + "resources: [apps.yaml]\n"
+        files[f"k8s/clusters/{profile}/apps.yaml"] = FLUX % profile
+    _write(tmp_path, files)
+
+    result = collector.collect(tmp_path, LIMITS)
+
+    assert result.coverage.status == "ok"
+    [fact] = [dict(e.fact) for e in result.evidence if e.kind == EVIDENCE_KIND_INGRESS_RESTRICTION]
+    # The raw base is restricted; only rendering reveals the open profile.
+    assert fact["ingress_restricted"] is False
+    assert fact["profiles"] == "open, safe"
+    assert fact["failing_profiles"] == "open"

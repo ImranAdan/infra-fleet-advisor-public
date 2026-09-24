@@ -196,6 +196,15 @@ manifest budget), or an enabled EKS Auto Mode `compute_config`. It is
 divergence-only: whether an always-on minimum names the workload that needs it
 is a judgement.
 
+Kubernetes security facts come from rendered profiles. `profile_renderer`
+builds each `k8s/clusters/<profile>` the way Flux would, following every Flux
+`Kustomization`'s local `spec.path` and applying the closed kustomize subset the
+fleet uses, in pure Python: no kustomize binary, no network, no plugins. Rendered
+objects keep their source file for citation. Facts are combined per object
+across profiles, a protective fact holding only if it holds in every profile, so
+evidence identities do not change with the number of profiles while a violation
+introduced by one profile's patch is still caught and named.
+
 The dependency update collector classifies tracked file names from the
 verified commit into Dependabot ecosystems by a closed rule, groups them by
 directory, and matches each group to a `package-ecosystem` entry by `directory`

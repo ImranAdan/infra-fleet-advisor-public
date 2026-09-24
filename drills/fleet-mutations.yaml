@@ -86,3 +86,9 @@ drills:
     path: .github/workflows/nightly-destroy.yml
     find: "workflow_dispatch:"
     replace: "workflow_dispatch:"
+  # A violation that exists only after rendering: the local profile's own
+  # patch opens ingress to every address while the shared base stays safe.
+  - proposition: S-003
+    path: k8s/profiles/local/applications/kustomization.yaml
+    find: "        path: /spec/ingress/1/from/0/namespaceSelector/matchLabels/kubernetes.io~1metadata.name\n        value: envoy-gateway-system"
+    replace: "        path: /spec/ingress/1/from/0\n        value: {ipBlock: {cidr: 0.0.0.0/0}}"

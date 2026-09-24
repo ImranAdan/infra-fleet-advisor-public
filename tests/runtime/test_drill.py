@@ -90,7 +90,7 @@ def test_drill_file_rejects_unknown_fields_and_unsafe_paths(tmp_path: Path) -> N
 def test_production_drills_name_registered_propositions() -> None:
     drills = load_drills(Path(__file__).parents[2] / "drills" / "fleet-mutations.yaml")
 
-    assert len({drill.proposition for drill in drills}) == len(drills)
+    assert len({(drill.proposition, drill.path) for drill in drills}) == len(drills)
 
 
 def test_symlinked_drill_target_is_stale_and_never_written(tmp_path: Path) -> None:
