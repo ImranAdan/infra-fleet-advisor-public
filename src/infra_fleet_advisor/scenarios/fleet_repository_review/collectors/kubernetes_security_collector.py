@@ -28,6 +28,7 @@ _APPLICATIONS = "k8s/applications/"
 _GENERATED = "k8s/flux-system/"
 _ISSUER_ANNOTATIONS = ("cert-manager.io/cluster-issuer", "cert-manager.io/issuer")
 _BROAD_GROUPS = {"system:authenticated", "system:serviceaccounts"}
+_MAX_RESOURCES = 2000
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,13 +83,19 @@ def _selects(selector: Any, labels: Mapping[str, Any]) -> bool | None:
     return True
 
 
-def _peer_is_scoped(peer: Any) -> bool:
-    """A peer names pods or namespaces by selector; ipBlock and empty peers do not."""
-    return (
-        isinstance(peer, Mapping)
-        and "ipBlock" not in peer
-        and ("podSelector" in peer or "namespaceSelector" in peer)
+def _constrains(selector: Any) -> bool:
+    """An empty selector ({}) matches everything, so it names no peer."""
+    return isinstance(selector, Mapping) and bool(
+        selector.get("matchLabels") or selector.get("matchExpressions")
     )
+
+
+def _peer_is_scoped(peer: Any) -> bool:
+    """A peer names pods or namespaces by non-empty selectors; ipBlock never does."""
+    if not isinstance(peer, Mapping) or "ipBlock" in peer:
+        return False
+    selectors = [peer[key] for key in ("podSelector", "namespaceSelector") if key in peer]
+    return bool(selectors) and all(_constrains(selector) for selector in selectors)
 
 
 def _rule_is_open(rule: Any, direction: str) -> bool:
@@ -123,6 +130,7 @@ def _workload_evidence(
     deployment: _Resource,
     policies: list[_Resource],
     bindings: list[_Resource],
+    accounts: dict[tuple[str, str], Mapping[str, Any]],
 ) -> list[Evidence]:
     template = (deployment.body.get("spec") or {}).get("template") or {}
     labels = (template.get("metadata") or {}).get("labels") or {}
@@ -149,7 +157,12 @@ def _workload_evidence(
     restricted = bool(selecting) and not open_rules
 
     account = str(pod.get("serviceAccountName") or "default")
-    mounts = pod.get("automountServiceAccountToken") is not False
+    # The pod field wins; otherwise the ServiceAccount's own default applies.
+    automount = pod.get(
+        "automountServiceAccountToken",
+        accounts.get((deployment.namespace, account), {}).get("automountServiceAccountToken"),
+    )
+    mounts = automount is not False
     granted_by = []
     for binding in bindings:
         for subject in binding.body.get("subjects") or []:
@@ -281,6 +294,9 @@ def collect(
             for body in items if isinstance(items, list) else [document]:
                 if isinstance(body, Mapping) and isinstance(body.get("kind"), str):
                     resources.append(_Resource(rel_path, body))
+    # A List can pack many resources into one bounded file; cap the work.
+    resource_limit_reached = len(resources) > _MAX_RESOURCES
+    resources = resources[:_MAX_RESOURCES]
 
     deployments = [
         r for r in resources if r.kind == "Deployment" and r.path.startswith(_APPLICATIONS)
@@ -288,11 +304,12 @@ def collect(
     policies = [r for r in resources if r.kind == "NetworkPolicy"]
     bindings = [r for r in resources if r.kind in {"RoleBinding", "ClusterRoleBinding"}]
     application_namespaces = {deployment.namespace for deployment in deployments}
+    accounts = {(r.namespace, r.name): r.body for r in resources if r.kind == "ServiceAccount"}
 
     evidence: list[Evidence] = []
     for deployment in deployments:
         try:
-            evidence.extend(_workload_evidence(deployment, policies, bindings))
+            evidence.extend(_workload_evidence(deployment, policies, bindings, accounts))
         except (ValueError, AttributeError, TypeError):
             failures += 1
     for resource in resources:
@@ -304,7 +321,18 @@ def collect(
         except (AttributeError, TypeError):
             failures += 1
 
+    # A base and an overlay can declare the same object with different facts;
+    # one ID cannot carry both, so withhold every ambiguous identity.
+    counts: dict[str, int] = {}
+    for item in evidence:
+        counts[item.evidence_id] = counts.get(item.evidence_id, 0) + 1
+    duplicates = {eid for eid, count in counts.items() if count > 1}
+    evidence = [item for item in evidence if item.evidence_id not in duplicates]
+    failures += len(duplicates)
+
     reasons = []
+    if resource_limit_reached:
+        reasons.append("resources omitted by safety limit")
     if failures:
         reasons.append(f"{failures} manifest or resource(s) could not be evaluated")
     if len(eligible) > len(files):

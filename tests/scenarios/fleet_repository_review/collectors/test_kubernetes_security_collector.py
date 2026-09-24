@@ -152,3 +152,70 @@ roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: view}
         EVIDENCE_KIND_SERVICE_ACCOUNT_PRIVILEGE,
     )
     assert fact["token_grants_nothing"] is True
+
+
+def test_empty_peer_selectors_do_not_restrict(tmp_path) -> None:
+    for peers in (
+        "{namespaceSelector: {}}",
+        "{podSelector: {}}",
+        "{namespaceSelector: {}, podSelector: {matchLabels: {a: b}}}",
+    ):
+        [fact] = _facts(
+            tmp_path,
+            {
+                "k8s/applications/app.yaml": DEPLOYMENT,
+                "k8s/applications/policy.yaml": POLICY % ("applications", peers),
+            },
+            EVIDENCE_KIND_INGRESS_RESTRICTION,
+        )
+        assert fact["ingress_restricted"] is False, peers
+
+
+def test_service_account_automount_default_is_honoured(tmp_path) -> None:
+    account = (
+        "apiVersion: v1\nkind: ServiceAccount\nmetadata: {name: default, namespace: applications}\n"
+        "automountServiceAccountToken: false\n"
+    )
+    binding = (
+        "apiVersion: rbac.authorization.k8s.io/v1\nkind: RoleBinding\n"
+        "metadata: {name: view, namespace: applications}\n"
+        "subjects: [{kind: ServiceAccount, name: default}]\n"
+        "roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: view}\n"
+    )
+    [fact] = _facts(
+        tmp_path,
+        {
+            "k8s/applications/app.yaml": DEPLOYMENT,
+            "k8s/applications/sa.yaml": account,
+            "k8s/applications/binding.yaml": binding,
+        },
+        EVIDENCE_KIND_SERVICE_ACCOUNT_PRIVILEGE,
+    )
+
+    assert fact["mounts_token"] is False
+    assert fact["token_grants_nothing"] is True
+
+
+def test_duplicate_resource_identities_are_withheld(tmp_path) -> None:
+    for rel_path in ("k8s/applications/app.yaml", "k8s/profiles/aws/app.yaml"):
+        path = tmp_path / rel_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(DEPLOYMENT, encoding="utf-8")
+    (tmp_path / "k8s/applications/copy.yaml").write_text(DEPLOYMENT, encoding="utf-8")
+
+    result = collector.collect(tmp_path, LIMITS)
+
+    assert result.coverage.status == "partial"
+    assert [e for e in result.evidence if e.kind == EVIDENCE_KIND_INGRESS_RESTRICTION] == []
+
+
+def test_resource_count_is_bounded(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(collector, "_MAX_RESOURCES", 1)
+    path = tmp_path / "k8s" / "applications" / "app.yaml"
+    path.parent.mkdir(parents=True)
+    path.write_text(DEPLOYMENT + "---\n" + POLICY % ("applications", SCOPED), encoding="utf-8")
+
+    result = collector.collect(tmp_path, LIMITS)
+
+    assert result.coverage.status == "partial"
+    assert "safety limit" in (result.coverage.error_summary or "")
