@@ -249,6 +249,20 @@ its own pull request only when the merge gate reports `READY`.
 When a verification lesson recurs, encode it as a check (a test, a drill, a
 doctor line) rather than another paragraph here.
 
+## When a decision is not yours
+
+If you cannot decide between options, or a decision belongs to the owner (see
+the merge gate's owner categories), do not guess and do not stall. Open an
+issue from the **Decision needed** template (`.github/ISSUE_TEMPLATE/decision.md`):
+a short TL;DR, evidence for each option, one decision card per question with
+your recommendation, and a reply template. The owner answers with a comment,
+and you take it from there. Meanwhile carry on with other work.
+
+This is a standing exception the owner granted (September 2026) to the
+ask-first rule for issues in `CLAUDE.md`, and it covers exactly one action:
+opening a **Decision needed** issue labelled `needs-decision`. Commenting on,
+editing or closing issues, and any other issue, still need approval.
+
 ## Review feedback
 
 Treat every review finding, automated or human, as a claim to verify against the
