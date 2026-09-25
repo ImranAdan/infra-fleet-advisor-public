@@ -31,10 +31,11 @@ already been proposed and declined or left unanswered, do not perform it as a
 
 When a decision is not yours to make (see "When a decision is not yours" in
 `AGENTS.md`), you may open one issue from the **Decision needed** template,
-labelled `needs-decision`, without asking first. The owner asked for this so
-that work never stalls waiting on them. It covers only opening that issue:
-commenting on, editing or closing issues, and any other issue, still follow
-the rule above.
+labelled `needs-decision`, without asking first, and close a `decided` one
+with a comment linking the pull request that carries out the decision. The
+owner asked for this so that work never stalls waiting on them. Nothing else
+is covered: other comments, edits and issues still follow the rule above, and
+you never post decision answers yourself.
 
 ## Standing grant: resolving and merging your own pull requests
 

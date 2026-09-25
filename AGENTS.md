@@ -259,9 +259,20 @@ your recommendation, and a reply template. The owner answers with a comment,
 and you take it from there. Meanwhile carry on with other work.
 
 This is a standing exception the owner granted (September 2026) to the
-ask-first rule for issues in `CLAUDE.md`, and it covers exactly one action:
-opening a **Decision needed** issue labelled `needs-decision`. Commenting on,
-editing or closing issues, and any other issue, still need approval.
+ask-first rule for issues in `CLAUDE.md`, and it covers exactly two actions:
+opening a **Decision needed** issue labelled `needs-decision`, and closing a
+`decided` one with a link to the work. Other comments, edits and issues still
+need approval.
+
+## Picking up decisions
+
+The **Decision collector** workflow records the owner's answers on decision
+issues as they arrive and labels an issue `decided` once every card is
+answered, so the owner never has to report back. At the start of work, run
+`gh issue list --label decided --state open`. The collector's summary comment
+holds the record, `<!-- decisions {"D1": "A", ...} -->`. Act on it, then close
+the issue with a comment linking the pull request that carries it out. Never
+post `D1:`-style answers yourself: only the owner's count.
 
 ## Review feedback
 
