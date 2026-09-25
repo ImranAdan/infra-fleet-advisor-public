@@ -7,9 +7,10 @@ any application: Kubernetes manifests outside the applications' own
 directories, the lifecycle scripts, policies and local platform files.
 
 This collector reads the contracts, searches the tracked platform files for any
-application name as a whole word, and requires every platform Canary, HPA and
-NetworkPolicy to take its name from `${APP_NAME}`, so a new literal name is
-caught as well as a known one. Files are read as text; nothing is executed.
+application name as a whole word, and requires the application references on
+platform Canary, HPA, NetworkPolicy, Ingress and HTTPRoute objects to come from
+`${APP_NAME}`. A new literal binding is therefore caught as well as a known
+name. Files are read as text; nothing is executed.
 
 It can show coupling but cannot prove its absence: a script could name an
 application no contract declares. An unreadable, oversized or excluded contract
@@ -35,14 +36,34 @@ SELECTED_CONTRACT = "k8s/fleet-app/fleet-app.yaml"
 _APP_CONTRACT = re.compile(r"^k8s/applications/([a-z0-9][-a-z0-9]*)/fleet-app\.yaml$")
 _SELECTION = "k8s/applications/kustomization.yaml"
 _PLATFORM_ROOTS = ("k8s/", "scripts/", "policies/", "platform/")
-_PLATFORM_FILES = ("fleet",)
+_PLATFORM_FILES = ("fleet", ".github/workflows/local-kubernetes.yml")
 # A text search is cheap, so this scan has its own bound, like the renderer's
 # source scan, rather than the per-collector manifest limit.
 _MAX_PLATFORM_FILES = 1000
-# Platform objects that act on the application, so must name it through the
-# contract rather than literally: these kinds in the applications namespace.
-# Controllers' own policies elsewhere (Flux's, for example) are not app-bound.
-_APP_BOUND_KINDS = {"Canary", "HorizontalPodAutoscaler", "NetworkPolicy"}
+# Platform objects that act on the application, so their identity and target
+# references must come from the contract. Controllers' own objects elsewhere
+# (Flux's NetworkPolicies, for example) are not app-bound.
+_APP_BOUND_FIELDS = {
+    "Canary": (
+        ("metadata", "name"),
+        ("spec", "targetRef", "name"),
+        ("spec", "autoscalerRef", "name"),
+    ),
+    "HorizontalPodAutoscaler": (
+        ("metadata", "name"),
+        ("spec", "scaleTargetRef", "name"),
+    ),
+    "NetworkPolicy": (("metadata", "name"),),
+    "Ingress": (
+        ("metadata", "name"),
+        ("spec", "defaultBackend", "service", "name"),
+        ("spec", "rules", "*", "http", "paths", "*", "backend", "service", "name"),
+    ),
+    "HTTPRoute": (
+        ("metadata", "name"),
+        ("spec", "rules", "*", "backendRefs", "*", "name"),
+    ),
+}
 _APP_NAMESPACE = "applications"
 
 
@@ -62,29 +83,45 @@ def _app_name(text: str) -> str | None:
     return name if isinstance(name, str) and name else None
 
 
-def _is_platform(rel_path: str, apps: set[str]) -> bool:
+def _is_platform(rel_path: str, app_directories: set[str]) -> bool:
     if rel_path in (SELECTED_CONTRACT, _SELECTION):
         return False
-    if any(rel_path.startswith(f"k8s/applications/{app}/") for app in apps):
+    if any(rel_path.startswith(f"k8s/applications/{app}/") for app in app_directories):
         return False
     return rel_path in _PLATFORM_FILES or rel_path.startswith(_PLATFORM_ROOTS)
 
 
+def _values_at(value: object, path: tuple[str, ...]) -> list[object]:
+    if not path:
+        return [value]
+    head, *tail = path
+    if head == "*":
+        if not isinstance(value, list):
+            return []
+        return [item for entry in value for item in _values_at(entry, tuple(tail))]
+    if not isinstance(value, dict) or head not in value:
+        return []
+    return _values_at(value[head], tuple(tail))
+
+
 def _literal_bound_object(text: str) -> bool | None:
-    """True if an app-bound object has a literal name; None if unparseable."""
+    """True if an app-bound object has a literal binding."""
     try:
         documents = list(yaml.safe_load_all(text))
     except yaml.YAMLError:
         return None
     for document in documents:
-        if not isinstance(document, dict) or document.get("kind") not in _APP_BOUND_KINDS:
+        if not isinstance(document, dict) or document.get("kind") not in _APP_BOUND_FIELDS:
             continue
         metadata = document.get("metadata")
         if not isinstance(metadata, dict) or metadata.get("namespace") != _APP_NAMESPACE:
             continue
-        name = metadata.get("name")
-        if not (isinstance(name, str) and "${APP_NAME}" in name):
-            return True
+        for path in _APP_BOUND_FIELDS[document["kind"]]:
+            values = _values_at(document, path)
+            if values and any(
+                not isinstance(value, str) or "${APP_NAME}" not in value for value in values
+            ):
+                return True
     return False
 
 
@@ -131,8 +168,14 @@ def collect(
             failures += 1
             return None
 
+    contract_paths = sorted(p for p in tracked if _APP_CONTRACT.match(p))
+    app_directories = {
+        match.group(1)
+        for rel_path in contract_paths
+        if (match := _APP_CONTRACT.match(rel_path)) is not None
+    }
     apps: set[str] = set()
-    for rel_path in sorted(p for p in tracked if _APP_CONTRACT.match(p)):
+    for rel_path in contract_paths:
         text = read(rel_path)
         name = _app_name(text) if text is not None else None
         match = _APP_CONTRACT.match(rel_path)
@@ -150,7 +193,7 @@ def collect(
             failures += text is not None
             contract_unknown = True
 
-    platform = sorted(p for p in tracked if _is_platform(p, apps))
+    platform = sorted(p for p in tracked if _is_platform(p, app_directories))
     truncated = len(platform) > _MAX_PLATFORM_FILES
     pattern = (
         re.compile(r"(?<![\w-])(" + "|".join(re.escape(a) for a in sorted(apps)) + r")(?![\w-])")
@@ -178,7 +221,7 @@ def collect(
         "contract_present": contract_present,
         "application_count": len(apps),
         "platform_files_naming_an_app": len(mentions),
-        "platform_objects_with_literal_names": len(literal),
+        "platform_objects_with_literal_bindings": len(literal),
     }
     # Readable coupling decides on its own; otherwise an unknown contract
     # leaves the verdict out, so no recommendation rests on unseen input.
