@@ -259,6 +259,7 @@ jobs:
           GH_TOKEN: ${{ steps.report-app.outputs.token || github.token }}
         run: |
           sha="${{ steps.target.outputs.sha }}"
+          title="chore(advisory): fleet report for ${TARGET_REPO}@${sha:0:7}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -c "$BRANCH"
@@ -273,13 +274,13 @@ jobs:
             "HEAD:refs/heads/$BRANCH"
 
           if [ -n "$(gh pr list --head "$BRANCH" --state open --json number -q '.[].number')" ]; then
-            gh pr edit "$BRANCH" --body-file "$RUNNER_TEMP/pr-body.md"
+            gh pr edit "$BRANCH" --title "$title" --body-file "$RUNNER_TEMP/pr-body.md"
             echo "Updated the open advisory pull request."
           else
             gh pr create \
               --base "${{ github.event.repository.default_branch }}" \
               --head "$BRANCH" \
-              --title "chore(advisory): fleet report for ${TARGET_REPO}@${sha:0:7}" \
+              --title "$title" \
               --body-file "$RUNNER_TEMP/pr-body.md"
           fi
 
