@@ -26,7 +26,7 @@ python3 .claude/skills/merge-gate/merge_ready.py <PR_NUMBER>
 - **Review:** no unresolved thread. A thread resolved without a reply saying
   what changed or why a finding was declined surfaces.
 - **Evidence:** the body has a `## Verification` section with at least one
-  command: what was run and what it showed (see the pull request template and
+  line of the form `` `command` → result``: what was run and what it showed (see the pull request template and
   the Verification section of `AGENTS.md`).
 - **Scope:** changes a human must decide, found in the diff: a workflow
   permission or `write` scope, a new `secrets.` reference, a remote action, a
@@ -44,4 +44,4 @@ Judge these yourself. Any one means `SURFACE`, whatever the script says:
 - a check failed and the fix was not obvious.
 
 Encode a recurring judgment as a new rule in `merge_ready.py` with a case in
-its self-test (`python3 merge_ready.py --self-test`), not as more prose here.
+its self-test (`python3 .claude/skills/merge-gate/merge_ready.py --self-test`), not as more prose here.

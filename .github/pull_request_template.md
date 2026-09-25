@@ -13,4 +13,5 @@
 ## Scope
 
 <!-- Anything a human must decide: permissions, credentials, dependencies,
-     intent, policy or decision records. Write "none" if there is nothing. -->
+     intent, policy, decision records, product requirements or permanent
+     infrastructure. Write "none" if there is nothing. -->
