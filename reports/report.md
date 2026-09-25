@@ -1,9 +1,9 @@
 # Infra Fleet Advisor report
 
-- Source: `infra-fleet-public` @ `ef2e1bc954ad7ac6f6d8af008eaf115c1154df00`
+- Source: `infra-fleet-public` @ `f319db7d05dc7b8909d31f2b9b6c7d2f1ad13ae1`
 - Advisor version: `0.1.0` · Policy version: `1.1`
-- Model: `stub-synthesizer-v1` · Run started: `2026-09-24T18:29:45.296639+00:00`
-- Intent catalog: `intent-md-v1:3f7d0659058772412177ae7dde83ba19de20935caf75526fe8bf7d090fb68758`
+- Model: `stub-synthesizer-v1` · Run started: `2026-09-25T07:35:00.209126+00:00`
+- Intent catalog: `intent-md-v1:6719a4a57dc76f4db90d2de10088c3ba13731783ac629cfb37f8e5e8dfdc06b3`
 - Lifecycle: 0 new, 3 unchanged, 6 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
@@ -14,12 +14,13 @@
 - `kubernetes_deployment_collector`: ok (4 evidence)
 - `kubernetes_security_collector`: ok (4 evidence)
 - `fleet_lifecycle_collector`: ok (3 evidence)
-- `dependency_update_collector`: ok (7 evidence)
+- `dependency_update_collector`: ok (8 evidence)
 - `application_config_collector`: ok (1 evidence)
+- `application_contract_collector`: ok (1 evidence)
 
 ## Intent evaluation
 
-**Coverage:** 20 of 20 positions have a check — 6 satisfied, 3 divergent, 11 checked but unproven; 0 declared without a check.
+**Coverage:** 21 of 21 positions have a check — 6 satisfied, 3 divergent, 12 checked but unproven; 0 declared without a check.
 
 - `divergent` `infra_fleet_public_cost/C-001` — Staging application worker capacity scales to zero outside an owner-defined
   usage window. A delayed startup of up to 30 minutes is acceptable when it avoids
@@ -77,6 +78,15 @@
   not remove. Destroying permanent bootstrap resources remains a separate,
   deliberate operation.
   - Category: `maintainability` · Priority: `high` · Check: `fleet_aws_onboarding` · Reason: `collector_cannot_prove_satisfaction`
+- `declared_unverified` `infra_fleet_public_maintainability/M-004` — The platform runs whichever application its contract,
+  \`k8s/fleet-app/fleet-app.yaml\`, selects, and names none of its own. Routing,
+  progressive delivery, autoscaling, network policy, admission, the local build
+  and the acceptance test read the application from that contract, so replacing
+  the application is a contract change rather than a platform migration. At
+  least two applications ship contracts, so the swap stays exercised rather than
+  theoretical. Per-application AWS resources (its ECR repository, release
+  workflow and secrets) are outside this position.
+  - Category: `maintainability` · Priority: `medium` · Check: `fleet_application_swappable` · Reason: `collector_cannot_prove_satisfaction`
 - `satisfied` `infra_fleet_public_reliability/R-001` — Owner-managed application Deployments under \`k8s/applications/\` retain enough
   healthy capacity during rollout. Temporary capacity cost is acceptable when it
   prevents user-visible interruption.
