@@ -46,7 +46,13 @@ review() {
 }
 
 review "$work/advisor" "$output/base"
-review "$advisor_root" "$output/head"
+if ! review "$advisor_root" "$output/head"; then
+  # A head advisor that cannot produce a comparable report has lost all of
+  # its proof from the ratchet's perspective. Keep the regression exit code
+  # stable instead of leaking a parser or policy command's incidental code.
+  echo 'ratchet failed: the head advisor could not produce a comparable report' >&2
+  exit 8
+fi
 uv run --frozen --project "$advisor_root" infra-fleet-advisor ratchet \
   --base-report "$output/base/report.json" \
   --head-report "$output/head/report.json" \
