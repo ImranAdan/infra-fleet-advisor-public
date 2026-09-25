@@ -258,6 +258,11 @@ a short TL;DR, evidence for each option, one decision card per question with
 your recommendation, and a reply template. The owner answers with a comment,
 and you take it from there. Meanwhile carry on with other work.
 
+This is a standing exception the owner granted (September 2026) to the
+ask-first rule for issues in `CLAUDE.md`, and it covers exactly one action:
+opening a **Decision needed** issue labelled `needs-decision`. Commenting on,
+editing or closing issues, and any other issue, still need approval.
+
 ## Review feedback
 
 Treat every review finding, automated or human, as a claim to verify against the

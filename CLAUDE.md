@@ -27,6 +27,15 @@ better than a side effect the user did not expect. When such an action has
 already been proposed and declined or left unanswered, do not perform it as a
 "quick check" later in the same session.
 
+## Standing grant: raising a decision issue
+
+When a decision is not yours to make (see "When a decision is not yours" in
+`AGENTS.md`), you may open one issue from the **Decision needed** template,
+labelled `needs-decision`, without asking first. The owner asked for this so
+that work never stalls waiting on them. It covers only opening that issue:
+commenting on, editing or closing issues, and any other issue, still follow
+the rule above.
+
 ## Standing grant: resolving and merging your own pull requests
 
 This is the one standing exception to the per-action rule above. Within a pull
