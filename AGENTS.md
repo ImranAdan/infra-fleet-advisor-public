@@ -203,6 +203,46 @@ Once the Python toolchain is introduced:
 Use typed public interfaces, immutable values where practical, `snake_case` for
 modules and functions, and `PascalCase` for types.
 
+## Verification
+
+Deterministic tests prove code against fixtures. They do not prove the advisor
+still sees the real fleet. Before reporting a change as done, verify it
+against the real artifact and show the evidence: exact commands, output and
+exit codes.
+
+| Change | Check |
+|---|---|
+| Collector, check or renderer | `make check`; the check's drill on the real fleet; the ratchet guard against `origin/main` |
+| Intent catalog | `make review` on the fleet, summarised against `reports/report.json` |
+| Something the fleet's gate needs | `scripts/intent-gate.sh` on the fleet change that needs it, before pinning |
+| Report fields | Every reader: gate, ratchet, publisher, readiness, and the fleet's Grafana row |
+
+**Evidence standard.** Push every claim as far down this ladder as is cheap,
+and say where it stopped: stated, pointed at a real `file:line`, walked
+through, **ran** (a test or script that fails loudly if you are wrong), or
+**reproduced against the real fleet**. Prove a check both ways: it passes on
+the fleet as it is, and its drill makes it diverge. A coverage gap is a
+result, not a pass. Say `inconclusive` when a drive could not run.
+
+**Tests.** A test calls the code the way its users do and asserts an observed
+result against a literal expected value. If it would still pass with the code
+under test stubbed out, rewrite or delete it. For a bug with a cheap test
+path, write the failing test first and show it failing before the fix.
+
+**Sequence.** Break multi-step work into small units that each end in a
+checkable state, and check each before the next. Order commits so the history
+proves the work.
+
+**Skills.** Project skills live in `.claude/skills/`:
+
+- `verify-advisor`: doctor, drives (review, gate, ratchet, drills) and a
+  report summariser, with a feature map of what proves each behavior.
+- `blast-radius`: what a change breaks beyond its diff, including report
+  consumers in the fleet.
+
+When a verification lesson recurs, encode it as a check (a test, a drill, a
+doctor line) rather than another paragraph here.
+
 ## Review feedback
 
 Treat every review finding, automated or human, as a claim to verify against the
