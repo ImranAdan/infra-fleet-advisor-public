@@ -1,0 +1,44 @@
+name: Decision collector
+
+# Records the owner's answers on "Decision needed" issues as they arrive, so
+# nobody has to report back that a decision was made. issue_comment runs the
+# default branch's workflow, and comments posted with the workflow token do not
+# trigger further runs, so the collector cannot loop on its own summary.
+on:
+  issue_comment:
+    types: [created, edited]
+  # A backstop for missed events and label changes.
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: decision-collector-${{ github.event.issue.number || 'sweep' }}
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    name: Collect decisions
+    if: >-
+      github.event_name != 'issue_comment' ||
+      (github.event.issue.pull_request == null &&
+       github.event.comment.user.login == github.repository_owner &&
+       (contains(github.event.issue.labels.*.name, 'needs-decision') ||
+        contains(github.event.issue.labels.*.name, 'partially-decided')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Record decisions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: python3 .github/scripts/collect_decisions.py ${ISSUE:+"$ISSUE"} --repo "$GITHUB_REPOSITORY"
