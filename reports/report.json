@@ -39,11 +39,17 @@
     {
       "collector_id": "dependency_update_collector",
       "error_summary": null,
-      "evidence_count": 7,
+      "evidence_count": 8,
       "status": "ok"
     },
     {
       "collector_id": "application_config_collector",
+      "error_summary": null,
+      "evidence_count": 1,
+      "status": "ok"
+    },
+    {
+      "collector_id": "application_contract_collector",
       "error_summary": null,
       "evidence_count": 1,
       "status": "ok"
@@ -305,6 +311,17 @@
       "status": "declared_unverified"
     },
     {
+      "category": "maintainability",
+      "check_key": "fleet_application_swappable",
+      "document_id": "infra_fleet_public_maintainability",
+      "evidence_ids": [],
+      "priority": "medium",
+      "proposition_id": "M-004",
+      "reason": "collector_cannot_prove_satisfaction",
+      "statement": "The platform runs whichever application its contract,\n`k8s/fleet-app/fleet-app.yaml`, selects, and names none of its own. Routing,\nprogressive delivery, autoscaling, network policy, admission, the local build\nand the acceptance test read the application from that contract, so replacing\nthe application is a contract change rather than a platform migration. At\nleast two applications ship contracts, so the swap stays exercised rather than\ntheoretical. Per-application AWS resources (its ECR repository, release\nworkflow and secrets) are outside this position.",
+      "status": "declared_unverified"
+    },
+    {
       "category": "reliability",
       "check_key": "deployment_rollout_capacity",
       "document_id": "infra_fleet_public_reliability",
@@ -444,6 +461,7 @@
     "advisor_version": "0.1.0",
     "collector_versions": {
       "application_config_collector": "1.0.0",
+      "application_contract_collector": "1.1.0",
       "dependency_update_collector": "1.0.0",
       "fleet_lifecycle_collector": "1.4.0",
       "github_actions_workflow_collector": "1.5.0",
@@ -452,11 +470,11 @@
       "terraform_cost_collector": "1.4.0",
       "terraform_iam_collector": "1.4.0"
     },
-    "intent_digest": "intent-md-v1:3f7d0659058772412177ae7dde83ba19de20935caf75526fe8bf7d090fb68758",
+    "intent_digest": "intent-md-v1:6719a4a57dc76f4db90d2de10088c3ba13731783ac629cfb37f8e5e8dfdc06b3",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.1",
-    "run_started_at": "2026-09-24T18:29:45.296639+00:00",
-    "source_commit_sha": "ef2e1bc954ad7ac6f6d8af008eaf115c1154df00",
+    "run_started_at": "2026-09-25T07:35:00.209126+00:00",
+    "source_commit_sha": "f319db7d05dc7b8909d31f2b9b6c7d2f1ad13ae1",
     "source_label": "infra-fleet-public"
   },
   "recommendations": [
