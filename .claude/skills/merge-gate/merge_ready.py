@@ -58,23 +58,44 @@ LINE_RULES = (
 )
 
 
+def _path_findings(path: str) -> list[str]:
+    findings = []
+    if any(rule.search(path) for rule in DECISION_PATHS):
+        findings.append(f"decision record, policy or scope file changed: {path}")
+    if DEPENDENCY_PATHS.search(path):
+        findings.append(f"dependency manifest changed: {path}")
+    return findings
+
+
 def scope_findings(diff: str) -> list[str]:
-    """Human-decision reasons found in a unified diff."""
+    """Human-decision reasons found in a unified diff.
+
+    Paths come from each file's `diff --git` header and its rename lines, so
+    pure renames, empty files and binary changes (which have no ---/+++ lines)
+    are still seen. Content lines count only inside a hunk, so a removed line
+    that starts with "-- " is never mistaken for a file header.
+    """
     findings: list[str] = []
-    old = new = ""
+    path = ""
+    in_hunk = False
     for line in diff.splitlines():
-        if line.startswith("--- "):
-            old = line[6:] if line.startswith("--- a/") else ""
+        header = re.match(r"^diff --git a/(.*) b/(.*)$", line)
+        if header:
+            in_hunk = False
+            old, path = header.group(1), header.group(2)
+            for changed in dict.fromkeys((old, path)):
+                findings += _path_findings(changed)
             continue
-        if line.startswith("+++ "):
-            new = line[6:] if line.startswith("+++ b/") else ""
-            for path in dict.fromkeys(p for p in (old, new) if p):
-                if any(rule.search(path) for rule in DECISION_PATHS):
-                    findings.append(f"decision record, policy or scope file changed: {path}")
-                if DEPENDENCY_PATHS.search(path):
-                    findings.append(f"dependency manifest changed: {path}")
+        if not in_hunk:
+            if line.startswith("rename from "):
+                findings += _path_findings(line[len("rename from ") :])
+            elif line.startswith("+++ b/"):
+                path = line[6:]
+            elif line.startswith("@@"):
+                in_hunk = True
             continue
-        path = new or old
+        if line.startswith("@@"):
+            continue
         for kind, files, rule in LINE_RULES:
             if files.search(path) and rule.search(line):
                 verb = "removes" if line.startswith("-") else "adds"
@@ -90,9 +111,11 @@ def has_verification(body: str) -> bool:
         return False
     section = re.sub(r"<!--.*?-->", "", match.group(1), flags=re.S)
     section = PLACEHOLDER.sub("", section)
-    return any(
-        code.strip() and code.strip() != "command" for code in re.findall(r"`([^`]+)`", section)
-    )
+    # Evidence is a command and what it showed: `command` → result, on one line.
+    for match in re.finditer(r"`([^`]+)`[^\n`]*?(→|->)\s*(\S[^\n]*)", section):
+        if match.group(1).strip() not in ("", "command"):
+            return True
+    return False
 
 
 def gh(*args: str) -> str:
@@ -211,44 +234,53 @@ def main(argv: list[str]) -> int:
     return 0
 
 
+def _file(path: str, *lines: str, old: str | None = None) -> list[str]:
+    """One file's section in `gh pr diff` form."""
+    return [
+        f"diff --git a/{old or path} b/{path}",
+        f"--- a/{old or path}",
+        f"+++ b/{path}",
+        "@@ -1,3 +1,3 @@",
+        *lines,
+    ]
+
+
 def self_test() -> int:
-    diff = "\n".join(
-        [
-            "--- a/.github/workflows/ci.yml",
-            "+++ b/.github/workflows/ci.yml",
-            "+permissions:",
-            "+      contents: write",
-            "-      pull-requests: write",
-            "+        uses: someone/action@v3",
-            "+          token: ${{ secrets.DEPLOY_TOKEN }}",
-            "+        uses: ./.github/actions/local",
-            "--- a/applications/x/Dockerfile",
-            "+++ b/applications/x/Dockerfile",
-            "+FROM python:3.13-slim",
-            "--- /dev/null",
-            "+++ b/intent/security.md",
-            "--- a/policy.yaml",
-            "+++ /dev/null",
-            "--- a/docs/decisions/0007-gate.md",
-            "+++ b/docs/archive/0007-gate.md",
-            "--- a/docs/DEPLOYMENT-PROFILES-DDR.md",
-            "+++ b/docs/DEPLOYMENT-PROFILES-DDR.md",
-            "--- a/k8s/profiles/local/policies/require-local-images.yaml",
-            "+++ b/k8s/profiles/local/policies/require-local-images.yaml",
-            "--- a/uv.lock",
-            "+++ b/uv.lock",
-            "--- a/k8s/infrastructure/flagger/helmrelease.yaml",
-            "+++ b/k8s/infrastructure/flagger/helmrelease.yaml",
-            '+      version: "1.46.0"',
-            # Not findings: prose, and the gate's own test fixtures.
-            "--- a/docs/README.md",
-            "+++ b/docs/README.md",
-            "+Prose about permissions: and write access, uses: someone/action.",
-            "--- a/.claude/skills/merge-gate/merge_ready.py",
-            "+++ b/.claude/skills/merge-gate/merge_ready.py",
-            '+        "+          token: ${{ secrets.DEPLOY_TOKEN }}",',
-        ]
-    )
+    diff = "\n".join([
+        *_file(".github/workflows/ci.yml",
+               "+permissions:", "+      contents: write", "-      pull-requests: write",
+               "+        uses: someone/action@v3", "+          token: ${{ secrets.DEPLOY_TOKEN }}",
+               "+        uses: ./.github/actions/local"),
+        *_file("applications/x/Dockerfile", "+FROM python:3.13-slim"),
+        "diff --git a/intent/security.md b/intent/security.md",
+        "new file mode 100644",
+        "--- /dev/null",
+        "+++ b/intent/security.md",
+        "@@ -0,0 +1 @@",
+        "+- Check: `new_check`",
+        "diff --git a/policy.yaml b/policy.yaml",
+        "deleted file mode 100644",
+        "--- a/policy.yaml",
+        "+++ /dev/null",
+        # A pure rename has no ---/+++ lines at all.
+        "diff --git a/docs/decisions/0007-gate.md b/docs/archive/0007-gate.md",
+        "similarity index 100%",
+        "rename from docs/decisions/0007-gate.md",
+        "rename to docs/archive/0007-gate.md",
+        # Neither does a binary change.
+        "diff --git a/policies/logo.png b/policies/logo.png",
+        "Binary files a/policies/logo.png and b/policies/logo.png differ",
+        *_file("docs/DEPLOYMENT-PROFILES-DDR.md", "+A decision."),
+        *_file("k8s/profiles/local/policies/require-local-images.yaml", "+  rule: x"),
+        *_file("uv.lock", "+name = x"),
+        *_file("k8s/infrastructure/flagger/helmrelease.yaml", '+      version: "1.46.0"'),
+        # Not findings: prose, the gate's own fixtures, and a removed line
+        # starting "-- " that must not be read as a file header.
+        *_file("docs/README.md", "+Prose about permissions: and write access, uses: x/y."),
+        *_file(".claude/skills/merge-gate/merge_ready.py",
+               '+        "+          token: ${{ secrets.DEPLOY_TOKEN }}",'),
+        *_file(".github/workflows/lint.yml", "--- a/not-a-header", "+  contents: write"),
+    ])  # fmt: skip
     found = scope_findings(diff)
     expected = [
         "adds a permission in .github/workflows/ci.yml: permissions:",
@@ -260,17 +292,21 @@ def self_test() -> int:
         "decision record, policy or scope file changed: intent/security.md",
         "decision record, policy or scope file changed: policy.yaml",
         "decision record, policy or scope file changed: docs/decisions/0007-gate.md",
+        "decision record, policy or scope file changed: policies/logo.png",
         "decision record, policy or scope file changed: docs/DEPLOYMENT-PROFILES-DDR.md",
         "decision record, policy or scope file changed: "
         "k8s/profiles/local/policies/require-local-images.yaml",
         "dependency manifest changed: uv.lock",
         'adds a dependency in k8s/infrastructure/flagger/helmrelease.yaml: version: "1.46.0"',
+        "adds a permission in .github/workflows/lint.yml: contents: write",
     ]
     assert found == expected, "\n".join(found)
     assert has_verification("## Verification\n\n- `make check` → 594 passed\n## Scope\n")
-    assert not has_verification("## Verification\n\n<!-- run things -->\n\n- `command` → result\n")
+    assert has_verification("## Verification\n- `./fleet test` -> passed all six stages\n")
+    assert not has_verification("## Verification\n\n<!-- run it -->\n\n- `command` → result\n")
+    assert not has_verification("## Verification\n\n- `make check`\n")
     assert not has_verification("## Verification\n\nIt works, trust me.\n")
-    assert not has_verification("Verified locally with `make check`.")
+    assert not has_verification("Verified locally: `make check` → 594 passed.")
     print("self-test passed")
     return 0
 
