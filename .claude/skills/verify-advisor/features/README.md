@@ -5,7 +5,8 @@ The maintained index of what the advisor does and what proves each behavior.
 ## Baseline preconditions
 
 - `make setup` has run and `.claude/skills/verify-advisor/doctor.sh` exits 0.
-- The fleet checkout is clean at a known commit; record it.
+- The fleet checkout is clean at a known commit; record it. Fetching it needs
+  approval (see the skill's Launch).
 - `OUT="${TMPDIR:-/tmp}/advisor-verify/$(date -u +%Y%m%dT%H%M%SZ)"`.
 
 ## Driving conventions

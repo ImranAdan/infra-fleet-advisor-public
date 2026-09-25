@@ -17,8 +17,12 @@ method in [pstack](https://github.com/cursor/plugins/tree/main/pstack) (MIT).
 
 ```bash
 make setup                         # uv sync --frozen
-git -C ../infra-fleet-public fetch origin main
 ```
+
+Drive the fleet checkout as it is; the doctor reports when it is behind its
+last-fetched `origin/main`. Fetching it updates refs outside this working tree
+and contacts GitHub, so under `CLAUDE.md` it needs the owner's approval first:
+propose `git -C ../infra-fleet-public fetch origin main` rather than running it.
 
 There is no server. Every drive is one CLI run in its own output directory.
 The fleet checkout defaults to `../infra-fleet-public`; the advisor reads it
@@ -78,6 +82,8 @@ in `$OUT`.
 When a collector, check, intent or CLI command changes, re-drive the affected
 feature and update its file in the same change. A periodic pass reads each
 feature file against the source, drives every feature once, and ends `clean`,
-`changed` (one PR, confined to this directory) or `blocked`. Never edit
+`changed` (proven corrections, confined to this directory, committed locally
+and proposed as a pull request; opening it needs the owner's approval) or
+`blocked`. Never edit
 product code in that pass; a map that no longer matches is either drift (fix
 the map) or a regression (report it).
