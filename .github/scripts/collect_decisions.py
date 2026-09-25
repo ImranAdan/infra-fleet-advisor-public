@@ -10,6 +10,9 @@ then keep one summary comment up to date and relabel the issue:
   every card answered  -> label decided, remove needs-decision
   some cards answered  -> label partially-decided, keep needs-decision
 
+Open decided issues stay watched, so a revised answer updates the record until
+an agent acts on it and closes the issue.
+
 The summary carries a machine-readable record for agents:
   <!-- decisions {"D1": "A", ...} -->
 Comment text is data: it is parsed, bounded and quoted, never executed.
@@ -87,7 +90,8 @@ def gh(*args: str) -> str:
 def collect(repo: str, number: int, dry_run: bool) -> str:
     issue = json.loads(gh("api", f"repos/{repo}/issues/{number}"))
     labels = {label["name"] for label in issue["labels"]}
-    if issue["state"] != "open" or NEEDED not in labels | {PARTIAL}:
+    # Decided issues stay watched until closed: the owner may still revise.
+    if issue["state"] != "open" or not labels & {NEEDED, PARTIAL, DECIDED}:
         return f"#{number}: not an open decision issue"
     known = cards(issue["body"])
     if not known:
@@ -108,20 +112,16 @@ def collect(repo: str, number: int, dry_run: bool) -> str:
     complete = len(decided) == len(known)
     if dry_run:
         return f"#{number}: would record {len(decided)}/{len(known)}\n{body}"
+    # Exactly one summary: keep the first, update it in place, delete strays
+    # (left by an older version or an overlapping run) so no stale record stays.
     existing = [c for c in comments if SUMMARY_MARKER in c["body"]]
-    if existing and existing[-1]["body"] == body:
-        pass  # already up to date: idempotent across sweeps
-    elif existing:
-        gh(
-            "api",
-            "-X",
-            "PATCH",
-            f"repos/{repo}/issues/comments/{existing[-1]['id']}",
-            "-f",
-            f"body={body}",
-        )
-    else:
+    for stray in existing[1:]:
+        gh("api", "-X", "DELETE", f"repos/{repo}/issues/comments/{stray['id']}")
+    if not existing:
         gh("api", f"repos/{repo}/issues/{number}/comments", "-f", f"body={body}")
+    elif existing[0]["body"] != body:
+        comment = existing[0]["id"]
+        gh("api", "-X", "PATCH", f"repos/{repo}/issues/comments/{comment}", "-f", f"body={body}")
     add, remove = ([DECIDED], [NEEDED, PARTIAL]) if complete else ([PARTIAL], [])
     for label in add:
         gh("api", f"repos/{repo}/issues/{number}/labels", "-f", f"labels[]={label}")
@@ -146,7 +146,7 @@ def main(argv: list[str]) -> int:
     if not numbers:
         numbers = [
             int(n)
-            for label in (NEEDED, PARTIAL)
+            for label in (NEEDED, PARTIAL, DECIDED)
             for n in gh("issue", "list", "-R", repo, "--state", "open", "--label", label,
                         "--json", "number", "--jq", ".[].number").split()
         ]  # fmt: skip

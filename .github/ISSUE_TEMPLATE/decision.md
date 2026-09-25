@@ -1,6 +1,6 @@
 ---
 name: Decision needed
-about: An agent (or anyone) needs the owner to choose, and must not guess
+about: A deadlock only the owner can break. Work down the ladder in AGENTS.md first
 title: "Decide: "
 labels: needs-decision
 ---
