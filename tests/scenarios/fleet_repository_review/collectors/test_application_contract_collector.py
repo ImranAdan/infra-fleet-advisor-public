@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from infra_fleet_advisor.core.limits import ExecutionLimits
 from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
     application_contract_collector as collector,
@@ -28,6 +30,7 @@ def _fleet(tmp_path: Path, extra: dict[str, str] | None = None, apps=("shop", "b
         "k8s/applications/platform/hpa.yaml": (
             "kind: HorizontalPodAutoscaler\n"
             "metadata: {name: '${APP_NAME}', namespace: applications}\n"
+            "spec: {scaleTargetRef: {name: '${APP_NAME}'}}\n"
         ),
         "scripts/build.sh": 'docker build -t "$APP_NAME" .\n',
         **{f"k8s/applications/{a}/fleet-app.yaml": _contract(a) for a in apps},
@@ -50,7 +53,7 @@ def test_a_platform_that_names_no_app_with_two_contracts_is_swappable(tmp_path: 
         "contract_present": True,
         "application_count": 2,
         "platform_files_naming_an_app": 0,
-        "platform_objects_with_literal_names": 0,
+        "platform_objects_with_literal_bindings": 0,
         "swappable": True,
     }
     assert evidence.source_path == "k8s/fleet-app/fleet-app.yaml"
@@ -63,6 +66,18 @@ def test_a_platform_file_naming_an_app_is_cited(tmp_path: Path) -> None:
     assert evidence.fact["swappable"] is False
     assert evidence.fact["platform_files_naming_an_app"] == 1
     assert evidence.source_path == "policies/images.yaml"
+
+
+def test_the_generic_acceptance_workflow_cannot_name_an_app(tmp_path: Path) -> None:
+    result = _fleet(
+        tmp_path,
+        {".github/workflows/local-kubernetes.yml": "matrix: {app: [shop, blog]}\n"},
+    )
+
+    [evidence] = result.evidence
+    assert evidence.fact["swappable"] is False
+    assert evidence.fact["platform_files_naming_an_app"] == 1
+    assert evidence.source_path == ".github/workflows/local-kubernetes.yml"
 
 
 def test_a_name_inside_a_longer_word_is_not_a_mention(tmp_path: Path) -> None:
@@ -125,7 +140,7 @@ def test_a_platform_object_with_a_new_literal_name_is_coupling(tmp_path: Path) -
 
     [evidence] = result.evidence
     assert evidence.fact["swappable"] is False
-    assert evidence.fact["platform_objects_with_literal_names"] == 1
+    assert evidence.fact["platform_objects_with_literal_bindings"] == 1
     assert evidence.source_path == "k8s/applications/platform/hpa.yaml"
 
 
@@ -165,3 +180,90 @@ def test_controller_objects_outside_the_app_namespace_are_not_app_bound(tmp_path
     )
 
     assert result.evidence[0].fact["swappable"] is True
+
+
+@pytest.mark.parametrize(
+    ("path", "manifest"),
+    (
+        (
+            "k8s/applications/platform/hpa.yaml",
+            "kind: HorizontalPodAutoscaler\n"
+            "metadata: {name: '${APP_NAME}', namespace: applications}\n"
+            "spec: {scaleTargetRef: {name: backend}}\n",
+        ),
+        (
+            "k8s/applications/platform/canary.yaml",
+            "kind: Canary\nmetadata: {name: '${APP_NAME}', namespace: applications}\n"
+            "spec:\n  targetRef: {name: backend}\n  autoscalerRef: {name: '${APP_NAME}'}\n",
+        ),
+        (
+            "k8s/profiles/aws-staging/applications/ingress.yaml",
+            "kind: Ingress\nmetadata: {name: '${APP_NAME}', namespace: applications}\n"
+            "spec:\n  rules:\n    - http:\n        paths:\n          - backend:\n"
+            "              service: {name: backend}\n",
+        ),
+    ),
+)
+def test_a_literal_application_target_is_coupling(tmp_path: Path, path: str, manifest: str) -> None:
+    result = _fleet(tmp_path, {path: manifest})
+
+    [evidence] = result.evidence
+    assert evidence.fact["swappable"] is False
+    assert evidence.fact["platform_objects_with_literal_bindings"] == 1
+    assert evidence.source_path == path
+
+
+def test_optional_or_alternative_application_bindings_are_evaluated_when_present(
+    tmp_path: Path,
+) -> None:
+    result = _fleet(
+        tmp_path,
+        {
+            "k8s/applications/platform/canary.yaml": (
+                "kind: Canary\nmetadata: {name: '${APP_NAME}', namespace: applications}\n"
+                "spec: {targetRef: {name: '${APP_NAME}'}}\n"
+            ),
+            "k8s/profiles/aws-staging/applications/ingress.yaml": (
+                "kind: Ingress\nmetadata: {name: '${APP_NAME}', namespace: applications}\n"
+                "spec: {defaultBackend: {service: {name: '${APP_NAME}'}}}\n"
+            ),
+        },
+    )
+
+    assert result.evidence[0].fact["swappable"] is True
+
+
+def test_a_literal_default_ingress_backend_is_coupling(tmp_path: Path) -> None:
+    path = "k8s/profiles/aws-staging/applications/ingress.yaml"
+    result = _fleet(
+        tmp_path,
+        {
+            path: (
+                "kind: Ingress\nmetadata: {name: '${APP_NAME}', namespace: applications}\n"
+                "spec: {defaultBackend: {service: {name: backend}}}\n"
+            )
+        },
+    )
+
+    [evidence] = result.evidence
+    assert evidence.fact["swappable"] is False
+    assert evidence.source_path == path
+
+
+def test_an_unknown_app_contract_directory_is_not_treated_as_platform(tmp_path: Path) -> None:
+    result = _fleet(
+        tmp_path,
+        {
+            "k8s/applications/other/fleet-app.yaml": _contract("mismatch"),
+            "k8s/applications/other/hpa.yaml": (
+                "kind: HorizontalPodAutoscaler\n"
+                "metadata: {name: other, namespace: applications}\n"
+                "spec: {scaleTargetRef: {name: other}}\n"
+            ),
+        },
+    )
+
+    [evidence] = result.evidence
+    assert result.coverage.status == "partial"
+    assert "swappable" not in evidence.fact
+    assert evidence.fact["platform_objects_with_literal_bindings"] == 0
