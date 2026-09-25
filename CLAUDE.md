@@ -38,7 +38,10 @@ It applies only while **every** condition holds:
 - required status checks pass on the head commit;
 - every review thread is resolved, each with a reply saying what changed or why
   the finding was declined;
-- the change stays inside the scope the user asked for.
+- the change stays inside the scope the user asked for;
+- `python3 .claude/skills/merge-gate/merge_ready.py <PR>` reports `READY`.
+  It checks the first two conditions and the evidence mechanically; `SURFACE`
+  means stop and surface, `BLOCKED` means fix and run it again.
 
 Merge silently for: mechanical fixes, lint, typos, added tests, and findings you
 have verified were already fixed or are stale.
