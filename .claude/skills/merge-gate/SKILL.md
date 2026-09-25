@@ -1,6 +1,6 @@
 ---
 name: merge-gate
-description: Decide whether an agent may merge a pull request without a human reading it. Runs merge_ready.py, which turns the merge conditions into checks - green checks on the head commit, every review thread resolved with a reply, a Verification section with evidence, and no permission, credential, dependency or decision-record change. Use before merging any pull request you raised.
+description: Decide whether an agent may merge a pull request without a human reading it. Runs merge_ready.py, which checks CI, review replies and verification evidence, then routes scoped decisions to the independent judge or owner policy. Use before merging any pull request you raised.
 ---
 
 # Merge gate
@@ -14,9 +14,10 @@ python3 .claude/skills/merge-gate/merge_ready.py <PR_NUMBER>
 
 | Verdict | Exit | Meaning | What to do |
 |---|---|---|---|
-| `READY` | 0 | Every condition holds | Merge, then say what merged and why |
-| `SURFACE` | 10 | Mergeable, but a human decides | Do not merge; tell the owner each reason |
-| `BLOCKED` | 1 | Not mergeable yet | Fix the reasons, push, run the gate again |
+| `READY` | 0 | Every condition and applicable decision holds | Merge, then say what merged and why |
+| `PARK` | 10 | An owner-only category needs `owner-approved` | Leave it open and tell the owner the category |
+| `JUDGE` | 11 | The independent judge has not approved this head | Wait for its comment, then run the gate again |
+| `BLOCKED` | 1 | Evidence, CI, review or the judge blocks it | Fix the reasons, push, run the gate again |
 
 ## What it checks
 
@@ -36,7 +37,7 @@ python3 .claude/skills/merge-gate/merge_ready.py <PR_NUMBER>
 
 ## What it cannot check
 
-Judge these yourself. Any one means `SURFACE`, whatever the script says:
+Judge these yourself. Any one means `PARK`, whatever the script says:
 
 - you disagree with a review finding, in whole or in part;
 - the change goes beyond what the owner asked for;
@@ -45,3 +46,8 @@ Judge these yourself. Any one means `SURFACE`, whatever the script says:
 
 Encode a recurring judgment as a new rule in `merge_ready.py` with a case in
 its self-test (`python3 .claude/skills/merge-gate/merge_ready.py --self-test`), not as more prose here.
+
+An agent never adds `owner-approved` and never posts or imitates a
+`github-actions[bot]` judge comment. Judge decisions are bound to the current
+head SHA. Declared intent and its advisor gate remain the first authority; the
+judge handles only reversible categories that policy assigns to it.

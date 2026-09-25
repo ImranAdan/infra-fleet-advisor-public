@@ -50,19 +50,25 @@ It applies only while **every** condition holds:
   the finding was declined;
 - the change stays inside the scope the user asked for;
 - `python3 .claude/skills/merge-gate/merge_ready.py <PR>` reports `READY`.
-  It checks the first two conditions and the evidence mechanically; `SURFACE`
-  means stop and surface, `BLOCKED` means fix and run it again.
+  It checks the first two conditions and the evidence mechanically. `PARK`
+  means stop for the owner, `JUDGE` means wait for the independent judge, and
+  `BLOCKED` means fix and run it again. A `READY` verdict includes any judge
+  decisions required for the current head commit.
 
 Merge silently for: mechanical fixes, lint, typos, added tests, and findings you
 have verified were already fixed or are stale.
 
 **Stop and surface** — do not merge — when any of these apply:
 
+- the gate reports `PARK`;
 - you disagree with a finding, in whole or in part;
-- the fix changes documented scope, a product requirement, or a decision record;
-- it adds a permission, credential, or dependency;
 - a check fails and the fix is not obvious;
 - it is a security finding where merging would mean judging your own work.
+
+Never add `owner-approved` and never post or imitate a merge-judge comment.
+Changes to scope, requirements, decisions, permissions, credentials and
+dependencies follow the gate's policy: reversible categories go to the judge;
+durable authority and access changes park for the owner.
 
 The grant covers pull requests you raised. It never covers force-pushing over
 someone else's work, changing repository settings, or anything in another
