@@ -102,3 +102,10 @@ on the host at all: use Docker as the fallback rather than asking to install
 something locally. Skip Docker only when it's unavailable, or the task
 specifically requires host-native execution (editing files outside a
 mountable path, or needing host services Docker can't reach).
+
+## Verification skills
+
+Project skills in `.claude/skills/` load on demand. Use `verify-advisor`
+before claiming an advisor change works, and `blast-radius` before merging a
+change you do not fully trust. The standard they apply is the Verification
+section of `AGENTS.md`.
