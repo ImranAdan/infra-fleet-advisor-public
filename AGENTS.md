@@ -251,12 +251,32 @@ doctor line) rather than another paragraph here.
 
 ## When a decision is not yours
 
-If you cannot decide between options, or a decision belongs to the owner (see
-the merge gate's owner categories), do not guess and do not stall. Open an
-issue from the **Decision needed** template (`.github/ISSUE_TEMPLATE/decision.md`):
-a short TL;DR, evidence for each option, one decision card per question with
-your recommendation, and a reply template. The owner answers with a comment,
-and you take it from there. Meanwhile carry on with other work.
+Decisions should almost never reach the owner: constant approvals defeat the
+point. The advisor is the captain. Work down this ladder and stop at the first
+rung that decides:
+
+1. **Evidence.** If tests, drills or a verify skill prove one option and not
+   the other, take the proven one.
+2. **Declared intent.** The advisor's intent catalog
+   (`infra-fleet-advisor-public/intent/`) records the owner's standing
+   decisions, and the intent gate enforces them on every fleet pull request.
+   If a position covers the choice, follow it.
+3. **Precedent.** If the same question was answered before
+   (`gh issue list --label decided --state all`), follow that answer.
+4. **Reversibility.** If the choice is cheap to undo and within declared
+   intent, decide yourself, state the reasoning and the alternative you
+   rejected in the pull request, and move on.
+
+Only a **deadlock** goes to the owner: declared intent is silent or two
+positions conflict, *and* the choice is expensive to reverse; or only the
+owner can act (a secret, billing, or an account or organisation setting). Then
+open an issue from the **Decision needed** template
+(`.github/ISSUE_TEMPLATE/decision.md`): a short TL;DR, evidence for each
+option, one decision card per question with your recommendation, and a reply
+template. The owner answers with a comment and the decision collector records
+it; carry on with other work meanwhile. When a deadlock reveals a standing
+preference, propose it as declared intent, so the same question never
+reaches the owner twice.
 
 This is a standing exception the owner granted (September 2026) to the
 ask-first rule for issues in `CLAUDE.md`, and it covers exactly two actions:

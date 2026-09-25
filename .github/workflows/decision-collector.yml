@@ -16,8 +16,10 @@ permissions:
   contents: read
   issues: write
 
+# One group for every run: a sweep and a comment-triggered run never write the
+# same summary at once.
 concurrency:
-  group: decision-collector-${{ github.event.issue.number || 'sweep' }}
+  group: decision-collector
   cancel-in-progress: false
 
 jobs:
@@ -28,7 +30,8 @@ jobs:
       (github.event.issue.pull_request == null &&
        github.event.comment.user.login == github.repository_owner &&
        (contains(github.event.issue.labels.*.name, 'needs-decision') ||
-        contains(github.event.issue.labels.*.name, 'partially-decided')))
+        contains(github.event.issue.labels.*.name, 'partially-decided') ||
+        contains(github.event.issue.labels.*.name, 'decided')))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
