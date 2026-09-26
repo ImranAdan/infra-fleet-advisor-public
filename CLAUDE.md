@@ -54,6 +54,9 @@ It applies only while **every** condition holds:
   means stop for the owner, `JUDGE` means wait for the independent judge, and
   `BLOCKED` means fix and run it again. A `READY` verdict includes any judge
   decisions required for the current head commit.
+- The merge is performed only by rerunning that command with `--merge`. It
+  passes the checked SHA to GitHub's `--match-head-commit`, so a concurrent
+  push fails the merge and requires a new gate run.
 
 Merge silently for: mechanical fixes, lint, typos, added tests, and findings you
 have verified were already fixed or are stale.

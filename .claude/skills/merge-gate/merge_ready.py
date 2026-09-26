@@ -363,6 +363,20 @@ def gh(*args: str) -> str:
     return result.stdout
 
 
+def merge_pull_request(number: str, repo: str, sha: str) -> None:
+    """Merge only if GitHub still reports the exact head evaluated by this gate."""
+    gh(
+        "pr",
+        "merge",
+        number,
+        "-R",
+        repo,
+        "--merge",
+        "--match-head-commit",
+        sha,
+    )
+
+
 def gh_json_lines(*args: str) -> list[dict[str, Any]]:
     return [json.loads(line) for line in gh(*args).splitlines() if line.strip()]
 
@@ -512,6 +526,14 @@ def main(argv: list[str]) -> int:
     for reason in reasons:
         print(f"{verdict}  {reason}")
     print(f"verdict: {verdict}")
+    if verdict == "READY":
+        if "--merge" in argv:
+            merge_pull_request(number, repo, sha)
+            print(f"merged {repo}#{number} at {sha}")
+        else:
+            print(
+                f"merge: rerun this gate with --merge; GitHub will require the checked head {sha}"
+            )
     return {"READY": 0, "BLOCKED": 1, "PARK": 10, "JUDGE": 11}[verdict]
 
 
@@ -692,6 +714,31 @@ def self_test() -> int:
     assert has_verification("## Verification\n- `./fleet test` -> passed all six stages\n")
     assert not has_verification("## Verification\n\n- `command` → result\n")
     assert not has_verification("Verified locally: `make check` → 594 passed.")
+
+    calls: list[tuple[str, ...]] = []
+    original_gh = globals()["gh"]
+
+    def fake_gh(*args: str) -> str:
+        calls.append(args)
+        return ""
+
+    globals()["gh"] = fake_gh
+    try:
+        merge_pull_request("7", "owner/repo", sha)
+    finally:
+        globals()["gh"] = original_gh
+    assert calls == [
+        (
+            "pr",
+            "merge",
+            "7",
+            "-R",
+            "owner/repo",
+            "--merge",
+            "--match-head-commit",
+            sha,
+        )
+    ]
     print("self-test passed")
     return 0
 

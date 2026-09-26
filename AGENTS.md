@@ -245,10 +245,11 @@ proves the work.
 
 Every pull request carries a `## Verification` section with the commands run
 and what they showed (see `.github/pull_request_template.md`). An agent merges
-its own pull request only when the merge gate reports `READY`. An agent never
-adds the `owner-approved` label and never posts or imitates a merge-judge
-comment. The workflow binds an owner-applied label to the exact head SHA; a
-label without that trusted record does not approve a merge.
+its own pull request only by rerunning the gate with `--merge` after it reports
+`READY`; that binds the merge to the checked head SHA. An agent never adds the
+`owner-approved` label and never posts or imitates a merge-judge comment. The
+workflow binds an owner-applied label to the exact head SHA; a label without
+that trusted record does not approve a merge.
 
 When a verification lesson recurs, encode it as a check (a test, a drill, a
 doctor line) rather than another paragraph here.

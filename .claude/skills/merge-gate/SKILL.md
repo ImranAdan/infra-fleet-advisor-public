@@ -12,9 +12,16 @@ confidence, says it is safe. This skill makes that decision a command:
 python3 .claude/skills/merge-gate/merge_ready.py <PR_NUMBER>
 ```
 
+When that command reports `READY`, merge through the same gate so GitHub binds
+the operation to the head commit that was checked:
+
+```bash
+python3 .claude/skills/merge-gate/merge_ready.py <PR_NUMBER> --merge
+```
+
 | Verdict | Exit | Meaning | What to do |
 |---|---|---|---|
-| `READY` | 0 | Every condition and applicable decision holds | Merge, then say what merged and why |
+| `READY` | 0 | Every condition and applicable decision holds | Rerun with `--merge`, then say what merged and why |
 | `PARK` | 10 | An owner-only category needs current-head owner approval | Leave it open and tell the owner the category |
 | `JUDGE` | 11 | The independent judge has not approved this head | Wait for its comment, then run the gate again |
 | `BLOCKED` | 1 | Evidence, CI, review or the judge blocks it | Fix the reasons, push, run the gate again |
@@ -24,6 +31,9 @@ python3 .claude/skills/merge-gate/merge_ready.py <PR_NUMBER>
 - **Checks:** every check run and status on the head commit completed green.
   One still running is not green.
 - **Mergeable:** GitHub reports the branch `CLEAN`: no conflicts, not behind.
+- **Exact head:** `--merge` passes the checked SHA to GitHub's
+  `--match-head-commit`; a concurrent push makes the merge fail and requires a
+  new gate run.
 - **Review:** no unresolved thread. A thread resolved without a reply saying
   what changed or why a finding was declined surfaces.
 - **Evidence:** the body has a `## Verification` section with at least one
