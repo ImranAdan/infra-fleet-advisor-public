@@ -10,7 +10,7 @@ import sys
 import urllib.request
 from typing import Any
 
-from merge_ready import load_policy, scope_findings
+from merge_ready import load_policy, owner_approval, scope_findings
 
 MAX_DIFF_CHARS = 60_000
 MAX_PR_BODY_CHARS = 12_000
@@ -140,21 +140,6 @@ def _judge_decision_count(comments: list[dict[str, str]], trusted_author: str) -
     )
 
 
-def _owner_approval_state(comments: list[dict[str, str]], sha: str, trusted_author: str) -> bool:
-    """Return the newest trusted approval or revocation for this head."""
-    marker = f"<!-- merge-gate-owner-approved sha={sha} -->"
-    for comment in reversed(comments):
-        if comment.get("author") != trusted_author:
-            continue
-        lines = comment.get("body", "").splitlines()
-        if len(lines) >= 2 and lines[0] == marker:
-            if lines[1] == "OWNER-APPROVED: true":
-                return True
-            if lines[1] == "OWNER-APPROVED: false":
-                return False
-    return False
-
-
 def _post_owner_approval(repo: str, number: str, sha: str, approved: bool) -> None:
     marker = f"<!-- merge-gate-owner-approved sha={sha} -->"
     gh(
@@ -192,7 +177,7 @@ def _park_owner_categories(
         )
         labels = labels - {"owner-approved"}
 
-    has_current_approval = _owner_approval_state(comments, sha, trusted_author)
+    has_current_approval = owner_approval(comments, sha, trusted_author)
     owner_labeled_current_head = (
         event_action == "labeled"
         and event_label == "owner-approved"
