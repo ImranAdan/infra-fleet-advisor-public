@@ -140,6 +140,33 @@ def _judge_decision_count(comments: list[dict[str, str]], trusted_author: str) -
     )
 
 
+def _owner_approval_state(comments: list[dict[str, str]], sha: str, trusted_author: str) -> bool:
+    """Return the newest trusted approval or revocation for this head."""
+    marker = f"<!-- merge-gate-owner-approved sha={sha} -->"
+    for comment in reversed(comments):
+        if comment.get("author") != trusted_author:
+            continue
+        lines = comment.get("body", "").splitlines()
+        if len(lines) >= 2 and lines[0] == marker:
+            if lines[1] == "OWNER-APPROVED: true":
+                return True
+            if lines[1] == "OWNER-APPROVED: false":
+                return False
+    return False
+
+
+def _post_owner_approval(repo: str, number: str, sha: str, approved: bool) -> None:
+    marker = f"<!-- merge-gate-owner-approved sha={sha} -->"
+    gh(
+        "api",
+        "--method",
+        "POST",
+        f"repos/{repo}/issues/{number}/comments",
+        "-f",
+        f"body={marker}\nOWNER-APPROVED: {str(approved).lower()}",
+    )
+
+
 def _park_owner_categories(
     repo: str,
     number: str,
@@ -165,12 +192,7 @@ def _park_owner_categories(
         )
         labels = labels - {"owner-approved"}
 
-    approval_marker = f"<!-- merge-gate-owner-approved sha={sha} -->\nOWNER-APPROVED: true"
-    has_current_approval = any(
-        comment.get("author") == trusted_author
-        and comment.get("body", "").startswith(approval_marker)
-        for comment in comments
-    )
+    has_current_approval = _owner_approval_state(comments, sha, trusted_author)
     owner_labeled_current_head = (
         event_action == "labeled"
         and event_label == "owner-approved"
@@ -179,15 +201,17 @@ def _park_owner_categories(
         and "owner-approved" in labels
     )
     if owner_labeled_current_head and not has_current_approval:
-        gh(
-            "api",
-            "--method",
-            "POST",
-            f"repos/{repo}/issues/{number}/comments",
-            "-f",
-            f"body={approval_marker}",
-        )
+        _post_owner_approval(repo, number, sha, True)
         has_current_approval = True
+    elif (
+        event_label == "owner-approved"
+        and event_action in {"labeled", "unlabeled"}
+        and has_current_approval
+    ):
+        # Removing approval, or adding its label as anyone but the repository
+        # owner, revokes the durable record before the label can be reused.
+        _post_owner_approval(repo, number, sha, False)
+        has_current_approval = False
 
     if "owner-approved" in labels and has_current_approval:
         if "needs-decision" in labels:
@@ -366,15 +390,43 @@ def self_test() -> int:
             sha,
             ["credential"],
             {"owner-approved"},
-            [],
+            [
+                {
+                    "author": "github-actions[bot]",
+                    "body": (f"<!-- merge-gate-owner-approved sha={sha} -->\nOWNER-APPROVED: true"),
+                }
+            ],
             "labeled",
             "owner-approved",
             "contributor",
             "owner",
             "github-actions[bot]",
         )
-        assert not any("merge-gate-owner-approved" in item for call in calls for item in call)
+        assert not any("OWNER-APPROVED: true" in item for call in calls for item in call)
+        assert any("OWNER-APPROVED: false" in item for call in calls for item in call)
         assert any("DELETE" in call and "owner-approved" in call[-1] for call in calls)
+
+        calls.clear()
+        _park_owner_categories(
+            "owner/repo",
+            "7",
+            sha,
+            ["credential"],
+            set(),
+            [
+                {
+                    "author": "github-actions[bot]",
+                    "body": (f"<!-- merge-gate-owner-approved sha={sha} -->\nOWNER-APPROVED: true"),
+                }
+            ],
+            "unlabeled",
+            "owner-approved",
+            "owner",
+            "owner",
+            "github-actions[bot]",
+        )
+        assert any("OWNER-APPROVED: false" in item for call in calls for item in call)
+        assert any("labels[]=needs-decision" in call for call in calls)
 
         calls.clear()
         _park_owner_categories(

@@ -297,11 +297,17 @@ def judge_decision(
 
 def owner_approval(comments: list[dict[str, str]], sha: str, trusted_author: str) -> bool:
     """Return whether the trusted workflow recorded approval for this exact head."""
-    marker = f"<!-- merge-gate-owner-approved sha={sha} -->\nOWNER-APPROVED: true"
-    return any(
-        comment.get("author") == trusted_author and comment.get("body", "").startswith(marker)
-        for comment in comments
-    )
+    marker = f"<!-- merge-gate-owner-approved sha={sha} -->"
+    for comment in reversed(comments):
+        if comment.get("author") != trusted_author:
+            continue
+        lines = comment.get("body", "").splitlines()
+        if len(lines) >= 2 and lines[0] == marker:
+            if lines[1] == "OWNER-APPROVED: true":
+                return True
+            if lines[1] == "OWNER-APPROVED: false":
+                return False
+    return False
 
 
 def decide(
@@ -668,6 +674,14 @@ def self_test() -> int:
     assert owner_approval(owner_bot, sha, judge["trusted_author"])
     assert not owner_approval(owner_human, sha, judge["trusted_author"])
     assert not owner_approval(owner_old, sha, judge["trusted_author"])
+    owner_revoked = [
+        *owner_bot,
+        {
+            "author": "github-actions[bot]",
+            "body": f"<!-- merge-gate-owner-approved sha={sha} -->\nOWNER-APPROVED: false",
+        },
+    ]
+    assert not owner_approval(owner_revoked, sha, judge["trusted_author"])
     assert decide(credential, rules, {"owner-approved"}, decision, True)[0] == "READY"
     authority = [_finding("merge-authority", "gate")]
     authority_approve = ("APPROVE", frozenset({"merge-authority"}))
