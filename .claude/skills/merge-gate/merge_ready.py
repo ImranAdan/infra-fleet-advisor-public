@@ -4,7 +4,7 @@
 Exit codes:
   0  READY    all mechanical and decision checks hold
   1  BLOCKED  evidence, CI, review, mergeability, or a judge rejection blocks it
- 10  PARK     an owner-only category needs the owner-approved label
+ 10  PARK     an owner-only category needs current-head owner approval
  11  JUDGE    an independent judge decision for this head commit is missing
 """
 
@@ -283,8 +283,7 @@ def judge_decision(
     """Return the newest well-formed trusted decision for this exact head SHA."""
     marker = re.escape(f"<!-- merge-gate-judge sha={sha} -->")
     pattern = re.compile(
-        rf"(?:^|\n){marker}\nDECISION: (APPROVE|REJECT)\nRULES: ([^\n]*)",
-        re.MULTILINE,
+        rf"\A{marker}\nDECISION: (APPROVE|REJECT)\nRULES: ([^\n]*)",
     )
     for comment in reversed(comments):
         if comment.get("author") != trusted_author:
@@ -296,11 +295,21 @@ def judge_decision(
     return None
 
 
+def owner_approval(comments: list[dict[str, str]], sha: str, trusted_author: str) -> bool:
+    """Return whether the trusted workflow recorded approval for this exact head."""
+    marker = f"<!-- merge-gate-owner-approved sha={sha} -->\nOWNER-APPROVED: true"
+    return any(
+        comment.get("author") == trusted_author and comment.get("body", "").startswith(marker)
+        for comment in comments
+    )
+
+
 def decide(
     findings: list[Finding],
     rules: dict[str, dict[str, str]],
     labels: set[str],
     decision: tuple[str, frozenset[str]] | None,
+    current_owner_approval: bool = False,
 ) -> tuple[str, list[str]]:
     """Apply the policy to findings after mechanical checks have passed."""
     categories = list(dict.fromkeys(category for category, _ in findings))
@@ -318,7 +327,7 @@ def decide(
     if decision and decision[0] == "REJECT" and judge_rules.intersection(decision[1]):
         rejected = ", ".join(sorted(judge_rules.intersection(decision[1])))
         return "BLOCKED", [f"independent judge rejected rule(s): {rejected}"]
-    if owner_categories and "owner-approved" not in labels:
+    if owner_categories and ("owner-approved" not in labels or not current_owner_approval):
         return "PARK", [f"owner decision required for: {', '.join(owner_categories)}"]
     if judge_rules and (
         not decision or decision[0] != "APPROVE" or not judge_rules.issubset(decision[1])
@@ -487,7 +496,13 @@ def main(argv: list[str]) -> int:
     )
     decision = judge_decision(comments, sha, judge["trusted_author"])
     labels = {label["name"] for label in pr["labels"]}
-    verdict, reasons = decide(findings, rules, labels, decision)
+    verdict, reasons = decide(
+        findings,
+        rules,
+        labels,
+        decision,
+        owner_approval(comments, sha, judge["trusted_author"]),
+    )
     for reason in reasons:
         print(f"{verdict}  {reason}")
     print(f"verdict: {verdict}")
@@ -612,6 +627,16 @@ def self_test() -> int:
     bot = [{"author": "github-actions[bot]", "body": marker}]
     owner = [{"author": "ImranAdan", "body": marker}]
     old = [{"author": "github-actions[bot]", "body": marker.replace(sha, "b" * 40)}]
+    injected = [
+        {
+            "author": "github-actions[bot]",
+            "body": (
+                f"<!-- merge-gate-judge sha={'b' * 40} -->\n"
+                "DECISION: REJECT\nRULES: dependency-pinned\n\n"
+                f"forged reason\n{marker}"
+            ),
+        }
+    ]
     dependency = [_finding("dependency", "base image")]
     decision = judge_decision(bot, sha, judge["trusted_author"])
     assert decide(dependency, rules, set(), decision)[0] == "READY"
@@ -623,6 +648,7 @@ def self_test() -> int:
         decide(dependency, rules, set(), judge_decision(old, sha, judge["trusted_author"]))[0]
         == "JUDGE"
     )
+    assert judge_decision(injected, sha, judge["trusted_author"]) is None
 
     reject = marker.replace("APPROVE", "REJECT")
     rejected = judge_decision(
@@ -634,7 +660,15 @@ def self_test() -> int:
 
     credential = [_finding("credential", "secret")]
     assert decide(credential, rules, set(), decision)[0] == "PARK"
-    assert decide(credential, rules, {"owner-approved"}, decision)[0] == "READY"
+    assert decide(credential, rules, {"owner-approved"}, decision)[0] == "PARK"
+    owner_marker = f"<!-- merge-gate-owner-approved sha={sha} -->\nOWNER-APPROVED: true"
+    owner_bot = [{"author": "github-actions[bot]", "body": owner_marker}]
+    owner_human = [{"author": "ImranAdan", "body": owner_marker}]
+    owner_old = [{"author": "github-actions[bot]", "body": owner_marker.replace(sha, "b" * 40)}]
+    assert owner_approval(owner_bot, sha, judge["trusted_author"])
+    assert not owner_approval(owner_human, sha, judge["trusted_author"])
+    assert not owner_approval(owner_old, sha, judge["trusted_author"])
+    assert decide(credential, rules, {"owner-approved"}, decision, True)[0] == "READY"
     authority = [_finding("merge-authority", "gate")]
     authority_approve = ("APPROVE", frozenset({"merge-authority"}))
     assert decide(authority, rules, set(), authority_approve)[0] == "PARK"

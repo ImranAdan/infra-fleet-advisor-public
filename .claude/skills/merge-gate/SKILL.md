@@ -15,7 +15,7 @@ python3 .claude/skills/merge-gate/merge_ready.py <PR_NUMBER>
 | Verdict | Exit | Meaning | What to do |
 |---|---|---|---|
 | `READY` | 0 | Every condition and applicable decision holds | Merge, then say what merged and why |
-| `PARK` | 10 | An owner-only category needs `owner-approved` | Leave it open and tell the owner the category |
+| `PARK` | 10 | An owner-only category needs current-head owner approval | Leave it open and tell the owner the category |
 | `JUDGE` | 11 | The independent judge has not approved this head | Wait for its comment, then run the gate again |
 | `BLOCKED` | 1 | Evidence, CI, review or the judge blocks it | Fix the reasons, push, run the gate again |
 
@@ -48,6 +48,10 @@ Encode a recurring judgment as a new rule in `merge_ready.py` with a case in
 its self-test (`python3 .claude/skills/merge-gate/merge_ready.py --self-test`), not as more prose here.
 
 An agent never adds `owner-approved` and never posts or imitates a
-`github-actions[bot]` judge comment. Judge decisions are bound to the current
-head SHA. Declared intent and its advisor gate remain the first authority; the
-judge handles only reversible categories that policy assigns to it.
+`github-actions[bot]` judge comment. When the repository owner adds the label,
+the workflow records a trusted approval for that exact head SHA; the gate
+requires both records. Judge decisions are bound to the current head SHA too.
+The secret-backed judge runs only for branches in this repository, so a fork
+pull request stays at `JUDGE` for human handling. Declared intent and its
+advisor gate remain the first authority; the judge handles only reversible
+categories that policy assigns to it.
