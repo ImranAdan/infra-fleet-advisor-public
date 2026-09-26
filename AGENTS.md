@@ -240,11 +240,17 @@ proves the work.
 - `blast-radius`: what a change breaks beyond its diff, including report
   consumers in the fleet.
 - `merge-gate`: `merge_ready.py <PR>` decides whether an agent may merge a
-  pull request unread: `READY`, `SURFACE` (a human decides) or `BLOCKED`.
+  pull request unread: `READY`, `PARK` (the owner decides), `JUDGE` (the
+  independent judge decides) or `BLOCKED`.
 
 Every pull request carries a `## Verification` section with the commands run
 and what they showed (see `.github/pull_request_template.md`). An agent merges
-its own pull request only when the merge gate reports `READY`.
+its own pull request only by rerunning the gate with `--merge` after it reports
+`READY`; that binds the merge to the checked head SHA. An agent never adds the
+`owner-approved` label and never posts or imitates a merge-judge comment. The
+workflow binds an owner-applied label to the exact head SHA; a label without
+that trusted record, or whose latest label event was not made by the repository
+owner, does not approve a merge.
 
 When a verification lesson recurs, encode it as a check (a test, a drill, a
 doctor line) rather than another paragraph here.
