@@ -88,11 +88,24 @@ def _finding(category: str, description: str) -> Finding:
 
 def _adds_privileged_trigger(text: str) -> bool:
     """Recognize mapping, scalar, list and flow-map GitHub event syntax."""
-    if re.match(r"(?:pull_request_target|issue_comment|workflow_run)\s*:", text):
+    if re.match(
+        r"(?:-\s*)?['\"]?(?:pull_request_target|issue_comment|workflow_run)"
+        r"['\"]?\s*(?::|$)",
+        text,
+    ):
         return True
     if not re.match(r"['\"]?on['\"]?\s*:", text):
         return False
     return bool(PRIVILEGED_TRIGGER.search(text))
+
+
+def _adds_remote_action(text: str) -> bool:
+    """Return whether an added uses value points outside this repository."""
+    match = re.match(r"(?:-\s*)?uses:\s+(\S+)", text)
+    if not match:
+        return False
+    target = match.group(1).strip("'\"")
+    return not target.startswith(("./", "/", "$/"))
 
 
 def _hunk_has_rbac_marker(lines: list[str], start: int) -> bool:
@@ -151,7 +164,7 @@ def _line_findings(path: str, line: str) -> list[Finding]:
             findings.append(
                 _finding("credential", f"adds a credential reference in {path}: {text[:80]}")
             )
-        if added and re.match(r"(?:-\s*)?uses:\s+(?![./])\S", text):
+        if added and _adds_remote_action(text):
             findings.append(_finding("dependency", f"adds a remote action in {path}: {text[:80]}"))
 
     if added and DOCKERFILE.search(path) and re.match(r"FROM\s", text):
@@ -585,6 +598,8 @@ def self_test() -> int:
                 "+          other: ${{ secrets['OTHER_TOKEN'] }}",
                 "+        secrets: inherit",
                 "+        uses: ./.github/actions/local",
+                "+        uses: $/.github/actions/build",
+                '+        uses: "$/actions/quoted"',
             ),
             *_file("applications/x/Dockerfile", "+FROM python:3.13-slim"),
             *_file(
@@ -668,7 +683,13 @@ def self_test() -> int:
     assert _adds_privileged_trigger("on: pull_request_target")
     assert _adds_privileged_trigger("on: [push, pull_request_target]")
     assert _adds_privileged_trigger("on: {workflow_run: {types: [completed]}}")
+    assert _adds_privileged_trigger("- pull_request_target")
+    assert _adds_privileged_trigger('- "issue_comment"')
+    assert _adds_privileged_trigger('"workflow_run":')
     assert not _adds_privileged_trigger("on: [push, pull_request]")
+    assert not _adds_remote_action("uses: $/.github/actions/build")
+    assert not _adds_remote_action('uses: "$/actions/quoted"')
+    assert _adds_remote_action("uses: actions/checkout@0123456789abcdef")
 
     rules, judge = load_policy()
     assert judge["trusted_author"] == "github-actions[bot]"

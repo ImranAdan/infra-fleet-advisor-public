@@ -30,7 +30,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           EVENT_ACTION: ${{ github.event.action }}
-          EVENT_ACTOR: ${{ github.actor }}
+          EVENT_ACTOR: ${{ github.triggering_actor == github.actor && github.actor || '' }}
           EVENT_LABEL: ${{ github.event.label.name || '' }}
           REPOSITORY_OWNER: ${{ github.repository_owner }}
           PR: ${{ github.event.pull_request.number }}
