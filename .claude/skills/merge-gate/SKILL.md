@@ -60,7 +60,8 @@ its self-test (`python3 .claude/skills/merge-gate/merge_ready.py --self-test`), 
 An agent never adds `owner-approved` and never posts or imitates a
 `github-actions[bot]` judge comment. When the repository owner adds the label,
 the workflow records a trusted approval for that exact head SHA; the gate
-requires both records. Judge decisions are bound to the current head SHA too.
+requires that record, the label, and a latest label event from the repository
+owner. Judge decisions are bound to the current head SHA too.
 The secret-backed judge runs only for branches in this repository, so a fork
 pull request stays at `JUDGE` for human handling. Declared intent and its
 advisor gate remain the first authority; the judge handles only reversible

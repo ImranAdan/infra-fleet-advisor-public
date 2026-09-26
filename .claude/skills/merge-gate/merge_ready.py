@@ -310,6 +310,20 @@ def owner_approval(comments: list[dict[str, str]], sha: str, trusted_author: str
     return False
 
 
+def owner_label_approval(events: list[dict[str, str]], repository_owner: str) -> bool:
+    """Require the newest owner-approved label event to come from the owner."""
+    if not repository_owner:
+        return False
+    for event in reversed(events):
+        if event.get("label") != "owner-approved":
+            continue
+        return (
+            event.get("event") == "labeled"
+            and event.get("actor", "").casefold() == repository_owner.casefold()
+        )
+    return False
+
+
 def decide(
     findings: list[Finding],
     rules: dict[str, dict[str, str]],
@@ -516,12 +530,20 @@ def main(argv: list[str]) -> int:
     )
     decision = judge_decision(comments, sha, judge["trusted_author"])
     labels = {label["name"] for label in pr["labels"]}
+    owner_events = gh_json_lines(
+        "api",
+        "--paginate",
+        f"repos/{repo}/issues/{number}/events?per_page=100",
+        "--jq",
+        '.[]|select(.label.name=="owner-approved")|{event,actor:.actor.login,label:.label.name}',
+    )
     verdict, reasons = decide(
         findings,
         rules,
         labels,
         decision,
-        owner_approval(comments, sha, judge["trusted_author"]),
+        owner_approval(comments, sha, judge["trusted_author"])
+        and owner_label_approval(owner_events, owner),
     )
     for reason in reasons:
         print(f"{verdict}  {reason}")
@@ -704,6 +726,19 @@ def self_test() -> int:
         },
     ]
     assert not owner_approval(owner_revoked, sha, judge["trusted_author"])
+    owner_event = [{"event": "labeled", "actor": "ImranAdan", "label": "owner-approved"}]
+    non_owner_event = [
+        *owner_event,
+        {"event": "labeled", "actor": "contributor", "label": "owner-approved"},
+    ]
+    removed_event = [
+        *owner_event,
+        {"event": "unlabeled", "actor": "ImranAdan", "label": "owner-approved"},
+    ]
+    assert owner_label_approval(owner_event, "ImranAdan")
+    assert not owner_label_approval(non_owner_event, "ImranAdan")
+    assert not owner_label_approval(removed_event, "ImranAdan")
+    assert not owner_label_approval(owner_event, "another-owner")
     assert decide(credential, rules, {"owner-approved"}, decision, True)[0] == "READY"
     authority = [_finding("merge-authority", "gate")]
     authority_approve = ("APPROVE", frozenset({"merge-authority"}))
