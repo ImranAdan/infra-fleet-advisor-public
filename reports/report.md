@@ -1,10 +1,10 @@
 # Infra Fleet Advisor report
 
-- Source: `infra-fleet-public` @ `06627a41483164723acb22abd2d1b355cf993c1d`
+- Source: `infra-fleet-public` @ `6e11b8fefe80c754f2b3d5a779b0d2d3592cb779`
 - Advisor version: `0.1.0` · Policy version: `1.1`
-- Model: `stub-synthesizer-v1` · Run started: `2026-09-27T22:27:43.961288+00:00`
+- Model: `stub-synthesizer-v1` · Run started: `2026-09-27T23:06:49.202237+00:00`
 - Intent catalog: `intent-md-v1:6719a4a57dc76f4db90d2de10088c3ba13731783ac629cfb37f8e5e8dfdc06b3`
-- Lifecycle: 1 new, 2 unchanged, 7 resolved, 0 suppressed (0 rejected)
+- Lifecycle: 0 new, 1 unchanged, 9 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
 
@@ -20,18 +20,16 @@
 
 ## Intent evaluation
 
-**Coverage:** 21 of 21 positions have a check — 6 satisfied, 3 divergent, 12 checked but unproven; 0 declared without a check.
+**Coverage:** 21 of 21 positions have a check — 6 satisfied, 1 divergent, 14 checked but unproven; 0 declared without a check.
 
-- `divergent` `infra_fleet_public_cost/C-001` — Staging application worker capacity scales to zero outside an owner-defined
+- `declared_unverified` `infra_fleet_public_cost/C-001` — Staging application worker capacity scales to zero outside an owner-defined
   usage window. A delayed startup of up to 30 minutes is acceptable when it avoids
   paying for otherwise idle compute.
-  - Category: `cost` · Priority: `high` · Check: `staging_capacity_released_on_schedule` · Reason: `evidence_conflicts_with_intent`
-  - Evidence: `terraform_cost_collector:831d0b3bb6653a0a`
-- `divergent` `infra_fleet_public_cost/C-002` — Every non-production EKS worker group declares demand-driven scaling with a zero
+  - Category: `cost` · Priority: `high` · Check: `staging_capacity_released_on_schedule` · Reason: `collector_cannot_prove_satisfaction`
+- `declared_unverified` `infra_fleet_public_cost/C-002` — Every non-production EKS worker group declares demand-driven scaling with a zero
   minimum where its workloads permit it and an explicit bounded maximum. Any
   always-on baseline must name the workload that requires it.
-  - Category: `cost` · Priority: `high` · Check: `worker_groups_demand_scaled` · Reason: `evidence_conflicts_with_intent`
-  - Evidence: `terraform_cost_collector:d31a3916e8b5bd2a`
+  - Category: `cost` · Priority: `high` · Check: `worker_groups_demand_scaled` · Reason: `collector_cannot_prove_satisfaction`
 - `declared_unverified` `infra_fleet_public_cost/C-003` — Every staging CloudWatch log group managed by the fleet has an explicit
   retention period of no more than 30 days. Longer retention requires a documented
   operational or compliance reason.
@@ -172,7 +170,7 @@
 
 ## Recommendations
 
-### #1 [new] Public ingress can serve application traffic over plain HTTP
+### #1 [unchanged] Public ingress can serve application traffic over plain HTTP
 
 - Category: `security` · Priority: `high` · Confidence: 0.85
 - Fingerprint: `fp_dcc368602d7a63507c7f95c3`
@@ -186,7 +184,7 @@ An Ingress does not cover every host with TLS from a cert-manager issuer, or it 
 
 **Trade-offs:** Canary analysis that currently measures HTTP through the public ingress needs an internal path, or it measures redirects instead of the canary.
 
-### #2 [unchanged] EKS worker group cannot scale on demand
+### [resolved] EKS worker group cannot scale on demand
 
 - Category: `cost` · Priority: `high` · Confidence: 0.85
 - Fingerprint: `fp_7ec808b779a06a62a8f1b78f`
@@ -200,7 +198,7 @@ A staging managed node group declares size bounds, but nothing in the repository
 
 **Trade-offs:** An autoscaler adds a controller, IAM permissions and scale-up latency; a zero minimum delays the first workload after idle periods.
 
-### #3 [unchanged] Staging capacity is never released on a schedule
+### [resolved] Staging capacity is never released on a schedule
 
 - Category: `cost` · Priority: `high` · Confidence: 0.80
 - Fingerprint: `fp_156438b3cb31a7781fe4fc70`
