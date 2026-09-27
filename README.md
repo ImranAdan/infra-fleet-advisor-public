@@ -13,7 +13,7 @@ checks guard the fleet at three moments:
 
 ```mermaid
 flowchart LR
-    Intent["Owner intent<br/>20 declared positions"] --> Checks["Deterministic checks"]
+    Intent["Owner intent<br/>21 declared positions"] --> Checks["Deterministic checks"]
     Checks -->|before merge| Gate["Intent gate<br/>on fleet pull requests"]
     Checks -->|after merge| Report["Nightly report when it changes<br/>then approved fleet issues"]
     Drills["Check drills"] -.->|prove each check still fires| Checks
