@@ -239,27 +239,23 @@
       "category": "cost",
       "check_key": "staging_capacity_released_on_schedule",
       "document_id": "infra_fleet_public_cost",
-      "evidence_ids": [
-        "terraform_cost_collector:831d0b3bb6653a0a"
-      ],
+      "evidence_ids": [],
       "priority": "high",
       "proposition_id": "C-001",
-      "reason": "evidence_conflicts_with_intent",
+      "reason": "collector_cannot_prove_satisfaction",
       "statement": "Staging application worker capacity scales to zero outside an owner-defined\nusage window. A delayed startup of up to 30 minutes is acceptable when it avoids\npaying for otherwise idle compute.",
-      "status": "divergent"
+      "status": "declared_unverified"
     },
     {
       "category": "cost",
       "check_key": "worker_groups_demand_scaled",
       "document_id": "infra_fleet_public_cost",
-      "evidence_ids": [
-        "terraform_cost_collector:d31a3916e8b5bd2a"
-      ],
+      "evidence_ids": [],
       "priority": "high",
       "proposition_id": "C-002",
-      "reason": "evidence_conflicts_with_intent",
+      "reason": "collector_cannot_prove_satisfaction",
       "statement": "Every non-production EKS worker group declares demand-driven scaling with a zero\nminimum where its workloads permit it and an explicit bounded maximum. Any\nalways-on baseline must name the workload that requires it.",
-      "status": "divergent"
+      "status": "declared_unverified"
     },
     {
       "category": "cost",
@@ -474,7 +470,7 @@
       "status": "declared_unverified"
     }
   ],
-  "new_count": 1,
+  "new_count": 0,
   "provenance": {
     "advisor_version": "0.1.0",
     "collector_versions": {
@@ -491,8 +487,8 @@
     "intent_digest": "intent-md-v1:6719a4a57dc76f4db90d2de10088c3ba13731783ac629cfb37f8e5e8dfdc06b3",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.1",
-    "run_started_at": "2026-09-27T22:27:43.961288+00:00",
-    "source_commit_sha": "06627a41483164723acb22abd2d1b355cf993c1d",
+    "run_started_at": "2026-09-27T23:06:49.202237+00:00",
+    "source_commit_sha": "6e11b8fefe80c754f2b3d5a779b0d2d3592cb779",
     "source_label": "infra-fleet-public"
   },
   "recommendations": [
@@ -511,7 +507,7 @@
       "priority": "high",
       "rank": 1,
       "rank_rationale": "priority=high, category_weight=10, confidence=0.85",
-      "status": "new",
+      "status": "unchanged",
       "suggested_change": "Cover every host with a cert-manager TLS entry and keep the HTTPS redirect on; route in-cluster analysis traffic to the service or an internal listener instead.",
       "summary": "An Ingress does not cover every host with TLS from a cert-manager issuer, or it disables the HTTP-to-HTTPS redirect.",
       "title": "Public ingress can serve application traffic over plain HTTP",
@@ -529,9 +525,9 @@
       "impact": "Capacity stays at the desired size regardless of load: pods scaled out by the HPA can stay pending, and idle capacity is never released.",
       "owner_accepted_trade_off": null,
       "priority": "high",
-      "rank": 2,
-      "rank_rationale": "priority=high, category_weight=5, confidence=0.85",
-      "status": "unchanged",
+      "rank": null,
+      "rank_rationale": null,
+      "status": "resolved",
       "suggested_change": "Declare a node autoscaler for the staging cluster (cluster-autoscaler with a pod identity role, Karpenter, or EKS Auto Mode), keep an explicit bounded max_size, and lower min_size to zero unless a named workload needs an always-on node.",
       "summary": "A staging managed node group declares size bounds, but nothing in the repository drives them: no cluster-autoscaler, Karpenter or EKS Auto Mode is declared, or the maximum is not explicit and above the minimum.",
       "title": "EKS worker group cannot scale on demand",
@@ -549,9 +545,9 @@
       "impact": "Idle staging compute is billed around the clock unless someone remembers to stop it.",
       "owner_accepted_trade_off": null,
       "priority": "high",
-      "rank": 3,
-      "rank_rationale": "priority=high, category_weight=5, confidence=0.80",
-      "status": "unchanged",
+      "rank": null,
+      "rank_rationale": null,
+      "status": "resolved",
       "suggested_change": "Schedule the release: an aws_autoscaling_schedule to zero outside the usage window, or a cron trigger on the teardown workflow with an owner-set window.",
       "summary": "Staging worker capacity has no scheduled scale-to-zero: no aws_autoscaling_schedule reaching zero and no scheduled workflow that tears the stack down.",
       "title": "Staging capacity is never released on a schedule",
@@ -702,7 +698,7 @@
   ],
   "rejected": [],
   "rejected_count": 0,
-  "resolved_count": 7,
+  "resolved_count": 9,
   "suppressed_count": 0,
-  "unchanged_count": 2
+  "unchanged_count": 1
 }
