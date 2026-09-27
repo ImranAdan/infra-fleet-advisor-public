@@ -2,7 +2,7 @@
 
 - Format: `1`
 - Intent ID: `infra_fleet_public_maintainability`
-- Version: `1.4`
+- Version: `1.5`
 - Category: `maintainability`
 
 This document declares the fleet owner's adoption experience for the public
@@ -87,3 +87,38 @@ workflow and secrets) are outside this position.
 
 - Check: `fleet_application_swappable`
 - Priority: `medium`
+
+## M-005 · Autonomous merges with risk aversion
+
+### Intent
+
+An agent merges the pull requests it raises in this fleet and its advisor
+without waiting for the owner or calling a paid model, whenever evidence alone
+decides. Evidence decides when every GitHub Actions check on the exact head
+commit passes, including the advisor's gate for that repository (the intent
+gate for the fleet, the ratchet guard for the advisor), no review thread is
+unresolved, and the pull request records its verification. The advisor is the
+captain: a merge that its gate would reject never happens.
+
+Autonomy stops where a mistake is hard to see or hard to undo. The owner still
+decides changes to credentials, added or widened permissions, IAM, permanent
+infrastructure, and the merge system itself. The merge system includes the
+workflows, scripts and code that produce the advisor's gate checks, so no
+change can approve itself by weakening its own gate.
+
+Missing, running or failed evidence means no approval; the system never
+approves by default or by timeout. Anything merged without the owner must be
+reversible by reverting its merge commit, without a state, schema or data
+migration.
+
+Caveat: declaring this position grants nothing. Merges stay governed by the
+merge gate's decision policy until the gate implements M-005, and that
+implementation must enforce every safeguard above before any category moves
+from the owner or the judge to agents. Until a check exists, the position
+reports `check_not_declared` and records the owner's standing decision for
+agents and reviewers.
+
+### Evaluation
+
+- Priority: `high`
+

@@ -30,7 +30,8 @@ issue-creation decision record. See the [workflow](WORKFLOW.md) and
 | Fleet lifecycle | The tracked `fleet` facade and fixed local and AWS strategy modules; closed lifecycle dispatch plus local pinned-tool, checkout-state, explicit-context, and next-command controls | Static shell structure only; it detects absent controls but cannot prove downloads, idempotence, runtime readiness, credential behavior, or teardown effects |
 
 The security, reliability, cost and maintainability catalogs contain
-twenty-one positions. All twenty-one have registered checks. Unsupported positions and incomplete
+twenty-two positions. Twenty-one have registered checks; M-005 (autonomous
+merges with risk aversion) is declared ahead of a check. Unsupported positions and incomplete
 evaluation remain explicit report coverage; the cost catalog has three checks
 (log retention, cost tags and worker scaling are divergence-only), S-011's publication gate is
 divergence-only because only recognised ECR login forms count as publication, and the maintainability catalog has two
