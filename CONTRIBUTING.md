@@ -83,4 +83,20 @@ Keep implementation or documentation edits in separate PRs so merging a report
 remains a clear decision about fleet issue creation. Required checks and review
 still apply to fleet fix proposals; issue creation grants no merge authority.
 
+## Automated merge decisions
+
+Repository agents use the local merge gate after CI and review are complete.
+The gate sends reversible choices defined in
+`.claude/skills/merge-gate/decision-policy.toml` to an independent judge;
+changes to durable authority or access remain with the repository owner.
+
+Maintainers enable the judge by adding `ANTHROPIC_API_KEY` as a repository
+Actions secret. If it is absent or the model request fails before a response,
+the workflow records no approval and the gate remains at `JUDGE`. An invalid
+structured response records `REJECT`, and the gate becomes `BLOCKED` for the
+affected rules. Fork pull requests are never sent to the model and continue
+through human review. See the
+[merge-gate guide](.claude/skills/merge-gate/SKILL.md) for verdicts and the
+exact-head merge command.
+
 For vulnerability reports, follow [Security](SECURITY.md).
