@@ -278,6 +278,87 @@ def _https_evidence(ingress: _Resource) -> Evidence:
     )
 
 
+def _redirects_to_https(route: Mapping[str, Any]) -> bool:
+    rules = (route.get("spec") or {}).get("rules") or []
+    return bool(rules) and all(
+        isinstance(rule, Mapping)
+        and not rule.get("backendRefs")
+        and any(
+            isinstance(f, Mapping)
+            and f.get("type") == "RequestRedirect"
+            and (f.get("requestRedirect") or {}).get("scheme") == "https"
+            for f in rule.get("filters") or []
+        )
+        for rule in rules
+    )
+
+
+def _gateway_https_evidence(gateway: _Resource, resources: list[_Resource]) -> Evidence:
+    """HTTPS for a Gateway: every HTTPS listener terminates TLS with a cert-manager
+    certificate for its hostname, and plain HTTP serves nothing but a redirect."""
+    listeners = [
+        item
+        for item in (gateway.body.get("spec") or {}).get("listeners") or []
+        if isinstance(item, Mapping)
+    ]
+    https = [item for item in listeners if item.get("protocol") == "HTTPS"]
+    http = [item for item in listeners if item.get("protocol") == "HTTP"]
+    certificates = {
+        (r.namespace, (r.body.get("spec") or {}).get("secretName")): r.body.get("spec") or {}
+        for r in resources
+        if r.kind == "Certificate"
+    }
+
+    def certified(listener: Mapping[str, Any]) -> bool:
+        tls = listener.get("tls") or {}
+        refs = tls.get("certificateRefs") or []
+        if tls.get("mode", "Terminate") != "Terminate" or not refs:
+            return False
+        for ref in refs:
+            namespace = ref.get("namespace") or gateway.namespace
+            spec = certificates.get((namespace, ref.get("name")))
+            if not spec or not (spec.get("issuerRef") or {}).get("name"):
+                return False
+            hostname = listener.get("hostname")
+            if hostname and hostname not in (spec.get("dnsNames") or []):
+                return False
+        return True
+
+    attached = [
+        r
+        for r in resources
+        if r.kind == "HTTPRoute"
+        and any(
+            isinstance(ref, Mapping)
+            and ref.get("name") == gateway.name
+            and (ref.get("namespace") or r.namespace) == gateway.namespace
+            and ref.get("sectionName") in {None, *(item.get("name") for item in http)}
+            for ref in (r.body.get("spec") or {}).get("parentRefs") or []
+        )
+    ]
+    # Routes from other namespaces could attach to plain HTTP unseen here.
+    http_closed = all(
+        ((item.get("allowedRoutes") or {}).get("namespaces") or {}).get("from", "Same") == "Same"
+        for item in http
+    )
+    redirect_only = http_closed and all(_redirects_to_https(r.body) for r in attached)
+    redirect_off = bool(http) and not (redirect_only and attached)
+    covered = bool(https) and all(certified(item) for item in https)
+    return _evidence(
+        EVIDENCE_KIND_INGRESS_HTTPS,
+        gateway,
+        "/https",
+        f"HTTPS listeners with cert-manager certificates: {str(covered).lower()}; "
+        f"plain HTTP only redirects: {str(not redirect_off).lower()}",
+        {
+            "tls_covers_hosts": covered,
+            "cert_manager_issuer": covered,
+            "http_redirect_disabled": redirect_off,
+            "https_enforced": covered and not redirect_off,
+        },
+    )
+
+
 def _evaluate(resources: list[_Resource]) -> tuple[list[Evidence], int]:
     """Evidence for one resource set; ambiguous identities are withheld."""
     failures = 0
@@ -301,6 +382,8 @@ def _evaluate(resources: list[_Resource]) -> tuple[list[Evidence], int]:
                 evidence.append(_egress_evidence(resource, application_namespaces))
             elif resource.kind == "Ingress":
                 evidence.append(_https_evidence(resource))
+            elif resource.kind == "Gateway":
+                evidence.append(_gateway_https_evidence(resource, resources))
         except (AttributeError, TypeError):
             failures += 1
 
