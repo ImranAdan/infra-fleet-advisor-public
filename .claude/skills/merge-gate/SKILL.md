@@ -62,7 +62,11 @@ An agent never adds `owner-approved` and never posts or imitates a
 the workflow records a trusted approval for that exact head SHA; the gate
 requires that record, the label, and a latest label event from the repository
 owner. Judge decisions are bound to the current head SHA too.
-The secret-backed judge runs only for branches in this repository, so a fork
-pull request stays at `JUDGE` for human handling. Declared intent and its
-advisor gate remain the first authority; the judge handles only reversible
+The judge runs only for branches in this repository, so a fork pull request
+stays at `JUDGE` for human handling. It uses GitHub Models through the workflow
+token by default and prefers the policy's Anthropic model when
+`ANTHROPIC_API_KEY` is configured. A provider outage posts no verdict and
+leaves the gate at `JUDGE`; invalid structured output records `REJECT`.
+Declared intent and its required advisor gate remain the first authority, so a
+judge approval cannot override them. The judge handles only reversible
 categories that policy assigns to it.

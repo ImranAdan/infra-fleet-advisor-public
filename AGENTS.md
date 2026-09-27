@@ -252,6 +252,12 @@ workflow binds an owner-applied label to the exact head SHA; a label without
 that trusted record, or whose latest label event was not made by the repository
 owner, does not approve a merge.
 
+The base-branch judge uses GitHub Models through its workflow token by default
+and prefers Anthropic when `ANTHROPIC_API_KEY` is configured. It decides only
+reversible categories after required checks. A judge approval cannot override
+the Fleet intent gate: declared intent and the advisor remain the first
+authority.
+
 When a verification lesson recurs, encode it as a check (a test, a drill, a
 doctor line) rather than another paragraph here.
 
