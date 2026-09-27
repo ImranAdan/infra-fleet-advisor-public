@@ -111,9 +111,12 @@ approves by default or by timeout. Anything merged without the owner must be
 reversible by reverting its merge commit, without a state, schema or data
 migration.
 
-Caveat: until a check exists, this position records the owner's standing
-decision for agents and reviewers; the merge gate's policy and workflow are
-its implementation.
+Caveat: declaring this position grants nothing. Merges stay governed by the
+merge gate's decision policy until the gate implements M-005, and that
+implementation must enforce every safeguard above before any category moves
+from the owner or the judge to agents. Until a check exists, the position
+reports `check_not_declared` and records the owner's standing decision for
+agents and reviewers.
 
 ### Evaluation
 
