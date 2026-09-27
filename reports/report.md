@@ -1,10 +1,10 @@
 # Infra Fleet Advisor report
 
-- Source: `infra-fleet-public` @ `6e11b8fefe80c754f2b3d5a779b0d2d3592cb779`
+- Source: `infra-fleet-public` @ `84223ab2e7ea43d5f7e86c5addeda363e9ae66ca`
 - Advisor version: `0.1.0` · Policy version: `1.1`
-- Model: `stub-synthesizer-v1` · Run started: `2026-09-27T23:06:49.202237+00:00`
-- Intent catalog: `intent-md-v1:6719a4a57dc76f4db90d2de10088c3ba13731783ac629cfb37f8e5e8dfdc06b3`
-- Lifecycle: 0 new, 1 unchanged, 9 resolved, 0 suppressed (0 rejected)
+- Model: `stub-synthesizer-v1` · Run started: `2026-09-27T23:20:45.979910+00:00`
+- Intent catalog: `intent-md-v1:99af881f455f2f6586001a013dd8b75a38d0512aa82a543a61159c67e60393db`
+- Lifecycle: 0 new, 0 unchanged, 10 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
 
@@ -12,7 +12,7 @@
 - `terraform_iam_collector`: ok (0 evidence)
 - `terraform_cost_collector`: ok (7 evidence)
 - `kubernetes_deployment_collector`: ok (4 evidence)
-- `kubernetes_security_collector`: ok (5 evidence)
+- `kubernetes_security_collector`: ok (4 evidence)
 - `fleet_lifecycle_collector`: ok (3 evidence)
 - `dependency_update_collector`: ok (8 evidence)
 - `application_config_collector`: ok (1 evidence)
@@ -20,7 +20,7 @@
 
 ## Intent evaluation
 
-**Coverage:** 21 of 21 positions have a check — 6 satisfied, 1 divergent, 14 checked but unproven; 0 declared without a check.
+**Coverage:** 21 of 22 positions have a check — 6 satisfied, 0 divergent, 15 checked but unproven; 1 declared without a check.
 
 - `declared_unverified` `infra_fleet_public_cost/C-001` — Staging application worker capacity scales to zero outside an owner-defined
   usage window. A delayed startup of up to 30 minutes is acceptable when it avoids
@@ -85,6 +85,32 @@
   theoretical. Per-application AWS resources (its ECR repository, release
   workflow and secrets) are outside this position.
   - Category: `maintainability` · Priority: `medium` · Check: `fleet_application_swappable` · Reason: `collector_cannot_prove_satisfaction`
+- `declared_unverified` `infra_fleet_public_maintainability/M-005` — An agent merges the pull requests it raises in this fleet and its advisor
+  without waiting for the owner or calling a paid model, whenever evidence alone
+  decides. Evidence decides when every GitHub Actions check on the exact head
+  commit passes, including the advisor's gate for that repository (the intent
+  gate for the fleet, the ratchet guard for the advisor), no review thread is
+  unresolved, and the pull request records its verification. The advisor is the
+  captain: a merge that its gate would reject never happens.
+  
+  Autonomy stops where a mistake is hard to see or hard to undo. The owner still
+  decides changes to credentials, added or widened permissions, IAM, permanent
+  infrastructure, and the merge system itself. The merge system includes the
+  workflows, scripts and code that produce the advisor's gate checks, so no
+  change can approve itself by weakening its own gate.
+  
+  Missing, running or failed evidence means no approval; the system never
+  approves by default or by timeout. Anything merged without the owner must be
+  reversible by reverting its merge commit, without a state, schema or data
+  migration.
+  
+  Caveat: declaring this position grants nothing. Merges stay governed by the
+  merge gate's decision policy until the gate implements M-005, and that
+  implementation must enforce every safeguard above before any category moves
+  from the owner or the judge to agents. Until a check exists, the position
+  reports \`check\_not\_declared\` and records the owner's standing decision for
+  agents and reviewers.
+  - Category: `maintainability` · Priority: `high` · Check: `not_declared` · Reason: `check_not_declared`
 - `satisfied` `infra_fleet_public_reliability/R-001` — Owner-managed application Deployments under \`k8s/applications/\` retain enough
   healthy capacity during rollout. Temporary capacity cost is acceptable when it
   prevents user-visible interruption.
@@ -111,7 +137,7 @@
   
   Evidence: \[current egress policy\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/k8s/applications/load-harness/networkpolicy.yaml)
   - Category: `security` · Priority: `medium` · Check: `permissive_egress_bounded` · Reason: `complete_evidence_supports_intent`
-- `divergent` `infra_fleet_public_security/S-005` — When an AWS staging deployment enables a public hostname, external application
+- `declared_unverified` `infra_fleet_public_security/S-005` — When an AWS staging deployment enables a public hostname, external application
   traffic uses HTTPS with certificates managed by cert-manager and Let's Encrypt.
   
   Evidence: \[TLS and optional DNS\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/TLS-SSL-SETUP.md)
@@ -119,8 +145,7 @@
   Caveat: the template defaults to a reserved \`.invalid\` hostname and port-forward
   access. New public exposure remains blocked by the documented ingress-controller
   migration, and repository desired state cannot prove a certificate is live.
-  - Category: `security` · Priority: `high` · Check: `public_ingress_https` · Reason: `evidence_conflicts_with_intent`
-  - Evidence: `kubernetes_security_collector:69d40db0b198099c`, `kubernetes_security_collector:6f5caf53a3bf6294`
+  - Category: `security` · Priority: `high` · Check: `public_ingress_https` · Reason: `collector_cannot_prove_satisfaction`
 - `declared_unverified` `infra_fleet_public_security/S-006` — A publicly reachable EKS API protected by IAM is accepted for staging only.
   
   Evidence: \[staging access decision\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/EKS-ACCESS.md)
@@ -170,7 +195,7 @@
 
 ## Recommendations
 
-### #1 [unchanged] Public ingress can serve application traffic over plain HTTP
+### [resolved] Public ingress can serve application traffic over plain HTTP
 
 - Category: `security` · Priority: `high` · Confidence: 0.85
 - Fingerprint: `fp_dcc368602d7a63507c7f95c3`

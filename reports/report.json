@@ -27,7 +27,7 @@
     {
       "collector_id": "kubernetes_security_collector",
       "error_summary": null,
-      "evidence_count": 5,
+      "evidence_count": 4,
       "status": "ok"
     },
     {
@@ -335,6 +335,17 @@
       "status": "declared_unverified"
     },
     {
+      "category": "maintainability",
+      "check_key": null,
+      "document_id": "infra_fleet_public_maintainability",
+      "evidence_ids": [],
+      "priority": "high",
+      "proposition_id": "M-005",
+      "reason": "check_not_declared",
+      "statement": "An agent merges the pull requests it raises in this fleet and its advisor\nwithout waiting for the owner or calling a paid model, whenever evidence alone\ndecides. Evidence decides when every GitHub Actions check on the exact head\ncommit passes, including the advisor's gate for that repository (the intent\ngate for the fleet, the ratchet guard for the advisor), no review thread is\nunresolved, and the pull request records its verification. The advisor is the\ncaptain: a merge that its gate would reject never happens.\n\nAutonomy stops where a mistake is hard to see or hard to undo. The owner still\ndecides changes to credentials, added or widened permissions, IAM, permanent\ninfrastructure, and the merge system itself. The merge system includes the\nworkflows, scripts and code that produce the advisor's gate checks, so no\nchange can approve itself by weakening its own gate.\n\nMissing, running or failed evidence means no approval; the system never\napproves by default or by timeout. Anything merged without the owner must be\nreversible by reverting its merge commit, without a state, schema or data\nmigration.\n\nCaveat: declaring this position grants nothing. Merges stay governed by the\nmerge gate's decision policy until the gate implements M-005, and that\nimplementation must enforce every safeguard above before any category moves\nfrom the owner or the judge to agents. Until a check exists, the position\nreports `check_not_declared` and records the owner's standing decision for\nagents and reviewers.",
+      "status": "declared_unverified"
+    },
+    {
       "category": "reliability",
       "check_key": "deployment_rollout_capacity",
       "document_id": "infra_fleet_public_reliability",
@@ -393,15 +404,12 @@
       "category": "security",
       "check_key": "public_ingress_https",
       "document_id": "infra_fleet_public_security",
-      "evidence_ids": [
-        "kubernetes_security_collector:69d40db0b198099c",
-        "kubernetes_security_collector:6f5caf53a3bf6294"
-      ],
+      "evidence_ids": [],
       "priority": "high",
       "proposition_id": "S-005",
-      "reason": "evidence_conflicts_with_intent",
+      "reason": "collector_cannot_prove_satisfaction",
       "statement": "When an AWS staging deployment enables a public hostname, external application\ntraffic uses HTTPS with certificates managed by cert-manager and Let's Encrypt.\n\nEvidence: [TLS and optional DNS](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/TLS-SSL-SETUP.md)\n\nCaveat: the template defaults to a reserved `.invalid` hostname and port-forward\naccess. New public exposure remains blocked by the documented ingress-controller\nmigration, and repository desired state cannot prove a certificate is live.",
-      "status": "divergent"
+      "status": "declared_unverified"
     },
     {
       "category": "security",
@@ -484,11 +492,11 @@
       "terraform_cost_collector": "1.4.0",
       "terraform_iam_collector": "1.4.0"
     },
-    "intent_digest": "intent-md-v1:6719a4a57dc76f4db90d2de10088c3ba13731783ac629cfb37f8e5e8dfdc06b3",
+    "intent_digest": "intent-md-v1:99af881f455f2f6586001a013dd8b75a38d0512aa82a543a61159c67e60393db",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.1",
-    "run_started_at": "2026-09-27T23:06:49.202237+00:00",
-    "source_commit_sha": "6e11b8fefe80c754f2b3d5a779b0d2d3592cb779",
+    "run_started_at": "2026-09-27T23:20:45.979910+00:00",
+    "source_commit_sha": "84223ab2e7ea43d5f7e86c5addeda363e9ae66ca",
     "source_label": "infra-fleet-public"
   },
   "recommendations": [
@@ -505,9 +513,9 @@
       "impact": "Once a real hostname is configured, credentials and session cookies can cross the internet unencrypted.",
       "owner_accepted_trade_off": null,
       "priority": "high",
-      "rank": 1,
-      "rank_rationale": "priority=high, category_weight=10, confidence=0.85",
-      "status": "unchanged",
+      "rank": null,
+      "rank_rationale": null,
+      "status": "resolved",
       "suggested_change": "Cover every host with a cert-manager TLS entry and keep the HTTPS redirect on; route in-cluster analysis traffic to the service or an internal listener instead.",
       "summary": "An Ingress does not cover every host with TLS from a cert-manager issuer, or it disables the HTTP-to-HTTPS redirect.",
       "title": "Public ingress can serve application traffic over plain HTTP",
@@ -698,7 +706,7 @@
   ],
   "rejected": [],
   "rejected_count": 0,
-  "resolved_count": 9,
+  "resolved_count": 10,
   "suppressed_count": 0,
-  "unchanged_count": 1
+  "unchanged_count": 0
 }
