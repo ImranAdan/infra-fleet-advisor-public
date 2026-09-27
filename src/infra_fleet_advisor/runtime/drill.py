@@ -2,6 +2,8 @@
 
 A drill applies one literal, declared violation to a throwaway worktree of the
 fleet, runs the ordinary review, and expects the named proposition to diverge.
+A drill may list variants: the first whose text the fleet still contains is
+applied, so a drill can match the fleet before and after a change to it.
 Drills are trusted data from this repository; the fleet is only read and its
 worktree is removed afterwards.
 """
@@ -21,6 +23,15 @@ from infra_fleet_advisor.core.paths import validate_repo_relative_path
 
 DrillOutcome = Literal["caught", "missed", "stale", "already_divergent"]
 _MAX_DRILLS = 64
+_MAX_VARIANTS = 8
+_MUTATION_FIELDS = {"path", "find", "replace"}
+
+
+@dataclass(frozen=True, slots=True)
+class Mutation:
+    path: str
+    find: str
+    replace: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,12 +40,31 @@ class Drill:
     path: str
     find: str
     replace: str
+    alternatives: tuple[Mutation, ...] = ()
+
+    def mutations(self) -> tuple[Mutation, ...]:
+        return (Mutation(self.path, self.find, self.replace), *self.alternatives)
 
 
 @dataclass(frozen=True, slots=True)
 class DrillResult:
     drill: Drill
     outcome: DrillOutcome
+    applied: Mutation | None = None
+
+
+def _mutation(proposition: str, item: object) -> Mutation:
+    if not isinstance(item, dict) or set(item) != _MUTATION_FIELDS:
+        raise PolicyError("each drill mutation needs exactly path, find and replace")
+    if not all(isinstance(value, str) and value for value in item.values()):
+        raise PolicyError("drill fields must be non-empty strings")
+    if item["find"] == item["replace"]:
+        raise PolicyError(f"drill for {proposition} changes nothing")
+    try:
+        path_in_fleet = validate_repo_relative_path(item["path"])
+    except UnsafePathError as exc:
+        raise PolicyError("drill path must stay inside the fleet checkout") from exc
+    return Mutation(path_in_fleet, item["find"], item["replace"])
 
 
 def load_drills(path: Path) -> tuple[Drill, ...]:
@@ -44,24 +74,22 @@ def load_drills(path: Path) -> tuple[Drill, ...]:
         raise PolicyError("drill file must list between 1 and 64 drills")
     drills = []
     for item in raw:
-        if not isinstance(item, dict) or set(item) != {"proposition", "path", "find", "replace"}:
-            raise PolicyError("each drill needs exactly proposition, path, find and replace")
-        if not all(isinstance(value, str) and value for value in item.values()):
-            raise PolicyError("drill fields must be non-empty strings")
-        if item["find"] == item["replace"]:
-            raise PolicyError(f"drill for {item['proposition']} changes nothing")
-        try:
-            path_in_fleet = validate_repo_relative_path(item["path"])
-        except UnsafePathError as exc:
-            raise PolicyError("drill path must stay inside the fleet checkout") from exc
-        drills.append(
-            Drill(
-                proposition=item["proposition"],
-                path=path_in_fleet,
-                find=item["find"],
-                replace=item["replace"],
+        if not isinstance(item, dict) or not isinstance(item.get("proposition"), str):
+            raise PolicyError("each drill needs a proposition")
+        proposition = item["proposition"]
+        if set(item) == {"proposition", "variants"}:
+            variants = item["variants"]
+            if not isinstance(variants, list) or not 2 <= len(variants) <= _MAX_VARIANTS:
+                raise PolicyError("drill variants must list between 2 and 8 mutations")
+            mutations = [_mutation(proposition, variant) for variant in variants]
+        elif set(item) == {"proposition", *_MUTATION_FIELDS}:
+            mutations = [_mutation(proposition, {k: item[k] for k in _MUTATION_FIELDS})]
+        else:
+            raise PolicyError(
+                "each drill needs exactly proposition, path, find and replace, or variants"
             )
-        )
+        first, *rest = mutations
+        drills.append(Drill(proposition, first.path, first.find, first.replace, tuple(rest)))
     return tuple(drills)
 
 
@@ -100,28 +128,38 @@ def run_drills(
             results = []
             for index, drill in enumerate(drills):
                 _git(worktree, "reset", "--quiet", "--hard", base_sha)
-                target = worktree / drill.path
-                # The fleet is untrusted: a tracked symlink must not redirect a
-                # drill's write outside the throwaway worktree.
-                inside = not target.is_symlink() and target.resolve().is_relative_to(
-                    worktree.resolve()
-                )
-                try:
-                    text = target.read_text(encoding="utf-8") if inside and target.is_file() else ""
-                except UnicodeDecodeError:
-                    text = ""  # the fleet changed the file beyond what the drill targets
-                if drill.find not in text:
+                applied, text = None, ""
+                for mutation in drill.mutations():
+                    target = worktree / mutation.path
+                    # The fleet is untrusted: a tracked symlink must not redirect a
+                    # drill's write outside the throwaway worktree.
+                    inside = not target.is_symlink() and target.resolve().is_relative_to(
+                        worktree.resolve()
+                    )
+                    try:
+                        text = (
+                            target.read_text(encoding="utf-8")
+                            if inside and target.is_file()
+                            else ""
+                        )
+                    except UnicodeDecodeError:
+                        text = ""  # the fleet changed the file beyond what the drill targets
+                    if mutation.find in text:
+                        applied = mutation
+                        break
+                if applied is None:
                     results.append(DrillResult(drill, "stale"))
                     continue
                 if base.get(drill.proposition) == "divergent":
-                    results.append(DrillResult(drill, "already_divergent"))
+                    results.append(DrillResult(drill, "already_divergent", applied))
                     continue
-                target.write_text(text.replace(drill.find, drill.replace), encoding="utf-8")
+                target = worktree / applied.path
+                target.write_text(text.replace(applied.find, applied.replace), encoding="utf-8")
                 _git(worktree, "commit", "--quiet", "--all", "-m", f"drill {drill.proposition}")
                 output = work_dir / f"drill-{index:02d}-{drill.proposition}"
                 review(worktree, _git(worktree, "rev-parse", "HEAD"), output)
                 caught = _statuses(output).get(drill.proposition) == "divergent"
-                results.append(DrillResult(drill, "caught" if caught else "missed"))
+                results.append(DrillResult(drill, "caught" if caught else "missed", applied))
         finally:
             _git(checkout, "worktree", "remove", "--force", str(worktree))
     return tuple(results)
@@ -139,7 +177,10 @@ def to_markdown(results: tuple[DrillResult, ...]) -> str:
         "",
         "| Proposition | File | Result |",
         "|---|---|---|",
-        *(f"| `{r.drill.proposition}` | `{r.drill.path}` | {symbol[r.outcome]} |" for r in results),
+        *(
+            f"| `{r.drill.proposition}` | `{(r.applied or r.drill).path}` | {symbol[r.outcome]} |"
+            for r in results
+        ),
         "",
     ]
     return "\n".join(lines)

@@ -57,7 +57,14 @@ Add focused tests beside the collector and in `test_intent_evaluation.py`:
 Add one literal mutation to `drills/fleet-mutations.yaml`. It must change the
 real Fleet in a throwaway worktree and make the named proposition diverge. If
 the Fleet later moves or rewrites that text, the drill becomes stale and fails
-visibly.
+visibly. A drill whose `find` equals its `replace` is rejected: it cannot prove
+anything.
+
+When a Fleet change will move a drill's text, land the drill update first as
+`variants`: an ordered list of mutations, of which the first the Fleet still
+contains is applied. List the current text and the text after the change, check
+the drills against both Fleet revisions, and prune the old variant once the
+change is on the Fleet's main branch.
 
 Update `docs/status.md` with what the check observes, what it can prove, and
 what remains unknown. Update architecture or product requirements only when the

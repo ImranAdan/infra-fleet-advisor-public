@@ -7,6 +7,7 @@ import pytest
 from infra_fleet_advisor.core.errors import PolicyError
 from infra_fleet_advisor.runtime.drill import (
     Drill,
+    Mutation,
     drills_passed,
     load_drills,
     run_drills,
@@ -73,6 +74,55 @@ def test_drills_report_caught_missed_stale_and_already_divergent(tmp_path: Path)
         check=True,
     ).stdout
     assert len(worktrees.splitlines()) == 1
+
+
+def test_a_drill_applies_its_first_variant_the_fleet_still_contains(tmp_path: Path) -> None:
+    # A fleet change and its drill update cannot both land first; variants let
+    # the drill match the fleet before and after the change.
+    fleet = tmp_path / "fleet"
+    fleet.mkdir()
+    _git(fleet, "init", "-q")
+    (fleet / "eks.tf").write_text("retention = 14\n", encoding="utf-8")
+    _git(fleet, "add", "-A")
+    _git(fleet, "commit", "-qm", "base")
+    moved = Drill(
+        "C-001",
+        "gone.tf",
+        "retention = 14",
+        "retention = 90",
+        (Mutation("eks.tf", "retention = 14", "retention = 90"),),
+    )
+    vanished = Drill("C-003", "gone.tf", "a", "b", (Mutation("eks.tf", "no such text", "x"),))
+
+    results = run_drills(fleet, (moved, vanished), _fake_review, tmp_path / "out")
+
+    assert [r.outcome for r in results] == ["caught", "stale"]
+    assert results[0].applied == Mutation("eks.tf", "retention = 14", "retention = 90")
+    assert "| `C-001` | `eks.tf` | caught |" in to_markdown(results)
+
+
+def test_drill_file_accepts_variants_and_validates_each(tmp_path: Path) -> None:
+    path = tmp_path / "drills.yaml"
+    path.write_text(
+        "drills:\n"
+        "  - proposition: C-1\n"
+        "    variants:\n"
+        "      - {path: new.tf, find: a, replace: b}\n"
+        "      - {path: old.tf, find: c, replace: d}\n",
+        encoding="utf-8",
+    )
+    [drill] = load_drills(path)
+    assert drill.mutations() == (Mutation("new.tf", "a", "b"), Mutation("old.tf", "c", "d"))
+    for variants in (
+        "[{path: a, find: b, replace: c}]",  # one variant: use the flat form
+        "[{path: a, find: b, replace: c}, {path: d, find: e, replace: e}]",
+        "[{path: a, find: b, replace: c}, {path: ../d, find: e, replace: f}]",
+        "[{path: a, find: b, replace: c}, {path: d, find: e, replace: f, run: rm}]",
+    ):
+        body = f"drills:\n  - {{proposition: C-1, variants: {variants}}}\n"
+        path.write_text(body, encoding="utf-8")
+        with pytest.raises(PolicyError):
+            load_drills(path)
 
 
 def test_drill_file_rejects_unknown_fields_and_unsafe_paths(tmp_path: Path) -> None:
