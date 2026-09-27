@@ -9,8 +9,7 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Read-only. Pull requests, including forks, can run this workflow because its
-# token can inspect repository contents but cannot modify the repository.
+# Read-only. This workflow inspects; it never writes to the repository.
 permissions:
   contents: read
 
