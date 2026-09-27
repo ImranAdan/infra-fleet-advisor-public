@@ -91,11 +91,11 @@ The gate sends reversible choices defined in
 changes to durable authority or access remain with the repository owner.
 
 Maintainers enable the judge by adding `ANTHROPIC_API_KEY` as a repository
-Actions secret. If it is absent or the model request fails before a response,
-the workflow records no approval and the gate remains at `JUDGE`. An invalid
-structured response records `REJECT`, and the gate becomes `BLOCKED` for the
-affected rules. Fork pull requests are never sent to the model and continue
-through human review. See the
+Actions secret. If it is absent, or the provider fails or returns an unreadable
+response, the workflow records no approval and the gate remains at `JUDGE`. An
+invalid structured response records `REJECT`, and the gate becomes `BLOCKED`
+for the affected rules. Fork pull requests are never sent to the model and
+continue through human review. See the
 [merge-gate guide](.claude/skills/merge-gate/SKILL.md) for verdicts and the
 exact-head merge command.
 
