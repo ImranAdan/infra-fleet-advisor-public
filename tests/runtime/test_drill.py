@@ -81,6 +81,8 @@ def test_drill_file_rejects_unknown_fields_and_unsafe_paths(tmp_path: Path) -> N
         "drills:\n  - {proposition: C-1, path: a, find: b, replace: c, run: rm}\n",
         "drills:\n  - {proposition: C-1, path: ../a, find: b, replace: c}\n",
         "drills: []\n",
+        # A drill that changes nothing cannot prove a check fires.
+        "drills:\n  - {proposition: C-1, path: a, find: b, replace: b}\n",
     ):
         path.write_text(body, encoding="utf-8")
         with pytest.raises(PolicyError):
