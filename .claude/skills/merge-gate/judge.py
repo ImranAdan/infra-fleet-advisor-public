@@ -139,6 +139,23 @@ def _validated(result: Any, allowed: set[str]) -> tuple[str, list[str], str]:
     return decision, list(dict.fromkeys(rule_ids)), reason.strip()[:3000]
 
 
+def _judged(
+    backend: str,
+    token: str,
+    model: str,
+    rules: list[dict[str, str]],
+    title: str,
+    body: str,
+    diff: str,
+    allowed: set[str],
+) -> tuple[str, list[str], str]:
+    """Transport failures propagate; any invalid model response becomes REJECT."""
+    try:
+        return _validated(_model_decision(backend, token, model, rules, title, body, diff), allowed)
+    except (ValueError, KeyError, IndexError, TypeError) as exc:
+        return "REJECT", sorted(allowed), f"The judge returned invalid structured output: {exc}."
+
+
 def _post(repo: str, number: str, sha: str, decision: str, rules: list[str], reason: str) -> None:
     server = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
     run_id = os.environ.get("GITHUB_RUN_ID", "")
@@ -303,6 +320,7 @@ def self_test() -> int:
     )
 
     captured_requests: list[urllib.request.Request] = []
+    raw_bodies: list[bytes] = []
     original_urlopen = urllib.request.urlopen
 
     class FakeResponse:
@@ -313,6 +331,8 @@ def self_test() -> int:
             return None
 
         def read(self, *_args: object) -> bytes:
+            if raw_bodies:
+                return raw_bodies.pop(0)
             return json.dumps(
                 {
                     "choices": [
@@ -371,6 +391,33 @@ def self_test() -> int:
     assert github_body["messages"][1]["role"] == "user"
     assert "<untrusted_pr>" in github_body["messages"][1]["content"]
     assert github_body["response_format"] == {"type": "json_object"}
+
+    rule = [{"id": "workflow-change", "category": "workflow", "guidance": "g"}]
+    urllib.request.urlopen = fake_urlopen
+    try:
+        malformed = [b"not json", b"{}", b'{"choices": []}', b'{"choices": [{"message": {}}]}']
+        for raw in malformed:
+            raw_bodies.append(raw)
+            decision, rule_ids, reason = _judged(
+                "github-models", "t", GITHUB_MODELS_MODEL, rule, "t", "b", "d", {"workflow-change"}
+            )
+            assert (decision, rule_ids) == ("REJECT", ["workflow-change"]), raw
+            assert reason.startswith("The judge returned invalid structured output"), raw
+
+        def timeout_urlopen(*_args: object, **_kwargs: object) -> FakeResponse:
+            raise TimeoutError("read timed out")
+
+        urllib.request.urlopen = timeout_urlopen
+        try:
+            _judged(
+                "github-models", "t", GITHUB_MODELS_MODEL, rule, "t", "b", "d", {"workflow-change"}
+            )
+        except TimeoutError:
+            pass
+        else:
+            raise AssertionError("transport timeout became a verdict")
+    finally:
+        urllib.request.urlopen = original_urlopen
     invalid = [
         {"decision": "ALLOW", "rules": [], "reason": "x"},
         {"decision": "APPROVE", "rules": ["merge-authority"], "reason": "x"},
@@ -640,17 +687,12 @@ def main(argv: list[str]) -> int:
         print("posted REJECT because the diff exceeds the bounded review input")
         return 0
     try:
-        result = _model_decision(
-            backend, token, model, applicable, pr["title"], pr["body"] or "", diff
+        decision, rule_ids, reason = _judged(
+            backend, token, model, applicable, pr["title"], pr["body"] or "", diff, allowed
         )
-    except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+    except (urllib.error.URLError, TimeoutError) as exc:
         print(f"judge model request failed: {exc}; the merge gate remains at JUDGE")
         return 0
-    try:
-        decision, rule_ids, reason = _validated(result, allowed)
-    except (ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
-        decision, rule_ids = "REJECT", sorted(allowed)
-        reason = f"The judge returned invalid structured output: {exc}."
     reason = f"{reason}\n\nJudge: {model} via {backend}."
     _post(repo, number, sha, decision, rule_ids, reason)
     print(f"posted {decision} for {', '.join(rule_ids)} at {sha[:12]}")
