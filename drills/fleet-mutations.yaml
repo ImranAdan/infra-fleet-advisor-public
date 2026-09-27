@@ -30,10 +30,11 @@ drills:
     path: k8s/applications/load-harness/deployment.yaml
     find: "maxUnavailable: 0"
     replace: "maxUnavailable: 1"
+  # Demand scaling needs a maximum above the minimum.
   - proposition: C-002
     path: infrastructure/staging/eks.tf
-    find: "max_size       = 2"
-    replace: "max_size       = 1"
+    find: "max_size = 3"
+    replace: "max_size = 1"
   - proposition: C-003
     path: infrastructure/staging/eks.tf
     find: "cloudwatch_log_group_retention_in_days = 14"
@@ -86,10 +87,12 @@ drills:
     path: applications/load-harness/src/load_harness/app.py
     find: 'app.config["SESSION_COOKIE_SAMESITE"] = "Lax"'
     replace: 'app.config["SESSION_COOKIE_SAMESITE"] = "None"'
+  # The nightly release must reach zero; lowering desired capacity only to one
+  # leaves the worker billed around the clock.
   - proposition: C-001
-    path: .github/workflows/nightly-destroy.yml
-    find: "workflow_dispatch:"
-    replace: "workflow_dispatch:"
+    path: infrastructure/staging/cluster-autoscaler.tf
+    find: "desired_capacity       = 0"
+    replace: "desired_capacity       = 1"
   # A violation that exists only after rendering: the local profile's own
   # patch opens ingress to every address while the shared base stays safe.
   - proposition: S-003

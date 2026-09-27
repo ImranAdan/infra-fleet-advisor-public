@@ -48,6 +48,8 @@ def load_drills(path: Path) -> tuple[Drill, ...]:
             raise PolicyError("each drill needs exactly proposition, path, find and replace")
         if not all(isinstance(value, str) and value for value in item.values()):
             raise PolicyError("drill fields must be non-empty strings")
+        if item["find"] == item["replace"]:
+            raise PolicyError(f"drill for {item['proposition']} changes nothing")
         try:
             path_in_fleet = validate_repo_relative_path(item["path"])
         except UnsafePathError as exc:
