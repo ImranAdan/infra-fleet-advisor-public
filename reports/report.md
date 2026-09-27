@@ -1,10 +1,10 @@
 # Infra Fleet Advisor report
 
-- Source: `infra-fleet-public` @ `f319db7d05dc7b8909d31f2b9b6c7d2f1ad13ae1`
+- Source: `infra-fleet-public` @ `06627a41483164723acb22abd2d1b355cf993c1d`
 - Advisor version: `0.1.0` · Policy version: `1.1`
-- Model: `stub-synthesizer-v1` · Run started: `2026-09-25T07:35:00.209126+00:00`
+- Model: `stub-synthesizer-v1` · Run started: `2026-09-27T22:27:43.961288+00:00`
 - Intent catalog: `intent-md-v1:6719a4a57dc76f4db90d2de10088c3ba13731783ac629cfb37f8e5e8dfdc06b3`
-- Lifecycle: 0 new, 3 unchanged, 6 resolved, 0 suppressed (0 rejected)
+- Lifecycle: 1 new, 2 unchanged, 7 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
 
@@ -12,7 +12,7 @@
 - `terraform_iam_collector`: ok (0 evidence)
 - `terraform_cost_collector`: ok (7 evidence)
 - `kubernetes_deployment_collector`: ok (4 evidence)
-- `kubernetes_security_collector`: ok (4 evidence)
+- `kubernetes_security_collector`: ok (5 evidence)
 - `fleet_lifecycle_collector`: ok (3 evidence)
 - `dependency_update_collector`: ok (8 evidence)
 - `application_config_collector`: ok (1 evidence)
@@ -122,7 +122,7 @@
   access. New public exposure remains blocked by the documented ingress-controller
   migration, and repository desired state cannot prove a certificate is live.
   - Category: `security` · Priority: `high` · Check: `public_ingress_https` · Reason: `evidence_conflicts_with_intent`
-  - Evidence: `kubernetes_security_collector:6f5caf53a3bf6294`
+  - Evidence: `kubernetes_security_collector:69d40db0b198099c`, `kubernetes_security_collector:6f5caf53a3bf6294`
 - `declared_unverified` `infra_fleet_public_security/S-006` — A publicly reachable EKS API protected by IAM is accepted for staging only.
   
   Evidence: \[staging access decision\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/EKS-ACCESS.md)
@@ -172,11 +172,11 @@
 
 ## Recommendations
 
-### #1 [unchanged] Public ingress can serve application traffic over plain HTTP
+### #1 [new] Public ingress can serve application traffic over plain HTTP
 
 - Category: `security` · Priority: `high` · Confidence: 0.85
-- Fingerprint: `fp_90d0fb2169abf0b8849a8d79`
-- Evidence: `kubernetes_security_collector:6f5caf53a3bf6294`
+- Fingerprint: `fp_dcc368602d7a63507c7f95c3`
+- Evidence: `kubernetes_security_collector:69d40db0b198099c`, `kubernetes_security_collector:6f5caf53a3bf6294`
 
 An Ingress does not cover every host with TLS from a cert-manager issuer, or it disables the HTTP-to-HTTPS redirect.
 
@@ -213,6 +213,20 @@ Staging worker capacity has no scheduled scale-to-zero: no aws_autoscaling_sched
 **Suggested change:** Schedule the release: an aws_autoscaling_schedule to zero outside the usage window, or a cron trigger on the teardown workflow with an owner-set window.
 
 **Trade-offs:** Starting after the window costs the declared up-to-30-minute delay; a scheduled teardown also needs an unattended confirmation path.
+
+### [resolved] Public ingress can serve application traffic over plain HTTP
+
+- Category: `security` · Priority: `high` · Confidence: 0.85
+- Fingerprint: `fp_90d0fb2169abf0b8849a8d79`
+- Evidence: `kubernetes_security_collector:6f5caf53a3bf6294`
+
+An Ingress does not cover every host with TLS from a cert-manager issuer, or it disables the HTTP-to-HTTPS redirect.
+
+**Impact:** Once a real hostname is configured, credentials and session cookies can cross the internet unencrypted.
+
+**Suggested change:** Cover every host with a cert-manager TLS entry and keep the HTTPS redirect on; route in-cluster analysis traffic to the service or an internal listener instead.
+
+**Trade-offs:** Canary analysis that currently measures HTTP through the public ingress needs an internal path, or it measures redirects instead of the canary.
 
 ### [resolved] Tracked dependency manifests lack monthly Dependabot updates
 

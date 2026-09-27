@@ -27,7 +27,7 @@
     {
       "collector_id": "kubernetes_security_collector",
       "error_summary": null,
-      "evidence_count": 4,
+      "evidence_count": 5,
       "status": "ok"
     },
     {
@@ -101,6 +101,23 @@
       "kind": "fleet_profile_lifecycle",
       "locator": "aws onboarding and teardown controls",
       "source_path": "scripts/fleet-profiles/aws-staging.sh"
+    },
+    {
+      "collector_id": "kubernetes_security_collector",
+      "collector_version": "2.0.0",
+      "evidence_id": "kubernetes_security_collector:69d40db0b198099c",
+      "excerpt": "[local] HTTPS listeners with cert-manager certificates: false; plain HTTP only redirects: false",
+      "fact": {
+        "cert_manager_issuer": false,
+        "failing_profiles": "local",
+        "http_redirect_disabled": true,
+        "https_enforced": false,
+        "profiles": "local",
+        "tls_covers_hosts": false
+      },
+      "kind": "k8s_ingress_https",
+      "locator": "Gateway/envoy-gateway-system/fleet/https",
+      "source_path": "k8s/profiles/local/routing/gateway.yaml"
     },
     {
       "collector_id": "kubernetes_security_collector",
@@ -381,6 +398,7 @@
       "check_key": "public_ingress_https",
       "document_id": "infra_fleet_public_security",
       "evidence_ids": [
+        "kubernetes_security_collector:69d40db0b198099c",
         "kubernetes_security_collector:6f5caf53a3bf6294"
       ],
       "priority": "high",
@@ -456,7 +474,7 @@
       "status": "declared_unverified"
     }
   ],
-  "new_count": 0,
+  "new_count": 1,
   "provenance": {
     "advisor_version": "0.1.0",
     "collector_versions": {
@@ -473,8 +491,8 @@
     "intent_digest": "intent-md-v1:6719a4a57dc76f4db90d2de10088c3ba13731783ac629cfb37f8e5e8dfdc06b3",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.1",
-    "run_started_at": "2026-09-25T07:35:00.209126+00:00",
-    "source_commit_sha": "f319db7d05dc7b8909d31f2b9b6c7d2f1ad13ae1",
+    "run_started_at": "2026-09-27T22:27:43.961288+00:00",
+    "source_commit_sha": "06627a41483164723acb22abd2d1b355cf993c1d",
     "source_label": "infra-fleet-public"
   },
   "recommendations": [
@@ -484,15 +502,16 @@
       "confidence": 0.85,
       "confidence_explanation": "Read from Ingress hosts, TLS entries and annotations.",
       "evidence_ids": [
+        "kubernetes_security_collector:69d40db0b198099c",
         "kubernetes_security_collector:6f5caf53a3bf6294"
       ],
-      "fingerprint": "fp_90d0fb2169abf0b8849a8d79",
+      "fingerprint": "fp_dcc368602d7a63507c7f95c3",
       "impact": "Once a real hostname is configured, credentials and session cookies can cross the internet unencrypted.",
       "owner_accepted_trade_off": null,
       "priority": "high",
       "rank": 1,
       "rank_rationale": "priority=high, category_weight=10, confidence=0.85",
-      "status": "unchanged",
+      "status": "new",
       "suggested_change": "Cover every host with a cert-manager TLS entry and keep the HTTPS redirect on; route in-cluster analysis traffic to the service or an internal listener instead.",
       "summary": "An Ingress does not cover every host with TLS from a cert-manager issuer, or it disables the HTTP-to-HTTPS redirect.",
       "title": "Public ingress can serve application traffic over plain HTTP",
@@ -537,6 +556,26 @@
       "summary": "Staging worker capacity has no scheduled scale-to-zero: no aws_autoscaling_schedule reaching zero and no scheduled workflow that tears the stack down.",
       "title": "Staging capacity is never released on a schedule",
       "trade_offs": "Starting after the window costs the declared up-to-30-minute delay; a scheduled teardown also needs an unattended confirmation path."
+    },
+    {
+      "category": "security",
+      "concern_key": "public_ingress_allows_plain_http",
+      "confidence": 0.85,
+      "confidence_explanation": "Read from Ingress hosts, TLS entries and annotations.",
+      "evidence_ids": [
+        "kubernetes_security_collector:6f5caf53a3bf6294"
+      ],
+      "fingerprint": "fp_90d0fb2169abf0b8849a8d79",
+      "impact": "Once a real hostname is configured, credentials and session cookies can cross the internet unencrypted.",
+      "owner_accepted_trade_off": null,
+      "priority": "high",
+      "rank": null,
+      "rank_rationale": null,
+      "status": "resolved",
+      "suggested_change": "Cover every host with a cert-manager TLS entry and keep the HTTPS redirect on; route in-cluster analysis traffic to the service or an internal listener instead.",
+      "summary": "An Ingress does not cover every host with TLS from a cert-manager issuer, or it disables the HTTP-to-HTTPS redirect.",
+      "title": "Public ingress can serve application traffic over plain HTTP",
+      "trade_offs": "Canary analysis that currently measures HTTP through the public ingress needs an internal path, or it measures redirects instead of the canary."
     },
     {
       "category": "security",
@@ -663,7 +702,7 @@
   ],
   "rejected": [],
   "rejected_count": 0,
-  "resolved_count": 6,
+  "resolved_count": 7,
   "suppressed_count": 0,
-  "unchanged_count": 3
+  "unchanged_count": 2
 }
