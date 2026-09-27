@@ -14,6 +14,7 @@ def _report(
     *,
     digest: str = "intent-md-v1:x",
     coverage: str = "ok",
+    reasons: dict[str, str] | None = None,
 ) -> Path:
     evaluations = [
         {
@@ -22,6 +23,7 @@ def _report(
             "status": status,
             "statement": f"Position {key}\nsecond line",
             "evidence_ids": [f"c:{key}"] if status == "divergent" else [],
+            **({"reason": reasons[key]} if reasons and key in reasons else {}),
         }
         for key, status in statuses.items()
     ]
@@ -91,6 +93,23 @@ def test_losing_a_decisive_result_fails_instead_of_resolving(tmp_path: Path) -> 
     assert result.resolutions == ()
     assert not result.passed
     assert "No longer evaluable" in to_markdown(result)
+
+
+def test_fixing_a_divergence_only_position_resolves_it(tmp_path: Path) -> None:
+    # A check that can only prove divergence reports a fix as unverified with
+    # complete, clean evidence; any other reason still means evidence was lost.
+    base = _report(tmp_path / "base.json", {"C-001": "divergent", "C-002": "divergent"})
+    head = _report(
+        tmp_path / "head.json",
+        {"C-001": "declared_unverified", "C-002": "declared_unverified"},
+        reasons={"C-001": "collector_cannot_prove_satisfaction", "C-002": "no_relevant_evidence"},
+    )
+
+    result = compare_reports(base, head)
+
+    assert [p.key for p in result.resolutions] == ["cost/C-001"]
+    assert [p.key for p in result.obscured] == ["cost/C-002"]
+    assert not result.passed
 
 
 def test_gate_refuses_reports_from_different_catalogs(tmp_path: Path) -> None:

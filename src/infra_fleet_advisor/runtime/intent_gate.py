@@ -15,6 +15,7 @@ from infra_fleet_advisor.runtime.report_writer import _safe_markdown_text
 
 _MAX_REPORT_BYTES = 4 * 1024 * 1024
 _MAX_EVIDENCE_LINES = 5
+_CLEAN_BUT_UNPROVABLE = "collector_cannot_prove_satisfaction"
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,6 +25,7 @@ class Position:
     statement: str
     evidence: tuple[str, ...]
     check_key: str | None = None
+    reason: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,6 +78,7 @@ def positions(report: dict[str, Any]) -> dict[str, Position]:
                 if isinstance(entry, dict)
             ),
             check_key=item.get("check_key") if isinstance(item.get("check_key"), str) else None,
+            reason=str(item.get("reason", "")),
         )
     return positions
 
@@ -94,6 +97,14 @@ def compare_reports(base_path: Path, head_path: Path) -> GateResult:
         was = before[key].status if key in before else "declared_unverified"
         if position.status == "divergent":
             (persisting if was == "divergent" else regressions).append(position)
+        elif (
+            was == "divergent"
+            and position.status == "declared_unverified"
+            and position.reason == _CLEAN_BUT_UNPROVABLE
+        ):
+            # A divergence-only check reports a fix this way: its collector ran
+            # completely, found the relevant evidence, and none of it diverges.
+            resolutions.append(position)
         elif position.status == "declared_unverified" and was != "declared_unverified":
             # Losing a decisive result is not a fix: a change that makes a
             # collector incomplete could otherwise hide a new divergence.
