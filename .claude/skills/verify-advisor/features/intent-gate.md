@@ -9,6 +9,8 @@ advisor commit.
 - `gate-pass` an unchanged or compatible fleet change passes.
 - `gate-regression` a newly divergent position fails with exit 6.
 - `gate-obscured` a position that loses its decisive result fails too.
+- `gate-divergence-only-fix` a divergence-only position whose evidence is
+  complete and clean (`collector_cannot_prove_satisfaction`) counts as resolved.
 
 ## How to get to it (user POV)
 

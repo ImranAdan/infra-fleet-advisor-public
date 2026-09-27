@@ -24,8 +24,12 @@ break a declared position is seen before it merges.
    the two reports. It fails when a position that was not divergent on the
    base is divergent on the head, and when a position with a decisive result
    on the base (satisfied or divergent) becomes unevaluable on the head: a
-   change must not hide a divergence by making a collector incomplete. Only a
-   move from divergent to satisfied counts as resolved. Pre-existing
+   change must not hide a divergence by making a collector incomplete. A move
+   from divergent to satisfied counts as resolved, and so does a move to
+   `declared_unverified` with reason `collector_cannot_prove_satisfaction`:
+   that reason means the collector ran completely, found the relevant
+   evidence, and none of it diverges, which is how a divergence-only check
+   reports a fix. Any other unverified reason still fails. Pre-existing
    divergences and lost collector coverage are reported without failing.
 3. The gate is read-only: the workflow holds `contents: read`, creates no
    issue, comment, report PR or label, calls no model, and never applies
