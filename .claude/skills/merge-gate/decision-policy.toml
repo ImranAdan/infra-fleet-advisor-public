@@ -1,0 +1,91 @@
+# Every surfaced category names one decider. The independent judge handles
+# reversible direction calls after the advisor intent gate; the owner keeps
+# changes that widen durable authority or access.
+
+[[rule]]
+id = "dependency-pinned"
+category = "dependency"
+decider = "judge"
+guidance = """Approve an exact version, tag, digest or commit SHA whose CI and
+security scans pass on the head commit. Reject floating tags such as latest,
+open version ranges, or a dependency the change does not use."""
+
+[[rule]]
+id = "dependency-manifest"
+category = "dependency-manifest"
+decider = "judge"
+guidance = """Approve a lockfile or manifest change that only moves pinned
+versions or adds a dependency the change demonstrably uses, with tests
+passing. Reject unused additions."""
+
+[[rule]]
+id = "intent-and-policy"
+category = "intent-policy"
+decider = "judge"
+guidance = """Treat declared intent and the advisor intent gate as the captain.
+Approve when the change follows that intent or an explicit owner request and
+keeps the position provable. Reject silent weakening of a check, drill or rule."""
+
+[[rule]]
+id = "decision-record"
+category = "decision-record"
+decider = "judge"
+guidance = """Approve wording, status and consequence updates that match merged
+behavior. Reject a changed decision unsupported by owner direction or behavior."""
+
+[[rule]]
+id = "product-requirements"
+category = "product-requirements"
+decider = "judge"
+guidance = """Approve requirements that match behavior the owner requested and
+the pull request implements. Reject unrequested scope growth."""
+
+[[rule]]
+id = "permission-narrowed"
+category = "permission-removed"
+decider = "judge"
+guidance = """Approve removing or narrowing a permission when the workflow still
+has what its steps use. Reject a removal that falls back to broader defaults."""
+
+[[rule]]
+id = "workflow-change"
+category = "workflow"
+decider = "judge"
+guidance = """Approve automation changes only when event trust boundaries,
+checked-out code, inputs and token use stay least privilege and the behavior is
+covered by validation. Reject execution of pull-request code with privileged
+tokens, unsafe interpolation, or a path that can impersonate merge authority."""
+
+[[rule]]
+id = "permission-widened"
+category = "permission-added"
+decider = "owner"
+guidance = "A new or wider permission changes what a compromised workload can do."
+
+[[rule]]
+id = "credential"
+category = "credential"
+decider = "owner"
+guidance = "A new secret reference changes who can act as this repository."
+
+[[rule]]
+id = "iam"
+category = "iam"
+decider = "owner"
+guidance = "IAM changes what cloud identities may do."
+
+[[rule]]
+id = "permanent-infrastructure"
+category = "permanent-infrastructure"
+decider = "owner"
+guidance = "The permanent stack outlives rebuilds and holds the OIDC trust."
+
+[[rule]]
+id = "merge-authority"
+category = "merge-authority"
+decider = "owner"
+guidance = "The gate, judge, policy and merge rules determine agent authority."
+
+[judge]
+trusted_author = "github-actions[bot]"
+model = "claude-opus-5-5"
