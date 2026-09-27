@@ -123,6 +123,64 @@ spec:
         assert fact["https_enforced"] is enforced, annotation
 
 
+GATEWAY = """apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata: {name: fleet, namespace: edge}
+spec:
+  gatewayClassName: fleet
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      allowedRoutes: {namespaces: {from: %s}}
+    - name: https
+      port: 443
+      protocol: HTTPS
+      hostname: app.example.com
+      tls: {mode: Terminate, certificateRefs: [{name: fleet-tls}]}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata: {name: https-redirect, namespace: edge}
+spec:
+  parentRefs: [{name: fleet, sectionName: http}]
+  rules:
+    - filters: [{type: RequestRedirect, requestRedirect: {scheme: https, statusCode: 301}}]
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata: {name: fleet-tls, namespace: edge}
+spec:
+  secretName: %s
+  dnsNames: [app.example.com]
+  issuerRef: {kind: ClusterIssuer, name: letsencrypt}
+"""
+PLAIN_ROUTE = """---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata: {name: app, namespace: edge}
+spec:
+  parentRefs: [{name: fleet, sectionName: http}]
+  rules: [{backendRefs: [{name: app, port: 8080}]}]
+"""
+
+
+def test_gateway_https_requires_certificate_and_redirect_only_http(tmp_path) -> None:
+    cases = {
+        "compliant": (GATEWAY % ("Same", "fleet-tls"), True),
+        "app served on http": (GATEWAY % ("Same", "fleet-tls") + PLAIN_ROUTE, False),
+        "http open to other namespaces": (GATEWAY % ("All", "fleet-tls"), False),
+        "certificate not from cert-manager": (GATEWAY % ("Same", "other-secret"), False),
+    }
+    for case, (manifest, enforced) in cases.items():
+        for stale in tmp_path.rglob("*.yaml"):
+            stale.unlink()
+        [fact] = _facts(
+            tmp_path, {"k8s/routing/gateway.yaml": manifest}, EVIDENCE_KIND_INGRESS_HTTPS
+        )
+        assert fact["https_enforced"] is enforced, case
+
+
 def test_mounted_token_is_privileged_only_with_bindings(tmp_path) -> None:
     binding = """apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
