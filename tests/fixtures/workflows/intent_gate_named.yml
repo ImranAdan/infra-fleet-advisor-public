@@ -1,0 +1,8 @@
+name: Intent Gate
+on:
+  pull_request:
+jobs:
+  intent:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo intent

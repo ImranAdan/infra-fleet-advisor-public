@@ -10,6 +10,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
     github_actions_workflow_collector as gha_collector,
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
+    EVIDENCE_KIND_AUTONOMOUS_MERGE,
     EVIDENCE_KIND_CREDENTIAL_METHOD,
     EVIDENCE_KIND_TRIVY_GATE,
 )
@@ -21,6 +22,95 @@ LIMITS = ExecutionLimits(
     max_file_bytes=256 * 1024,
     max_recommendations=10,
 )
+
+
+def test_detects_evidence_gated_autonomous_merge(git_checkout) -> None:
+    repo, _sha = git_checkout("autonomous_merge_good.yml", "intent_gate_named.yml")
+    result = gha_collector.collect(repo, LIMITS)
+    evidence = next(item for item in result.evidence if item.kind == EVIDENCE_KIND_AUTONOMOUS_MERGE)
+    assert evidence.source_path == ".github/workflows/autonomous_merge_good.yml"
+    assert evidence.fact == {"evidence_autonomy_complete": True}
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("  merge:\n    runs-on:", "  merge:\n    if: false\n    runs-on:"),
+        (
+            "  merge:\n    runs-on:",
+            "  merge:\n    permissions:\n      contents: read\n"
+            "      pull-requests: read\n      checks: read\n    runs-on:",
+        ),
+        (
+            "      - run: python3 .github/scripts/autonomous_merge.py",
+            "      - if: false\n        run: python3 .github/scripts/autonomous_merge.py",
+        ),
+        (
+            "      - run: python3 .github/scripts/autonomous_merge.py",
+            "      - continue-on-error: true\n"
+            "        run: python3 .github/scripts/autonomous_merge.py",
+        ),
+        (
+            "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n"
+            "        with:\n"
+            "          ref: ${{ github.event.repository.default_branch }}\n"
+            "          persist-credentials: false\n",
+            "",
+        ),
+        ("  statuses: read", "  statuses: read\n  packages: write"),
+        ("workflows: [Intent Gate]", "workflows: [Template Contract]"),
+        ("types: [completed]", "types: [requested]"),
+        ('cron: "7 * * * *"', 'cron: "not-a-schedule"'),
+    ],
+)
+def test_autonomous_merge_requires_a_runnable_privileged_worker(git_checkout, old, new) -> None:
+    repo, _sha = git_checkout("autonomous_merge_good.yml", "intent_gate_named.yml")
+    workflow = repo / ".github" / "workflows" / "autonomous_merge_good.yml"
+    original = workflow.read_text(encoding="utf-8")
+    assert old in original
+    workflow.write_text(original.replace(old, new), encoding="utf-8")
+
+    result = gha_collector.collect(repo, LIMITS)
+    evidence = next(item for item in result.evidence if item.kind == EVIDENCE_KIND_AUTONOMOUS_MERGE)
+
+    assert evidence.fact == {"evidence_autonomy_complete": False}
+
+
+def test_autonomous_merge_requires_the_named_trigger_workflow_to_exist(git_checkout) -> None:
+    repo, _sha = git_checkout("autonomous_merge_good.yml", "intent_gate_named.yml")
+    gate = repo / ".github" / "workflows" / "intent_gate_named.yml"
+    gate.write_text(
+        gate.read_text(encoding="utf-8").replace(
+            "name: Intent Gate", "name: Intent Gate without autonomous follow-up"
+        ),
+        encoding="utf-8",
+    )
+
+    result = gha_collector.collect(repo, LIMITS)
+    evidence = next(item for item in result.evidence if item.kind == EVIDENCE_KIND_AUTONOMOUS_MERGE)
+
+    assert evidence.fact == {"evidence_autonomy_complete": False}
+
+
+def test_excluded_trigger_workflow_leaves_autonomy_unknown(git_checkout) -> None:
+    repo, _sha = git_checkout("autonomous_merge_good.yml", "intent_gate_named.yml")
+
+    result = gha_collector.collect(
+        repo,
+        LIMITS,
+        excluded_paths=frozenset({".github/workflows/intent_gate_named.yml"}),
+    )
+
+    assert result.coverage.status == "partial"
+    assert not any(item.kind == EVIDENCE_KIND_AUTONOMOUS_MERGE for item in result.evidence)
+
+
+def test_complete_scan_proves_the_autonomous_worker_is_missing(git_checkout) -> None:
+    repo, _sha = git_checkout("static_credentials_bad.yml")
+    result = gha_collector.collect(repo, LIMITS)
+    evidence = next(item for item in result.evidence if item.kind == EVIDENCE_KIND_AUTONOMOUS_MERGE)
+    assert evidence.source_path == ".github/workflows/static_credentials_bad.yml"
+    assert evidence.fact == {"evidence_autonomy_complete": False}
 
 
 def test_detects_static_credentials(git_checkout) -> None:
@@ -113,7 +203,7 @@ def test_detects_unquoted_yaml_bool_for_ignore_unfixed(git_checkout) -> None:
 def test_similarly_named_action_is_not_misattributed(git_checkout) -> None:
     repo, _sha = git_checkout("similarly_named_action.yml")
     result = gha_collector.collect(repo, LIMITS)
-    assert result.evidence == ()
+    assert all(item.kind == EVIDENCE_KIND_AUTONOMOUS_MERGE for item in result.evidence)
 
 
 def test_symlink_escaping_checkout_root_is_not_read(tmp_path) -> None:

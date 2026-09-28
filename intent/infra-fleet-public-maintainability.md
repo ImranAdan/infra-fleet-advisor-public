@@ -92,9 +92,10 @@ workflow and secrets) are outside this position.
 
 ### Intent
 
-An agent merges the pull requests it raises in this fleet and its advisor
-without waiting for the owner or calling a paid model, whenever evidence alone
-decides. Evidence decides when every GitHub Actions check on the exact head
+An agent merges the pull requests it raises in this fleet without waiting for
+the owner or calling a paid model whenever evidence alone decides. The Advisor
+may also propose registered mechanical Fleet fixes through this lane. Evidence
+decides when every GitHub Actions check on the exact head
 commit passes, including the advisor's gate for that repository (the intent
 gate for the fleet, the ratchet guard for the advisor), no review thread is
 unresolved, and the pull request records its verification. The advisor is the
@@ -109,16 +110,18 @@ change can approve itself by weakening its own gate.
 Missing, running or failed evidence means no approval; the system never
 approves by default or by timeout. Anything merged without the owner must be
 reversible by reverting its merge commit, without a state, schema or data
-migration.
+migration. Routine pull requests opt in through a visible marker. A trusted
+default-branch worker runs the same exact-head merge gate after CI and on a
+scheduled retry; removing the marker holds the pull request.
 
-Caveat: declaring this position grants nothing. Merges stay governed by the
-merge gate's decision policy until the gate implements M-005, and that
-implementation must enforce every safeguard above before any category moves
-from the owner or the judge to agents. Until a check exists, the position
-reports `check_not_declared` and records the owner's standing decision for
-agents and reviewers.
+Caveat: a complete workflow scan proves whether the Fleet declares the closed
+worker workflow, permissions and protected gate invocation. Excluded, malformed
+or truncated workflow input leaves the position unknown. The check does not
+prove GitHub service availability or that an external coding-agent runtime is
+continuously running. The decision policy remains the authority for categories
+that require the owner.
 
 ### Evaluation
 
+- Check: `fleet_autonomous_merge`
 - Priority: `high`
-

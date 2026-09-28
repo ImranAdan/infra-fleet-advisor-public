@@ -8,11 +8,11 @@ Start with the [project overview](../README.md) or the
 | Guide | Purpose |
 |---|---|
 | [Local setup](setup.md) | Install the locked environment, run reviews and troubleshoot local inputs |
-| [End-to-end workflow](WORKFLOW.md) | Run, approve, publish, select fleet work and review again |
+| [End-to-end workflow](WORKFLOW.md) | Run, gate, publish and remediate Fleet work |
 | [Intent](intent.md) | Declare positions and understand deterministic evaluation |
 | [Add a check](adding-a-check.md) | Turn one declared proposition into a bounded deterministic evaluation |
 | [Reports](reports.md) | Configure report delivery, review changes and understand decline history |
-| [Fleet publication](fleet-publication.md) | Configure the issues App, approve issue creation and retry safely |
+| [Fleet publication](fleet-publication.md) | Configure issue publication and retry safely |
 | [Scope and coverage](status.md) | Understand implemented collectors, unsupported intent and limitations |
 
 ## Optional integrations
@@ -51,3 +51,4 @@ These describe the product and implementation in more detail than the guides.
 | [0005](decisions/0005-public-project-language.md) | Public project language |
 | [0006](decisions/0006-report-approval-and-fleet-work.md) | Approved report PRs as the fleet issue-creation decision record |
 | [0007](decisions/0007-pre-merge-intent-gate.md) | Read-only intent gate on fleet pull requests |
+| [0008](decisions/0008-autonomous-evidence-loop.md) | Autonomous report, issue and reversible remediation loop |

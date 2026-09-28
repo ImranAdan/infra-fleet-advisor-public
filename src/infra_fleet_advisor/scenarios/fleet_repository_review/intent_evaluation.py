@@ -9,6 +9,7 @@ from infra_fleet_advisor.core.evidence import Evidence
 from infra_fleet_advisor.core.intent import IntentEvaluation, IntentEvaluationStatus
 from infra_fleet_advisor.core.report import CollectorCoverage
 from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
+    CONCERN_AUTONOMOUS_MERGE_INCOMPLETE,
     CONCERN_CI_CREDENTIALS_WITHOUT_OIDC,
     CONCERN_CONTAINER_HARDENING_INCOMPLETE,
     CONCERN_COST_TAGS_MISSING,
@@ -39,6 +40,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     APP_CONTRACT_COLLECTOR_ID,
     DEPENDENCY_UPDATE_COLLECTOR_ID,
     EVIDENCE_KIND_APPLICATION_COUPLING,
+    EVIDENCE_KIND_AUTONOMOUS_MERGE,
     EVIDENCE_KIND_CONTAINER_HARDENING,
     EVIDENCE_KIND_COST_TAGS,
     EVIDENCE_KIND_CREDENTIAL_METHOD,
@@ -88,6 +90,7 @@ CHECK_WORKER_GROUPS_DEMAND_SCALED = "worker_groups_demand_scaled"
 CHECK_AWS_COST_TAGS = "aws_cost_allocation_tags"
 CHECK_ECR_PUBLICATION_SCAN_GATED = "ecr_publication_scan_gated"
 CHECK_APPLICATION_SWAPPABLE = "fleet_application_swappable"
+CHECK_FLEET_AUTONOMOUS_MERGE = "fleet_autonomous_merge"
 
 
 @dataclass(frozen=True, slots=True)
@@ -399,6 +402,18 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
             # app-bound object); its absence is not, since a script could name
             # an application no contract declares.
             can_prove_satisfaction=False,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_FLEET_AUTONOMOUS_MERGE: IntentCheckDefinition(
+            concern_key=CONCERN_AUTONOMOUS_MERGE_INCOMPLETE,
+            rule=ConcernRule(
+                category="maintainability",
+                evidence_kind=EVIDENCE_KIND_AUTONOMOUS_MERGE,
+                collector_id=GHA_COLLECTOR_ID,
+                source_path_prefixes=(".github/workflows",),
+                required_facts={"evidence_autonomy_complete": False},
+            ),
+            can_prove_satisfaction=True,
             requires_relevant_evidence=True,
         ),
     }

@@ -1,0 +1,48 @@
+name: Autonomous merge
+
+# Trusted default-branch code periodically evaluates opted-in, same-repository
+# pull requests. The merge gate remains the only authority and binds a merge to
+# the exact head it evaluated. PARK, JUDGE and BLOCKED remain open.
+on:
+  workflow_run:
+    workflows: [Quality]
+    types: [completed]
+  schedule:
+    - cron: "7 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  checks: read
+  contents: write
+  issues: read
+  pull-requests: write
+  statuses: read
+
+concurrency:
+  group: autonomous-merge
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out trusted merge code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Test the candidate selector and merge gate
+        run: |
+          python3 .github/scripts/autonomous_merge.py --self-test
+          python3 .claude/skills/merge-gate/merge_ready.py --self-test
+
+      - name: Merge evidence-approved pull requests
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUTONOMOUS_MERGE_MIN_AGE_SECONDS: "0"
+          AUTONOMOUS_MERGE_POST_MERGE_WORKFLOW: fleet-issues.yml
+          AUTONOMOUS_MERGE_POST_MERGE_HEAD: advisory/latest
+        run: python3 .github/scripts/autonomous_merge.py

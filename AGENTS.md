@@ -5,17 +5,18 @@
 Build an intent-driven, read-only advisor for
 `https://github.com/ImranAdan/infra-fleet-public`. The product compiles declared
 positions into deterministic checks over a verified Git repository snapshot and
-delivers evidenced divergences as human-reviewed work.
+delivers evidenced divergences through exact-head gated work.
 
 The MVP serves one repository and one maintainer. It does not modify the fleet,
 access AWS or Kubernetes, or claim universal optimality. Preserve that boundary
 unless an approved product requirement explicitly changes it.
 
 Reviewing is read-only: the fleet is cloned with no credential beyond public
-read. Under PDR 0002 a separate, manually dispatched workflow may *propose* a
-mechanical fix as a pull request against the fleet, derived only from a merged
-report's evidence. It may never merge one. Concerns needing judgement — scoping a
-wildcard IAM policy, say — must stay out of the patcher registry.
+read. Under PDR 0008, registered mechanical remediation runs in the Fleet
+repository: an Advisor planning job has read-only permissions and emits a patch
+artifact, then trusted Fleet code may propose it. The Fleet intent and merge
+gates remain authoritative. Concerns needing judgement — scoping a wildcard IAM
+policy, say — must stay out of the patcher registry.
 
 Under PDR 0001 a separate workflow may turn a merged, revalidated report into
 deduplicated issues in the fleet using a GitHub App token scoped only to
@@ -30,12 +31,12 @@ repository and only to propose the report it just produced. The fleet remains
 read-only: it is cloned, analyzed, and left untouched. Delivering a report is
 not remediation, and nothing in that path may grow into writing to the fleet.
 
-Under PDR 0006 the reviewed, merged report-only PR is the fleet issue-creation
-decision record. The publisher verifies that approval and links every new fleet
-issue to it. Unverified intent remains report coverage; do not automatically
-create advisor capability tickets. The maintainer selects valuable fleet issues
-and asks an agent working in the fleet to propose fixes. Issue creation does not
-start an agent or grant authority to merge, deploy, or close issues.
+Under PDR 0006 and PDR 0008 the gated, merged report-only PR is the fleet
+issue-creation decision record. The publisher verifies that record and links
+every new fleet issue to it. Unverified intent remains report coverage; do not
+automatically create advisor capability tickets. Registered patchers can
+continue autonomously in the Fleet; other findings wait for an external coding
+agent. Issue creation grants no authority to deploy or close issues.
 
 Under PDR 0007 the fleet may run this repository's `intent-gate` composite
 action, pinned by SHA, on its pull requests. The gate reviews base and merge result
@@ -156,10 +157,10 @@ orchestration, live-cluster access, or a reusable workflow engine.
 
 ## Safety and security
 
-- Operate with read-only access to target repository code. The only write
-  exceptions are the issues-only publisher in PDR 0001 and the manually
-  dispatched pull-request proposer in PDR 0002. The PDR 0001 feedback path reads
-  fleet issue metadata and may propose policy only in this repository.
+- Operate with read-only access to target repository code. The write exceptions
+  are the issues-only publisher in PDR 0001 and the Fleet-owned,
+  artifact-separated remediation path in PDR 0008. The PDR 0001 feedback path
+  reads fleet issue metadata and may propose policy only in this repository.
 - Do not require AWS, Kubernetes, Terraform Cloud, or production credentials.
 - Verify a clean target checkout against a declared full Git SHA, or materialize
   that commit into an isolated snapshot, before analysis.
@@ -246,8 +247,11 @@ proves the work.
 Every pull request carries a `## Verification` section with the commands run
 and what they showed (see `.github/pull_request_template.md`). An agent merges
 its own pull request only by rerunning the gate with `--merge` after it reports
-`READY`; that binds the merge to the checked head SHA. An agent never adds the
-`owner-approved` label and never posts or imitates a merge-judge comment. The
+`READY`, or by leaving the template's `<!-- autonomous-merge -->` marker for the
+trusted default-branch worker to run that exact command. Both paths bind the
+merge to the checked head SHA. Remove the marker to hold a PR open. An agent
+never adds the `owner-approved` label and never posts or imitates a merge-judge
+comment. The
 workflow binds an owner-applied label to the exact head SHA; a label without
 that trusted record, or whose latest label event was not made by the repository
 owner, does not approve a merge.
@@ -260,6 +264,12 @@ infrastructure, migrations, declared intent and the merge system remain owner
 decisions. The optional Anthropic path is dormant unless a future policy
 category explicitly names `judge` as its decider. The ratchet and declared
 intent remain the first authority.
+
+The autonomous worker runs after Quality completes and once an hour as a retry.
+It considers only non-draft PRs whose head branch belongs to this repository
+and whose body contains the opt-in marker. `READY` merges; `PARK`, `JUDGE`,
+failed evidence and unresolved review stay open. Report PRs opt in by default;
+their merge is the machine-validated decision record for issue publication.
 
 When a verification lesson recurs, encode it as a check (a test, a drill, a
 doctor line) rather than another paragraph here.

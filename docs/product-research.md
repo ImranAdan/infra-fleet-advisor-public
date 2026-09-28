@@ -108,10 +108,10 @@ write token. Fleet publication additionally requires a merged report PR and
 links emitted work to that decision record.
 
 These fixes improve first-run behavior without expanding the supported target.
-The optional advisor-only report delivery App addresses quality-check triggering
-while retaining earlier decline decisions. Its real GitHub event path remains
-unverified locally, and the default token and feedback policy PRs retain the
-limitation. The initial rollout rule is now scoped to owner-managed application
+Report delivery now uses `GITHUB_TOKEN` and explicitly dispatches read-only
+Quality on the generated branch, avoiding a separate delivery credential while
+retaining earlier decline decisions. The live dispatch path remains unverified
+locally. The initial rollout rule is now scoped to owner-managed application
 manifests, and persistent IAM completeness is isolated from unrelated staging
 policies. A fourth, divergence-only check now identifies a missing common Fleet
 lifecycle surface without executing target code. Coverage remains deliberately

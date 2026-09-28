@@ -35,6 +35,7 @@ CONCERN_WORKER_SCALING_STATIC = "worker_group_not_demand_scaled"
 CONCERN_COST_TAGS_MISSING = "cost_allocation_tags_missing"
 CONCERN_ECR_PUBLICATION_UNGATED = "ecr_publication_not_scan_gated"
 CONCERN_PLATFORM_NAMES_APPLICATION = "platform_names_an_application"
+CONCERN_AUTONOMOUS_MERGE_INCOMPLETE = "autonomous_merge_incomplete"
 
 # The deterministic support conditions for each concern: which evidence kind
 # can back it, and which collector-derived facts must hold. A collector emits
@@ -602,6 +603,31 @@ CONCERN_TEMPLATES: dict[str, ConcernTemplate] = {
         confidence_explanation=(
             "Read from the tracked app contracts and a whole-word search of tracked platform "
             "files; nothing was executed."
+        ),
+    ),
+    CONCERN_AUTONOMOUS_MERGE_INCOMPLETE: ConcernTemplate(
+        category="maintainability",
+        priority="high",
+        title="Evidence-approved pull requests do not merge autonomously",
+        summary=(
+            "The Fleet lacks a scheduled, exact-head merge worker with the permissions and "
+            "protected gate invocation required to advance opted-in pull requests."
+        ),
+        impact=(
+            "Routine reversible work waits for the owner even after every declared check has "
+            "decided it, so the advisor cannot complete its own feedback loop."
+        ),
+        suggested_change=(
+            "Restore the trusted Autonomous merge workflow with workflow-run and scheduled "
+            "triggers, bounded write permissions, and the protected merge worker command."
+        ),
+        trade_offs=(
+            "The repository grants a default-branch workflow merge permission; the existing "
+            "exact-head gate and same-repository opt-in boundary must remain authoritative."
+        ),
+        confidence=0.95,
+        confidence_explanation=(
+            "Read directly from the tracked workflow triggers, permissions and worker command."
         ),
     ),
 }

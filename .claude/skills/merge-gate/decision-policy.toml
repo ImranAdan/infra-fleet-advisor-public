@@ -100,5 +100,6 @@ model = "claude-opus-5-5"
 
 [evidence]
 required_checks = [
-  { group = "ratchet", name = "Ratchet guard", workflow = ".github/workflows/quality.yml" },
+  { group = "ratchet", name = "Ratchet guard", workflow = ".github/workflows/quality.yml", event = "pull_request" },
+  { group = "ratchet", name = "Ratchet guard (dispatched)", workflow = ".github/workflows/quality.yml", event = "workflow_dispatch", head_branch = "advisory/latest" },
 ]

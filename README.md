@@ -4,7 +4,7 @@ Infra Fleet Advisor checks the declared security, reliability, cost, and
 maintainability intent of the
 [`infra-fleet-public`](https://github.com/ImranAdan/infra-fleet-public) GitOps
 platform against a verified repository revision. It produces evidenced
-recommendations for human review.
+recommendations and advances reversible work through deterministic gates.
 
 ## How it works
 
@@ -13,9 +13,13 @@ checks guard the fleet at three moments:
 
 ```mermaid
 flowchart LR
-    Intent["Owner intent<br/>21 declared positions"] --> Checks["Deterministic checks"]
+    Intent["Owner intent<br/>22 declared positions"] --> Checks["Deterministic checks"]
     Checks -->|before merge| Gate["Intent gate<br/>on fleet pull requests"]
-    Checks -->|after merge| Report["Nightly report when it changes<br/>then approved fleet issues"]
+    Checks -->|after merge| Report["Changed report PR"]
+    Report --> ReportGate["Quality + ratchet + merge gate"]
+    ReportGate --> Issues["Fleet issues"]
+    Issues --> Patch["Registered mechanical patch"]
+    Patch --> FleetGate["Fleet intent gate + CI + merge gate"]
     Drills["Check drills"] -.->|prove each check still fires| Checks
 ```
 
@@ -24,8 +28,10 @@ flowchart LR
   break a declared position, or make one impossible to evaluate. Try it locally:
   `./scripts/intent-gate.sh ../infra-fleet-public BASE_SHA HEAD_SHA /tmp/intent-gate`.
 - **After merge:** a nightly review opens or updates a report PR whenever the
-  report changes. Merging it is the decision to publish eligible findings as
-  fleet issues, and the owner picks which get fixed. See the [end-to-end workflow](docs/WORKFLOW.md).
+  report changes. The report merges automatically only when its exact-head
+  Quality, ratchet and merge gates pass, then eligible findings become Fleet
+  issues. Registered mechanical findings can continue through a gated Fleet PR;
+  other issues wait for a coding agent. See the [end-to-end workflow](docs/WORKFLOW.md).
 - **On the advisor itself:** every check has a [drill](drills/fleet-mutations.yaml),
   a one-line violation of the real fleet that must make it fire. A check that
   stops seeing the fleet goes red instead of inflating coverage. The
@@ -68,7 +74,7 @@ See [local setup](docs/setup.md) for custom paths and troubleshooting.
 | Configure or run a local review | [Local setup](docs/setup.md) |
 | Write or change intent | [Intent guide](docs/intent.md) |
 | Add or extend a deterministic check | [Add a check](docs/adding-a-check.md) |
-| Configure report PR delivery and review reports | [Report guide](docs/reports.md) |
+| Configure report delivery or hold a report | [Report guide](docs/reports.md) |
 | Configure fleet issue creation or retry publication | [Fleet publication guide](docs/fleet-publication.md) |
 | Understand current support and limitations | [Scope and coverage](docs/status.md) |
 | Develop and propose changes | [Contributing](CONTRIBUTING.md) |
@@ -79,8 +85,8 @@ are listed in the [documentation index](docs/README.md).
 
 ## Current scope
 
-The advisor reviews one public fleet repository. Twenty-one declared positions span
-security, reliability, cost, and maintainability. Twenty-one registered checks, one per declared position, cover
+The advisor reviews one public fleet repository. Twenty-two declared positions span
+security, reliability, cost, and maintainability. All twenty-two have registered checks covering
 workflow credentials (including local composite actions), scan-gated ECR
 publication, Dependabot coverage, literal Terraform IAM policies, Kubernetes
 rollouts, container hardening, ingress restriction, bounded egress, HTTPS on
@@ -92,7 +98,7 @@ profile lifecycle, local first use, AWS onboarding and teardown, and whether the
 platform names no application of its own. Accepted
 risks are checked as guardrails: the check proves the conditions that made the
 risk acceptable still hold.
-Positions without a trusted check remain explicitly unverified. Repository
+Positions without relevant, complete evidence are never assumed satisfied. Repository
 analysis does not establish live infrastructure health.
 
 ## License

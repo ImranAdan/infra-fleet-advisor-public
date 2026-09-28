@@ -1,0 +1,23 @@
+name: Autonomous merge
+on:
+  workflow_run:
+    workflows: [Intent Gate]
+    types: [completed]
+  schedule:
+    - cron: "7 * * * *"
+permissions:
+  actions: read
+  checks: read
+  contents: write
+  issues: read
+  pull-requests: write
+  statuses: read
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - run: python3 .github/scripts/autonomous_merge.py

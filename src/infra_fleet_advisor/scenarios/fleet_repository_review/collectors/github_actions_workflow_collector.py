@@ -1,7 +1,7 @@
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -11,6 +11,7 @@ from infra_fleet_advisor.core.limits import ExecutionLimits
 from infra_fleet_advisor.core.paths import validate_repo_relative_path
 from infra_fleet_advisor.core.report import CollectorCoverage
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
+    EVIDENCE_KIND_AUTONOMOUS_MERGE,
     EVIDENCE_KIND_CREDENTIAL_METHOD,
     EVIDENCE_KIND_ECR_PUBLICATION_GATE,
     EVIDENCE_KIND_TRIVY_GATE,
@@ -31,6 +32,9 @@ _PUSH_COMMAND = re.compile(
 )
 # A job condition calling one of these still runs after its dependencies fail.
 _STATUS_OVERRIDE = re.compile(r"\b(?:always|failure|cancelled)\s*\(")
+_AUTONOMOUS_WORKER_COMMAND = "python3 .github/scripts/autonomous_merge.py"
+_AUTONOMOUS_TRIGGER_WORKFLOW = "Intent Gate"
+_DEFAULT_BRANCH_EXPRESSION = "${{ github.event.repository.default_branch }}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +67,86 @@ def _grants_id_token_write(permissions: Any) -> bool:
         return False
     value = permissions.get("id-token")
     return isinstance(value, str) and value.strip().lower() == "write"
+
+
+def _grants_repository_permission(permissions: Any, name: str, level: str) -> bool:
+    """Whether the effective GitHub job permissions grant at least `level`."""
+    if not isinstance(permissions, dict):
+        return False
+    actual = permissions.get(name)
+    if not isinstance(actual, str):
+        return False
+    actual = actual.strip().lower()
+    return actual == "write" or (actual == "read" and level == "read")
+
+
+def _runs_unconditionally(item: dict[str, Any]) -> bool:
+    """Only an absent condition proves that every declared trigger reaches an item."""
+    return "if" not in item
+
+
+def _worker_permissions_are_bounded(permissions: Any) -> bool:
+    """Require every scope used by the gate and no unrelated write scope."""
+    if not isinstance(permissions, dict):
+        return False
+    required = {
+        "actions": "read",
+        "checks": "read",
+        "contents": "write",
+        "issues": "read",
+        "pull-requests": "write",
+        "statuses": "read",
+    }
+    if not all(
+        _grants_repository_permission(permissions, name, level) for name, level in required.items()
+    ):
+        return False
+    return all(
+        not (isinstance(level, str) and level.strip().lower() == "write")
+        or name in {"contents", "pull-requests"}
+        for name, level in permissions.items()
+    )
+
+
+def _checks_out_trusted_merge_code(step: dict[str, Any]) -> bool:
+    uses = step.get("uses")
+    raw_with = step.get("with")
+    return (
+        isinstance(uses, str)
+        and _matches_action(uses, "actions/checkout")
+        and _runs_unconditionally(step)
+        and not _is_truthy_yaml_value(step.get("continue-on-error"))
+        and isinstance(raw_with, dict)
+        and raw_with.get("ref") == _DEFAULT_BRANCH_EXPRESSION
+        and not _is_truthy_yaml_value(raw_with.get("persist-credentials"))
+    )
+
+
+def _has_recoverable_trigger(triggers: Any, workflow_names: frozenset[str]) -> bool:
+    """Require the real intent gate completion plus a syntactically usable cron."""
+    if not isinstance(triggers, dict):
+        return False
+    workflow_run = triggers.get("workflow_run")
+    schedule = triggers.get("schedule")
+    if not isinstance(workflow_run, dict) or not isinstance(schedule, list):
+        return False
+    names = workflow_run.get("workflows")
+    types = workflow_run.get("types")
+    named = [names] if isinstance(names, str) else names
+    events = [types] if isinstance(types, str) else types
+    has_gate = (
+        isinstance(named, list)
+        and _AUTONOMOUS_TRIGGER_WORKFLOW in named
+        and _AUTONOMOUS_TRIGGER_WORKFLOW in workflow_names
+    )
+    completes = isinstance(events, list) and "completed" in events
+    usable_schedule = any(
+        isinstance(item, dict)
+        and isinstance(item.get("cron"), str)
+        and len(item["cron"].split()) == 5
+        for item in schedule
+    )
+    return has_gate and completes and usable_schedule
 
 
 def _input_is_disabled(with_block: dict[str, Any], key: str) -> bool:
@@ -288,6 +372,62 @@ def _publication_evidence(workflow: dict[str, Any], rel_path: str) -> list[Evide
     return evidence
 
 
+def _autonomous_merge_evidence(
+    workflow: dict[str, Any],
+    rel_path: str,
+    workflow_names: frozenset[str],
+    workflow_set_complete: bool,
+) -> Evidence | None:
+    """Describe the closed workflow shape that invokes the protected merge worker."""
+    if workflow.get("name") != "Autonomous merge":
+        return None
+    if _AUTONOMOUS_TRIGGER_WORKFLOW not in workflow_names and not workflow_set_complete:
+        return None
+    # PyYAML 1.1 treats the unquoted key `on` as boolean True.
+    triggers = workflow.get("on", cast(Any, workflow).get(True))
+    workflow_permissions = workflow.get("permissions")
+    jobs = workflow.get("jobs")
+    runnable_worker = False
+    if isinstance(jobs, dict):
+        for job in jobs.values():
+            if not isinstance(job, dict):
+                continue
+            effective_permissions = (
+                job.get("permissions") if "permissions" in job else workflow_permissions
+            )
+            permissions_complete = _worker_permissions_are_bounded(effective_permissions)
+            trusted_checkout_seen = False
+            for step in job.get("steps") or []:
+                if not isinstance(step, dict) or not isinstance(step.get("run"), str):
+                    if isinstance(step, dict) and _checks_out_trusted_merge_code(step):
+                        trusted_checkout_seen = True
+                    continue
+                if step["run"].strip() != _AUTONOMOUS_WORKER_COMMAND:
+                    continue
+                runnable_worker = (
+                    _runs_unconditionally(job)
+                    and _runs_unconditionally(step)
+                    and not _is_truthy_yaml_value(step.get("continue-on-error"))
+                    and permissions_complete
+                    and trusted_checkout_seen
+                )
+                if runnable_worker:
+                    break
+            if runnable_worker:
+                break
+    complete = _has_recoverable_trigger(triggers, workflow_names) and runnable_worker
+    return build_evidence(
+        collector_id=GHA_COLLECTOR_ID,
+        collector_version=GHA_COLLECTOR_VERSION,
+        kind=EVIDENCE_KIND_AUTONOMOUS_MERGE,
+        source_path=rel_path,
+        locator="workflow",
+        excerpt=f"Autonomous merge invokes protected worker: {str(complete).lower()}",
+        fact={"evidence_autonomy_complete": complete},
+        identity_parts=(rel_path, "workflow"),
+    )
+
+
 def _local_action_steps(
     checkout_root: Path,
     uses: str,
@@ -377,6 +517,26 @@ def collect(
     files = eligible_files[: limits.max_workflow_files]
     truncated_count = len(eligible_files) - len(files)
 
+    workflow_names: set[str] = set()
+    workflow_set_complete = not (excluded_count or untracked_count or truncated_count)
+    for path in files:
+        try:
+            if (
+                path.is_symlink()
+                or not path.resolve().is_relative_to(checkout_real)
+                or path.stat().st_size > limits.max_file_bytes
+            ):
+                workflow_set_complete = False
+                continue
+            parsed = yaml.safe_load(path.read_text(encoding="utf-8"))
+            if isinstance(parsed, dict) and isinstance(parsed.get("name"), str):
+                workflow_names.add(parsed["name"])
+            elif not isinstance(parsed, dict):
+                workflow_set_complete = False
+        except (OSError, yaml.YAMLError):
+            workflow_set_complete = False
+            continue
+
     evidence: list[Evidence] = []
     failures = 0
     for path in files:
@@ -427,13 +587,21 @@ def collect(
                     if item is not None:
                         evidence.append(item)
             evidence.extend(_publication_evidence(workflow, rel_path))
+            autonomous = _autonomous_merge_evidence(
+                workflow,
+                rel_path,
+                frozenset(workflow_names),
+                workflow_set_complete,
+            )
+            if autonomous is not None:
+                evidence.append(autonomous)
         except (OSError, yaml.YAMLError, UnsafePathError):
             failures += 1
             continue
 
     if not all_files:
         status = "failed"
-    elif failures or truncated_count or untracked_count:
+    elif failures or excluded_count or truncated_count or untracked_count:
         status = "partial"
     else:
         status = "ok"
@@ -447,6 +615,29 @@ def collect(
         summary_parts.append(f"{excluded_count} workflow file(s) excluded by policy")
     if untracked_count:
         summary_parts.append(f"{untracked_count} workflow file(s) not part of the verified commit")
+
+    # A complete scan can prove the named worker is absent. Keep the source on
+    # a real tracked file so every divergence remains reviewable; exclusions or
+    # partial collection leave the position unknown instead.
+    if (
+        status == "ok"
+        and not excluded_count
+        and files
+        and not any(item.kind == EVIDENCE_KIND_AUTONOMOUS_MERGE for item in evidence)
+    ):
+        rel_path = files[0].relative_to(checkout_root).as_posix()
+        evidence.append(
+            build_evidence(
+                collector_id=GHA_COLLECTOR_ID,
+                collector_version=GHA_COLLECTOR_VERSION,
+                kind=EVIDENCE_KIND_AUTONOMOUS_MERGE,
+                source_path=rel_path,
+                locator="workflow_set",
+                excerpt="No Autonomous merge workflow exists in the complete workflow set",
+                fact={"evidence_autonomy_complete": False},
+                identity_parts=(rel_path, "workflow_set"),
+            )
+        )
 
     return CollectorResult(
         evidence=tuple(evidence),

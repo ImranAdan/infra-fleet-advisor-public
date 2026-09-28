@@ -19,6 +19,11 @@ the operation to the head commit that was checked:
 python3 .claude/skills/merge-gate/merge_ready.py <PR_NUMBER> --merge
 ```
 
+Same-repository PRs containing `<!-- autonomous-merge -->` may leave this step
+to `.github/workflows/autonomous-merge.yml`. The trusted default-branch worker
+runs the same command; it cannot convert `PARK`, `JUDGE` or `BLOCKED` into a
+merge. Remove the marker to hold the PR open.
+
 | Verdict | Exit | Meaning | What to do |
 |---|---|---|---|
 | `READY` | 0 | Every condition and applicable decision holds | Rerun with `--merge`, then say what merged and why |
@@ -71,6 +76,8 @@ the workflow records a trusted approval for that exact head SHA; the gate
 requires that record, the label, and a latest label event from the repository
 owner. Evidence-decided categories need no comment or model: all checks must be
 green and the required advisor check must have trusted exact-head provenance.
+Workflow-dispatch evidence is also bound to its registered generated head
+branch; a successful run from an ordinary feature branch is not evidence.
 The optional Anthropic path runs only if a future policy category explicitly
 uses the `judge` decider. Declared intent and the ratchet remain the first
 authority, so neither evidence nor a judge approval can override them.

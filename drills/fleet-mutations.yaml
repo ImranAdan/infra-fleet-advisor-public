@@ -89,6 +89,14 @@ drills:
     path: k8s/profiles/local/policies/require-local-images.yaml
     find: "container.image.startsWith('fleet-local-registry:5000/')"
     replace: "container.image.startsWith('fleet-local-registry:5000/load-harness:')"
+  - proposition: M-005
+    variants:
+      - path: .github/workflows/autonomous-merge.yml
+        find: "run: python3 .github/scripts/autonomous_merge.py"
+        replace: "run: echo autonomous merge disabled"
+      - path: .github/workflows/intent-gate.yml
+        find: "name: Intent Gate"
+        replace: "name: Intent Gate without autonomous follow-up"
   - proposition: S-008
     path: applications/load-harness/src/load_harness/app.py
     find: 'app.config["SESSION_COOKIE_SAMESITE"] = "Lax"'
