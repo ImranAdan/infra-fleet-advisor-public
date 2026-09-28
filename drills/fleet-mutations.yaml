@@ -67,16 +67,10 @@ drills:
     path: k8s/applications/platform/networkpolicy.yaml
     find: "namespace: applications"
     replace: "namespace: observability"
-  # Variants follow the fleet's move from ingress-nginx to the shared Gateway
-  # (fleet#115); prune the Ingress variant once that change is on main.
   - proposition: S-005
-    variants:
-      - path: k8s/profiles/aws-staging/applications/ingress-nginx.yaml
-        find: 'cert-manager.io/cluster-issuer: "letsencrypt-prod"'
-        replace: 'example.invalid/issuer: "none"'
-      - path: k8s/routing/gateway.yaml
-        find: "            scheme: https"
-        replace: "            scheme: http"
+    path: k8s/routing/gateway.yaml
+    find: "            scheme: https"
+    replace: "            scheme: http"
   - proposition: S-009
     path: k8s/applications/platform/hpa.yaml
     find: "# Horizontal Pod Autoscaler for ${APP_NAME}"
@@ -110,12 +104,6 @@ drills:
   # A violation that exists only after rendering: the local profile's own
   # patch opens ingress to every address while the shared base stays safe.
   - proposition: S-003
-    variants:
-      - path: k8s/profiles/local/applications/kustomization.yaml
-        find: "        path: /spec/ingress/1/from/0/namespaceSelector/matchLabels/kubernetes.io~1metadata.name\n        value: envoy-gateway-system"
-        replace: "        path: /spec/ingress/1/from/0\n        value: {ipBlock: {cidr: 0.0.0.0/0}}"
-      # After fleet#115 the local overlay no longer patches the NetworkPolicy;
-      # a new local-only patch opening ingress is the same render-time breach.
-      - path: k8s/profiles/local/applications/kustomization.yaml
-        find: "  - target:\n      kind: HorizontalPodAutoscaler\n    patch: |-\n      - op: replace\n        path: /spec/maxReplicas\n        value: 3"
-        replace: "  - target:\n      kind: NetworkPolicy\n    patch: |-\n      - op: replace\n        path: /spec/ingress/1/from/0\n        value: {ipBlock: {cidr: 0.0.0.0/0}}"
+    path: k8s/profiles/local/applications/kustomization.yaml
+    find: "  - target:\n      kind: HorizontalPodAutoscaler\n    patch: |-\n      - op: replace\n        path: /spec/maxReplicas\n        value: 3"
+    replace: "  - target:\n      kind: NetworkPolicy\n    patch: |-\n      - op: replace\n        path: /spec/ingress/1/from/0\n        value: {ipBlock: {cidr: 0.0.0.0/0}}"
