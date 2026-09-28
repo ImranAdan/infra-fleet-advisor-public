@@ -2,7 +2,7 @@
 
 - Format: `1`
 - Intent ID: `infra_fleet_public_maintainability`
-- Version: `1.5`
+- Version: `1.6`
 - Category: `maintainability`
 
 This document declares the fleet owner's adoption experience for the public
@@ -82,6 +82,13 @@ the application is a contract change rather than a platform migration. At
 least two applications ship contracts, so the swap stays exercised rather than
 theoretical. Per-application AWS resources (its ECR repository, release
 workflow and secrets) are outside this position.
+
+Locally, the application dashboard may also run any other contracted
+application on demand beside the selected one. A launched application is
+deployed from the same Git revision with the same platform services, filled
+from its own contract, under an identity that can change only the
+applications namespace, and stopping it removes that stack. Launching adds no
+platform code that names an application.
 
 ### Evaluation
 
