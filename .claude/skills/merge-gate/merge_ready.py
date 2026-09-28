@@ -921,6 +921,12 @@ def self_test() -> int:
         category == "migration" and "existing-move.tf" in description
         for category, description in found
     )
+    assert not any(
+        category == "migration"
+        for category, _ in scope_findings(
+            "\n".join(_file("app/queries/find_user.sql", "+SELECT * FROM users;"))
+        )
+    )
     assert _adds_privileged_trigger("pull_request_target:")
     assert _adds_privileged_trigger("on: pull_request_target")
     assert _adds_privileged_trigger("on: [push, pull_request_target]")
