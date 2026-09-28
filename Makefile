@@ -15,6 +15,7 @@ review:
 
 test:
 	uv run --frozen pytest -q
+	python3 .github/scripts/report_status_bridge.py --self-test
 	python3 .claude/skills/merge-gate/merge_ready.py --self-test
 	python3 .claude/skills/merge-gate/judge.py --self-test
 

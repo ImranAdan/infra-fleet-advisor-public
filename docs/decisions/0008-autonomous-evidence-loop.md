@@ -35,7 +35,11 @@ No App credential or personal token is needed. The dispatch resolves and checks
 the PR's exact base and head before producing evidence. Advisor report-only
 changes are excluded from the native Quality trigger so a bot approval request
 cannot block branch protection; the report workflow waits for dispatched
-Quality and then dispatches the autonomous merge worker.
+Quality, validates the bot author, report-only diff, exact head and all six job
+results, and relays the four branch-protection contexts as GitHub Actions commit
+statuses linked to that run. It then dispatches the autonomous merge worker.
+The worker still reads the underlying Quality check runs, including the drill
+and ratchet, before it can merge.
 
 Registered mechanical remediation moves into the Fleet repository. A read-only
 job runs merged Advisor code and exports a patch artifact. A separate Fleet job
