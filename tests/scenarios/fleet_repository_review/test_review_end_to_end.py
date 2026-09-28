@@ -112,9 +112,9 @@ def test_authoritative_markdown_drives_the_production_review(git_checkout) -> No
 
     evaluations = {item.proposition_id: item for item in report.intent_evaluations}
     assert len(evaluations) == 22
-    # M-005 is declared ahead of any check; it is reported, never invented.
+    # This compact fixture has no autonomous worker, so missing evidence is explicit.
     assert evaluations["M-005"].status == "declared_unverified"
-    assert evaluations["M-005"].reason == "check_not_declared"
+    assert evaluations["M-005"].reason == "no_relevant_evidence"
     assert evaluations["S-001"].status == "divergent"
     assert evaluations["S-007"].status == "divergent"
     assert evaluations["R-001"].status == "declared_unverified"

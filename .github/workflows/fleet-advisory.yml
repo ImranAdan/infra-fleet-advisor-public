@@ -26,6 +26,7 @@ on:
         default: stub
 
 permissions:
+  actions: write
   contents: write
   pull-requests: write
 
@@ -40,8 +41,6 @@ jobs:
   advise:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      HAS_REPORT_APP: ${{ secrets.ADVISOR_REPORT_APP_CLIENT_ID != '' && secrets.ADVISOR_REPORT_APP_PRIVATE_KEY != '' }}
     steps:
       # Pinned to the default branch, not the dispatch ref: the prior report
       # and the policy must come from merged state. Dispatching from a feature
@@ -78,31 +77,6 @@ jobs:
         run: |
           pip install "uv==0.9.14"
           uv sync --frozen --no-dev
-
-      # App-authored PRs trigger ordinary pull_request quality checks. The
-      # token is scoped to this advisor repo and is never passed to collectors.
-      - name: Verify optional report delivery credentials
-        env:
-          REPORT_APP_ID: ${{ secrets.ADVISOR_REPORT_APP_CLIENT_ID }}
-          REPORT_APP_KEY: ${{ secrets.ADVISOR_REPORT_APP_PRIVATE_KEY }}
-        run: |
-          if { [ -n "$REPORT_APP_ID" ] && [ -z "$REPORT_APP_KEY" ]; } || \
-             { [ -z "$REPORT_APP_ID" ] && [ -n "$REPORT_APP_KEY" ]; }; then
-            echo '::error::Report delivery needs both ADVISOR_REPORT_APP_CLIENT_ID and ADVISOR_REPORT_APP_PRIVATE_KEY, or neither.'
-            exit 1
-          fi
-
-      - name: Create advisor report delivery token
-        id: report-app
-        if: env.HAS_REPORT_APP == 'true'
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          client-id: ${{ secrets.ADVISOR_REPORT_APP_CLIENT_ID }}
-          private-key: ${{ secrets.ADVISOR_REPORT_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: ${{ github.event.repository.name }}
-          permission-contents: write
-          permission-pull-requests: write
 
       # Fails the job on any synthesis or provenance error rather than writing
       # an empty report: a report with no findings is indistinguishable from
@@ -183,7 +157,7 @@ jobs:
       - name: Decide whether the findings changed
         id: publish
         env:
-          REPORT_BOT_LOGIN: ${{ steps.report-app.outputs.app-slug && format('{0}[bot]', steps.report-app.outputs.app-slug) || 'github-actions[bot]' }}
+          REPORT_BOT_LOGIN: github-actions[bot]
         run: |
           if [ ! -f "$RUNNER_TEMP/advisory-pr-history.json" ]; then
             echo "The closed advisory history was not read." >&2
@@ -236,17 +210,24 @@ jobs:
           sha="${{ steps.target.outputs.sha }}"
           {
             printf '%s\n' "$REPORT_SIGNATURE_MARKER"
+            echo '<!-- autonomous-merge -->'
             echo
             echo "Review of [\`${sha:0:7}\`](https://github.com/${TARGET_REPO}/commit/${sha})" \
                  "in \`${TARGET_REPO}\`, produced by the \`fleet-advisory\` workflow."
             echo
-            echo "This report PR is the decision record for fleet issue creation. Merging it"
-            echo "approves eligible recommendations for the separate fleet publisher."
-            echo "The owner then selects valuable fleet issues for an agent to propose fixes."
+            echo "This report PR is the decision record for fleet issue creation. The"
+            echo "autonomous merge worker accepts it only when the exact-head Quality and"
+            echo "Ratchet checks pass. Remove the autonomous marker to hold it open, or close"
+            echo "the PR to decline this exact material report."
             echo
             echo "Unsupported positions remain in report coverage and do not create advisor"
             echo "tickets. Historical recommendations with incomplete current collection are"
             echo "deferred. The report records its evidence, coverage and synthesizer."
+            echo
+            echo "## Verification"
+            echo
+            echo "- \`uv run infra-fleet-advisor review ...\` → generated and validated the bounded report for \`${sha}\`"
+            echo "- \`uv run --frozen infra-fleet-advisor issue-plan ...\` → validated the prospective Fleet issue plan"
             echo
             echo "---"
             echo
@@ -256,7 +237,7 @@ jobs:
       - name: Open or update the advisory pull request
         if: steps.publish.outputs.changed == 'true'
         env:
-          GH_TOKEN: ${{ steps.report-app.outputs.token || github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           sha="${{ steps.target.outputs.sha }}"
           title="chore(advisory): fleet report for ${TARGET_REPO}@${sha:0:7}"
@@ -267,22 +248,26 @@ jobs:
           git commit -m "chore(advisory): report for ${TARGET_REPO}@${sha:0:7}"
           # The checkouts persist no credentials, so authenticate this push
           # explicitly. GITHUB_TOKEN is masked in logs.
-          if [ "$HAS_REPORT_APP" != 'true' ]; then
-            echo 'Report delivery uses GITHUB_TOKEN; automatic PR quality checks need the optional advisor report App.' >> "$GITHUB_STEP_SUMMARY"
-          fi
           git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
             "HEAD:refs/heads/$BRANCH"
 
-          if [ -n "$(gh pr list --head "$BRANCH" --state open --json number -q '.[].number')" ]; then
-            gh pr edit "$BRANCH" --title "$title" --body-file "$RUNNER_TEMP/pr-body.md"
+          number="$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$number" ]; then
+            gh pr edit "$number" --title "$title" --body-file "$RUNNER_TEMP/pr-body.md"
             echo "Updated the open advisory pull request."
           else
             gh pr create \
               --base "${{ github.event.repository.default_branch }}" \
               --head "$BRANCH" \
               --title "$title" \
-              --body-file "$RUNNER_TEMP/pr-body.md"
+              --body-file "$RUNNER_TEMP/pr-body.md" >/dev/null
+            number="$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')"
           fi
+
+          # GITHUB_TOKEN does not emit pull_request workflow events. An explicit
+          # workflow_dispatch is the documented exception and binds the Quality
+          # checks to this report branch's exact head without another credential.
+          gh workflow run quality.yml --ref "$BRANCH" -f "pr_number=$number"
 
   # Canary drills: apply each declared violation in drills/ to a throwaway
   # worktree of the reviewed fleet and require its check to fire. A check that

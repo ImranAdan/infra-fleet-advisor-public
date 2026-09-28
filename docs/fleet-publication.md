@@ -1,8 +1,8 @@
-# Publishing approved recommendations to the fleet
+# Publishing accepted recommendations to the Fleet
 
 [Documentation index](README.md)
 
-## Approval and eligibility
+## Decision record and eligibility
 
 When `FLEET_ISSUES_ENABLED=true`, `.github/workflows/fleet-issues.yml` runs after
 a report-only PR is merged into advisor `main`. Closing an unmerged PR, merging
@@ -16,15 +16,15 @@ historical carry-forwards; uncertainty does not become a fresh fix request.
 
 The advisory workflow also builds a prospective issue plan before it proposes a
 report PR. That catches an invalid recommendation or oversized issue body before
-the owner reviews a decision record. It uses a runner-local placeholder approval
-and no fleet credential. The publisher still performs the complete validation
-again against the exact merged report and its real approval record.
+the report enters its autonomous gate. It uses a runner-local placeholder merge
+record and no Fleet credential. The publisher still performs the complete
+validation again against the exact merged report and its real merge record.
 
 Live main is re-fetched immediately before acquiring the write token and again
 before publication. A changed report, policy, intent or validation input pauses
 the write. Fetched code is never executed. This checks freshness without locking
-repository merges. Every new issue links to the approving report PR and its
-merge commit; see [PDR 0006](decisions/0006-report-approval-and-fleet-work.md).
+repository merges. Every new issue links to the report PR and its merge commit;
+see [PDR 0008](decisions/0008-autonomous-evidence-loop.md).
 
 ## Retry the approved report
 
@@ -35,6 +35,11 @@ and supply the merged report PR number, or run:
 gh workflow run fleet-issues.yml \
   --repo ImranAdan/infra-fleet-advisor-public -f report_pr=<merged-report-pr>
 ```
+
+The autonomous report worker dispatches this retry immediately after it merges
+a generated report. A daily 05:07 UTC recovery run selects the newest merged
+`advisory/latest` report, so a transient dispatch outage does not require an
+owner to notice and replay the handoff.
 
 ## Configure the issues App
 
@@ -48,8 +53,8 @@ and fails with the missing secret names; it never falls back to a personal token
 or a broader credential.
 
 Set the repository Actions variable `FLEET_ISSUES_ENABLED` to `true` only after
-configuring those App secrets. This enables the fleet handoff after report
-approval. Optional decision feedback has its own `FLEET_FEEDBACK_ENABLED=true`
+configuring those App secrets. This enables the Fleet handoff after the report
+merge. Optional decision feedback has its own `FLEET_FEEDBACK_ENABLED=true`
 setting and remains disabled unless separately selected. See the
 [feedback guide](feedback.md). Publication waits if the merged report uses an
 older policy or intent catalog; it resumes after a current report is
@@ -63,9 +68,10 @@ five of eight issues continues with the remaining three. Existing closed issues
 remain closed, active issues remain open, and each fingerprint receives at most
 one resolution note; issue prose never enters the advisor.
 
-Selecting valuable issues for an agent, reviewing fleet fix PRs and deciding
-closure remain maintainer actions. Issue creation does not start an agent. The
-[runbook](WORKFLOW.md) describes this handoff.
+Registered mechanical findings may continue through the Fleet-owned remediation
+and autonomous merge path. Other issues wait for a coding agent; issue
+publication alone does not supply that runtime. The [runbook](WORKFLOW.md)
+describes both paths.
 
 ## Troubleshooting
 

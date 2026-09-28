@@ -1,6 +1,6 @@
 # PDR 0006: Report approval and fleet work
 
-- Status: accepted
+- Status: superseded in part by PDR 0008
 - Date: 2026-09-14
 - Supersedes: PDR 0004 automatic advisor capability-ticket publication
 - Refines: PDR 0001 advisory delivery and issue creation

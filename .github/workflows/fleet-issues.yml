@@ -13,6 +13,8 @@ on:
         description: Merged report PR number to retry
         required: true
         type: string
+  schedule:
+    - cron: "7 5 * * *"
 
 permissions:
   contents: read
@@ -29,7 +31,8 @@ jobs:
     name: Publish accepted recommendations
     if: >-
       vars.FLEET_ISSUES_ENABLED == 'true' &&
-      (github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true)
+      (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' ||
+      github.event.pull_request.merged == true)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -59,6 +62,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPORT_PR: ${{ github.event.pull_request.number || inputs.report_pr }}
         run: |
+          if [ -z "$REPORT_PR" ]; then
+            REPORT_PR="$(gh api \
+              "repos/${GITHUB_REPOSITORY}/pulls?state=closed&head=${GITHUB_REPOSITORY_OWNER}%3Aadvisory%2Flatest&sort=updated&direction=desc&per_page=20" \
+              --jq '[.[] | select(.merged_at != null)][0].number // empty')"
+          fi
           if [[ ! "$REPORT_PR" =~ ^[1-9][0-9]{0,9}$ ]]; then
             echo '::error::A positive merged report PR number is required.'
             exit 1

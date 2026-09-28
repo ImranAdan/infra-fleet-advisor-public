@@ -195,6 +195,7 @@ def test_production_markdown_is_the_authoritative_catalog() -> None:
         "aws_cost_allocation_tags",
         "dependency_updates_configured",
         "fleet_application_swappable",
+        "fleet_autonomous_merge",
         "deployment_rollout_capacity",
         "ecr_lifecycle_bounded",
         "ecr_publication_scan_gated",
@@ -251,7 +252,6 @@ def test_production_markdown_is_the_authoritative_catalog() -> None:
     assert maintainability[3].check_key == "fleet_application_swappable"
     assert all(item.priority == "high" for item in maintainability[:3])
     assert maintainability[3].priority == "medium"
-    # M-005 records the owner's merge-autonomy decision ahead of a check.
     assert maintainability[4].proposition_id == "M-005"
-    assert maintainability[4].check_key is None
+    assert maintainability[4].check_key == "fleet_autonomous_merge"
     assert maintainability[4].priority == "high"

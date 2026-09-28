@@ -1,7 +1,7 @@
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -11,6 +11,7 @@ from infra_fleet_advisor.core.limits import ExecutionLimits
 from infra_fleet_advisor.core.paths import validate_repo_relative_path
 from infra_fleet_advisor.core.report import CollectorCoverage
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
+    EVIDENCE_KIND_AUTONOMOUS_MERGE,
     EVIDENCE_KIND_CREDENTIAL_METHOD,
     EVIDENCE_KIND_ECR_PUBLICATION_GATE,
     EVIDENCE_KIND_TRIVY_GATE,
@@ -31,6 +32,7 @@ _PUSH_COMMAND = re.compile(
 )
 # A job condition calling one of these still runs after its dependencies fail.
 _STATUS_OVERRIDE = re.compile(r"\b(?:always|failure|cancelled)\s*\(")
+_AUTONOMOUS_WORKER_COMMAND = "python3 .github/scripts/autonomous_merge.py"
 
 
 @dataclass(frozen=True, slots=True)
@@ -288,6 +290,46 @@ def _publication_evidence(workflow: dict[str, Any], rel_path: str) -> list[Evide
     return evidence
 
 
+def _autonomous_merge_evidence(workflow: dict[str, Any], rel_path: str) -> Evidence | None:
+    """Describe the closed workflow shape that invokes the protected merge worker."""
+    if workflow.get("name") != "Autonomous merge":
+        return None
+    # PyYAML 1.1 treats the unquoted key `on` as boolean True.
+    triggers = workflow.get("on", cast(Any, workflow).get(True))
+    permissions = workflow.get("permissions")
+    jobs = workflow.get("jobs")
+    commands: list[str] = []
+    if isinstance(jobs, dict):
+        for job in jobs.values():
+            if not isinstance(job, dict):
+                continue
+            commands.extend(
+                step["run"]
+                for step in (job.get("steps") or [])
+                if isinstance(step, dict) and isinstance(step.get("run"), str)
+            )
+    complete = (
+        isinstance(triggers, dict)
+        and "workflow_run" in triggers
+        and "schedule" in triggers
+        and isinstance(permissions, dict)
+        and permissions.get("contents") == "write"
+        and permissions.get("pull-requests") == "write"
+        and permissions.get("checks") == "read"
+        and any(command.strip() == _AUTONOMOUS_WORKER_COMMAND for command in commands)
+    )
+    return build_evidence(
+        collector_id=GHA_COLLECTOR_ID,
+        collector_version=GHA_COLLECTOR_VERSION,
+        kind=EVIDENCE_KIND_AUTONOMOUS_MERGE,
+        source_path=rel_path,
+        locator="workflow",
+        excerpt=f"Autonomous merge invokes protected worker: {str(complete).lower()}",
+        fact={"evidence_autonomy_complete": complete},
+        identity_parts=(rel_path, "workflow"),
+    )
+
+
 def _local_action_steps(
     checkout_root: Path,
     uses: str,
@@ -427,6 +469,9 @@ def collect(
                     if item is not None:
                         evidence.append(item)
             evidence.extend(_publication_evidence(workflow, rel_path))
+            autonomous = _autonomous_merge_evidence(workflow, rel_path)
+            if autonomous is not None:
+                evidence.append(autonomous)
         except (OSError, yaml.YAMLError, UnsafePathError):
             failures += 1
             continue

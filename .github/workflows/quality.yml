@@ -8,6 +8,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request to validate when GITHUB_TOKEN delivery suppresses pull_request
+        required: false
+        type: string
 
 # Read-only. This workflow inspects; it never writes to the repository.
 permissions:
@@ -20,7 +25,7 @@ concurrency:
 jobs:
   conventional-commits:
     name: Conventional commits
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || inputs.pr_number != ''
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -42,20 +47,33 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Resolve pull request metadata
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+        run: |
+          metadata="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          {
+            echo "title=$(jq -r '.title' <<< "$metadata")"
+            echo "base=$(jq -r '.base.sha' <<< "$metadata")"
+            echo "head=$(jq -r '.head.sha' <<< "$metadata")"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Install locked dependencies
         run: make setup
 
       - name: Validate pull request title
         env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_TITLE: ${{ steps.pr.outputs.title }}
         run: |
           printf '%s\n' "${PR_TITLE}" > "${RUNNER_TEMP}/pr-title.txt"
           uv run --frozen gitlint --msg-filename "${RUNNER_TEMP}/pr-title.txt"
 
       - name: Validate commit messages
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ steps.pr.outputs.base }}
+          HEAD_SHA: ${{ steps.pr.outputs.head }}
         run: uv run --frozen gitlint --commits "${BASE_SHA}..${HEAD_SHA}"
 
   code-quality:
@@ -125,11 +143,11 @@ jobs:
             --output-dir "$RUNNER_TEMP/drills" --summary "$GITHUB_STEP_SUMMARY"
 
   ratchet-guard:
-    name: Ratchet guard
+    name: ${{ inputs.pr_number != '' && 'Ratchet guard (dispatched)' || 'Ratchet guard' }}
     # Review the same fleet commit with the base advisor and with this change.
     # The fleet is held constant, so lost proof, lost checks or vanished
     # findings are this change's doing. Read-only: the fleet is cloned, never written.
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || inputs.pr_number != ''
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -159,9 +177,18 @@ jobs:
       - name: Install locked dependencies
         run: make setup
 
+      - name: Resolve pull request base
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+        run: |
+          base="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.base.sha')"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+
       - name: Compare the base advisor with this change
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ steps.pr.outputs.base }}
         run: scripts/ratchet-guard.sh target "$BASE_SHA" "$RUNNER_TEMP/ratchet"
 
   workflows:

@@ -1,7 +1,7 @@
 # Contributing
 
-Infra Fleet Advisor reviews the declared intent of one public fleet repository
-and delivers evidenced recommendations through reviewed report PRs. Read the
+Infra Fleet Advisor reviews the declared intent of one public Fleet repository
+and delivers evidenced recommendations through exact-head gated report PRs. Read the
 [overview](README.md), [workflow](docs/WORKFLOW.md) and
 [repository guidance](AGENTS.md) before changing its behavior.
 
@@ -36,8 +36,9 @@ a review against a clean fleet checkout.
 
 ## Choose a change
 
-Fleet fixes belong in `infra-fleet-public`, where the owner selects valuable
-issues created from approved reports. Advisor changes belong here when they
+Fleet fixes belong in `infra-fleet-public`, where registered mechanical issues
+can produce gated PRs and other issues can be picked up by a coding agent.
+Advisor changes belong here when they
 improve collection, evaluation, report delivery or the documented product.
 Unsupported intent is coverage, not an automatically generated development
 queue. Discuss a proposed capability against the requirements before adding it.
@@ -79,9 +80,9 @@ the implemented behavior.
   finding does not apply.
 
 Report proposals change only `reports/report.json` and `reports/report.md`.
-Keep implementation or documentation edits in separate PRs so merging a report
-remains a clear decision about fleet issue creation. Required checks and review
-still apply to fleet fix proposals; issue creation grants no merge authority.
+Keep implementation or documentation edits in separate PRs so the report merge
+remains a clear decision record for Fleet issue creation. Required checks and
+the merge gate still apply to Fleet fix proposals.
 
 ## Automated merge decisions
 
@@ -91,6 +92,11 @@ It also requires a successful ratchet check whose Actions run comes from the
 declared workflow; a missing or same-name substitute fails closed. Changes to
 durable authority, access, migrations, declared intent and the merge system
 remain with the repository owner.
+
+The pull request template opts same-repository branches into the autonomous
+worker. Keep the marker to merge when the gate reaches `READY`; remove it to
+hold the PR. Generated report PRs opt in and are retried after Quality and
+hourly.
 
 This default path needs no model or API key. The Anthropic transport remains
 available only if a future policy category explicitly uses the `judge` decider.

@@ -5,6 +5,7 @@ from infra_fleet_advisor.core.errors import PolicyError
 from infra_fleet_advisor.core.evidence import Evidence
 from infra_fleet_advisor.core.report import CollectorCoverage
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
+    EVIDENCE_KIND_AUTONOMOUS_MERGE,
     EVIDENCE_KIND_CREDENTIAL_METHOD,
     EVIDENCE_KIND_DEPLOYMENT_ROLLOUT_CAPACITY,
     EVIDENCE_KIND_FLEET_LIFECYCLE,
@@ -16,6 +17,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.intent_evaluation import (
     CHECK_DEPLOYMENT_ROLLOUT_CAPACITY,
+    CHECK_FLEET_AUTONOMOUS_MERGE,
     CHECK_FLEET_LOCAL_FIRST_USE,
     CHECK_FLEET_PROFILES_EXPOSE_LIFECYCLE,
     CHECK_GITHUB_ACTIONS_USES_OIDC,
@@ -107,6 +109,37 @@ def test_missing_or_incomplete_evidence_is_never_treated_as_satisfied() -> None:
         coverage=_coverage(GHA_COLLECTOR_ID, "partial"),
     )
     assert incomplete.evaluations[0].reason == "collector_incomplete"
+
+
+def test_autonomous_merge_requires_the_complete_closed_worker_shape() -> None:
+    complete = _evidence(
+        kind=EVIDENCE_KIND_AUTONOMOUS_MERGE,
+        path=".github/workflows/autonomous-merge.yml",
+        fact={"evidence_autonomy_complete": True},
+    )
+    satisfied = compile_intents(
+        _catalog(CHECK_FLEET_AUTONOMOUS_MERGE, category="maintainability"),
+        enabled_categories=frozenset({"maintainability"}),
+        evidence=(complete,),
+        coverage=_coverage(GHA_COLLECTOR_ID),
+    )
+    assert satisfied.evaluations[0].status == "satisfied"
+    assert satisfied.divergence_candidates == ()
+
+    incomplete = _evidence(
+        kind=EVIDENCE_KIND_AUTONOMOUS_MERGE,
+        path=".github/workflows/autonomous-merge.yml",
+        fact={"evidence_autonomy_complete": False},
+        digest="b" * 16,
+    )
+    divergent = compile_intents(
+        _catalog(CHECK_FLEET_AUTONOMOUS_MERGE, category="maintainability"),
+        enabled_categories=frozenset({"maintainability"}),
+        evidence=(incomplete,),
+        coverage=_coverage(GHA_COLLECTOR_ID),
+    )
+    assert divergent.evaluations[0].status == "divergent"
+    assert divergent.divergence_candidates[0].concern_key == "autonomous_merge_incomplete"
 
 
 def test_persistent_iam_check_ignores_wildcards_outside_its_declared_scope() -> None:

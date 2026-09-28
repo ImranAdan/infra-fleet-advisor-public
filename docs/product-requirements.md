@@ -20,9 +20,9 @@ work. Broader multi-team or multi-repository use is outside the MVP.
 ## Desired outcome
 
 Let the owner primarily maintain intent while deterministic evaluation,
-evidence-backed advice, lifecycle tracking, and human-gated delivery maintain a
-credible improvement backlog without granting an AI system permission to
-change infrastructure.
+evidence-backed advice, lifecycle tracking, and risk-gated delivery maintain a
+credible improvement backlog. Routine reversible work proceeds without an
+owner click; durable authority remains owner-controlled.
 
 ## Product principles
 
@@ -32,18 +32,18 @@ change infrastructure.
   precedence over generic best practices.
 - **Unknown is explicit:** a declared proposition without complete deterministic
   coverage is unverified, never assumed satisfied.
-- **Report approval decides fleet work:** a reviewed, merged report PR is the
-  decision record for eligible fleet issues. Unverified intent remains visible
-  in the report and does not automatically generate advisor tickets.
+- **The merged report records fleet work:** an exact-head evidence-gated report
+  PR is the decision record for eligible Fleet issues. Unverified intent remains
+  visible in the report and does not automatically generate advisor tickets.
 - **Deterministic boundaries:** code owns source verification, schema
   validation, limits, lifecycle state, and publication eligibility.
 - **AI as an untrusted analyst:** a model may synthesize evidence but cannot
   expand its permissions or publish unsupported claims.
 - **Small, useful output:** prioritization is more valuable than exhaustive
   commentary.
-- **Read-only analysis:** review never writes to the fleet; issue publication
+- **Read-only analysis:** review never writes to the Fleet; issue publication
   and narrowly mechanical pull-request proposals are separate, least-privilege,
-  human-gated paths.
+  evidence-gated paths.
 
 ## MVP inputs
 
@@ -169,16 +169,17 @@ CI runs automatically after merged intent, policy, dependency, or advisor
 implementation changes and polls fleet `main` daily. Automatic runs use the
 deterministic stub and make no model API call. A maintainer may manually dispatch
 the same workflow with model-backed synthesis. Every path preserves the report
-pull request as the human ratification gate.
+pull request as the exact-head decision record.
 
 Local review and manual dispatch default to deterministic synthesis without an
 API credential. Model synthesis must be explicitly selected. A local review
 writes separate output and does not advance the committed report baseline.
-An optional advisor-only App may deliver reports using contents and PR write
-permissions to trigger the existing quality checks. The token must never reach
-collectors or fleet publication. Decline history must preserve the original
-workflow bot's decisions and recognize only the configured delivery bot in
-addition. The default token's quality-trigger limitation must remain explicit.
+Report delivery uses the repository `GITHUB_TOKEN`. Because its PR creation does
+not emit ordinary pull-request events, the delivery workflow explicitly
+dispatches read-only Quality on the report branch and passes the PR number.
+Quality resolves the exact base, head and title through GitHub before running
+the ordinary commit, test, drill, ratchet, workflow and security checks. No
+report-delivery App or personal token is required.
 
 The committed report is the baseline the next run compares against, so lifecycle
 advances only when an advisory pull request is merged. A run whose findings,
@@ -198,14 +199,15 @@ exact versioned signature marker written by the advisor is interpreted.
 
 ### FR12: Mechanical remediation
 
-The advisor may propose a code change to the fleet as a pull request, for the
-narrow set of concerns fixable without human judgement. It may never merge one.
+The system may propose a code change to the Fleet as a pull request for the
+narrow set of concerns fixable without human judgement. It merges only through
+the Fleet's exact-head intent, CI and merge gates.
 
 Patches derive only from a published recommendation and the evidence it cites; a
 file containing the same pattern but never cited is out of bounds. The source is
-the merged report, so a human has accepted the finding before any patch exists.
-Remediation is manually dispatched, defaults to a dry run, and is the only path
-holding a fleet write credential.
+the merged evidence-gated report. A scheduled Fleet workflow performs planning
+without write permission, then a separate Fleet-owned job uses its repository
+token only to open an opted-in PR.
 
 The dry run must work without a fleet write credential. Before deriving patches,
 remediation revalidates the merged report against current policy, intent,
@@ -218,7 +220,7 @@ security regression. See PDR 0002.
 
 ### FR13: Fleet issue publication
 
-Merging a reviewed report-only PR publishes eligible recommendations as issues
+Merging an exact-head evidence-gated report-only PR publishes eligible recommendations as issues
 in `infra-fleet-public` when the issues-only integration is configured. The PR
 is the decision record and is linked from every new issue. Closing an unmerged
 PR or pushing a report directly does not authorize publication. The publisher revalidates the merged report
@@ -327,10 +329,10 @@ The earlier capability-ticket behavior in PDR 0004 is superseded by PDR 0006.
 The historical tickets are linked in `docs/COVERAGE-REVIEW.md`. The optional
 offline `capability-plan` diagnostic does not publish anything.
 
-After issue publication, the maintainer selects valuable fleet issues and asks
-an agent working in the fleet to propose PR fixes. Issue creation does not start
-an agent, alter fleet code, merge a fix or close an issue. A later report checks
-the resulting repository state, and issue resolution remains human-owned.
+After issue publication, registered deterministic patchers may propose opted-in
+Fleet PRs automatically. Other issues require a coding-agent runtime. Every fix
+still passes the Fleet intent, CI and merge gates; owner-only scope remains open.
+A later report checks the resulting repository state.
 
 ## Non-functional requirements
 
@@ -344,8 +346,10 @@ the resulting repository state, and issue resolution remains human-owned.
   contents or pull-request permission. The feedback workflow downscopes that
   App installation to `issues: read` and holds contents and pull-request write
   only in the advisor repository so it can propose `policy.yaml`. The
-  remediation workflow's separate
-  write credential remains manual-only and cannot be reached by either path.
+  Fleet remediation planner has read-only permissions; only its separate
+  proposal job receives the Fleet repository token, and Advisor code never does.
+  Generated report and remediation PRs explicitly dispatch read-only exact-head
+  validation because `GITHUB_TOKEN` delivery suppresses ordinary PR events.
 - Never require cloud or cluster credentials for the MVP.
 - Treat repository content, scanner output, and model output as untrusted.
 - Do not log environment values, credentials, unbounded file contents, or raw
@@ -398,7 +402,7 @@ cluster, or wall-clock timing.
     omits it.
 12. Fleet issue work identifies its originating intent document and proposition,
     and publication fails if the merged report and current catalog differ.
-13. A reviewed report-only PR is the issue-creation decision record. Every new
+13. An exact-head evidence-gated report-only PR is the issue-creation decision record. Every new
     fleet issue links to it; unverified propositions remain report coverage, and
     no automatic advisor capability issue is created.
 
@@ -407,7 +411,7 @@ cluster, or wall-clock timing.
 During the initial pilot:
 
 - 100% of published recommendations have valid evidence references;
-- zero automatic fleet source, deployment, or infrastructure mutations occur;
+- zero automatic direct pushes, deployments, or infrastructure mutations occur;
 - the report remains within the configured maximum size;
 - the owner considers a majority of high-priority recommendations actionable
   or intentionally suppresses them with a recorded reason; and
@@ -419,10 +423,9 @@ During the initial pilot:
 - General-purpose infrastructure advice for arbitrary repositories.
 - Live AWS, Kubernetes, Prometheus, or Terraform-state inspection.
 - Parameter tuning or experimentation against running services.
-- Automated merges, deployments, or rollback against the fleet repository, and
-  automated source changes applied without human review. Proposing a mechanical
-  fix as a pull request against the fleet is in scope under PDR 0002 and FR12;
-  merging one is not, and never will be.
+- Automated deployments or rollback against the Fleet repository, and source
+  changes that bypass pull requests, exact-head CI, declared intent or the merge
+  gate. Evidence-approved reversible merges are in scope under PDR 0008.
 - A plugin marketplace, dynamic imports, arbitrary shell execution, or remote
   tool installation selected by configuration.
 - Executing natural-language intent or dynamically loading checks from intent

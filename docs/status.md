@@ -19,7 +19,7 @@ issue-creation decision record. See the [workflow](WORKFLOW.md) and
 
 | Collector | Supported evidence | Limitations |
 |---|---|---|
-| GitHub Actions | Tracked workflow settings, including Trivy scanning configuration and, per ECR-publishing job, whether a blocking Critical/High scan gates it through `needs` | Repository configuration only; exclusions and malformed or truncated input can leave coverage incomplete |
+| GitHub Actions | Tracked workflow settings, including Trivy scanning configuration, per ECR-publishing job scan gates, and the closed autonomous-merge workflow shape (M-005) | Repository configuration only; the autonomy check cannot prove GitHub service availability or the presence of an external coding-agent runtime; exclusions and malformed or truncated input can leave coverage incomplete |
 | Terraform IAM | Persistent-stack policies under `infrastructure/permanent/`; bounded JSON/HCL objects, local condition traversals and fixed-prefix resource ARN interpolation | Referenced policy documents and unknown decision fields remain partial within the persistent scope; no policy URL fetch or Terraform execution |
 | Terraform cost | CloudWatch log-group retention (resources and the pinned EKS module's control-plane log group), ECR lifecycle policies, AWS provider `default_tags` cost-allocation keys, EKS managed node-group bounds with statically enabled node-autoscaler presence, EKS public-endpoint exposure by root module (S-006), and scheduled release of staging capacity through an `aws_autoscaling_schedule` to zero or a scheduled workflow that destroys Terraform or runs `./fleet down --profile aws-staging` (C-001) | Literal values only; dynamic `count`/`for_each` enablement remains unverified. Module log groups use published defaults for trusted majors; implicit AWS-created log groups are invisible, so C-003 cannot be proven satisfied |
 | Dependency updates | Tracked dependency manifests (Dockerfiles, Python requirements, npm, Go, pinned Terraform, workflows) by directory, matched against `.github/dependabot.yml` | File names only; repository alert and security-update settings cannot be read, so S-010 is divergence-only |
@@ -30,8 +30,7 @@ issue-creation decision record. See the [workflow](WORKFLOW.md) and
 | Fleet lifecycle | The tracked `fleet` facade and fixed local and AWS strategy modules; closed lifecycle dispatch plus local pinned-tool, checkout-state, explicit-context, and next-command controls | Static shell structure only; it detects absent controls but cannot prove downloads, idempotence, runtime readiness, credential behavior, or teardown effects |
 
 The security, reliability, cost and maintainability catalogs contain
-twenty-two positions. Twenty-one have registered checks; M-005 (autonomous
-merges with risk aversion) is declared ahead of a check. Unsupported positions and incomplete
+twenty-two positions, all with registered checks. Unsupported positions and incomplete
 evaluation remain explicit report coverage; the cost catalog has three checks
 (log retention, cost tags and worker scaling are divergence-only), S-011's publication gate is
 divergence-only because only recognised ECR login forms count as publication, and the maintainability catalog has two

@@ -10,6 +10,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
     github_actions_workflow_collector as gha_collector,
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
+    EVIDENCE_KIND_AUTONOMOUS_MERGE,
     EVIDENCE_KIND_CREDENTIAL_METHOD,
     EVIDENCE_KIND_TRIVY_GATE,
 )
@@ -21,6 +22,14 @@ LIMITS = ExecutionLimits(
     max_file_bytes=256 * 1024,
     max_recommendations=10,
 )
+
+
+def test_detects_evidence_gated_autonomous_merge(git_checkout) -> None:
+    repo, _sha = git_checkout("autonomous_merge_good.yml")
+    result = gha_collector.collect(repo, LIMITS)
+    evidence = next(item for item in result.evidence if item.kind == EVIDENCE_KIND_AUTONOMOUS_MERGE)
+    assert evidence.source_path == ".github/workflows/autonomous_merge_good.yml"
+    assert evidence.fact == {"evidence_autonomy_complete": True}
 
 
 def test_detects_static_credentials(git_checkout) -> None:

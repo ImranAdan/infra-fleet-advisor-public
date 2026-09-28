@@ -1,3 +1,8 @@
+<!-- autonomous-merge -->
+
+> This same-repository PR merges automatically when the evidence gate reports
+> `READY`. Remove the marker above to hold it open.
+
 ## What changed and why
 
 

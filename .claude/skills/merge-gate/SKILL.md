@@ -19,6 +19,11 @@ the operation to the head commit that was checked:
 python3 .claude/skills/merge-gate/merge_ready.py <PR_NUMBER> --merge
 ```
 
+Same-repository PRs containing `<!-- autonomous-merge -->` may leave this step
+to `.github/workflows/autonomous-merge.yml`. The trusted default-branch worker
+runs the same command; it cannot convert `PARK`, `JUDGE` or `BLOCKED` into a
+merge. Remove the marker to hold the PR open.
+
 | Verdict | Exit | Meaning | What to do |
 |---|---|---|---|
 | `READY` | 0 | Every condition and applicable decision holds | Rerun with `--merge`, then say what merged and why |

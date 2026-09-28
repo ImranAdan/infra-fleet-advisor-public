@@ -1,6 +1,6 @@
 # PDR 0002: Mechanical remediation of the fleet
 
-- Status: accepted
+- Status: superseded by PDR 0008
 - Date: 2026-08-28
 - Supersedes: the "no pull requests against the fleet" non-goal, and part of
   delivery phase 3, in `docs/product-requirements.md`

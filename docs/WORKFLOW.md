@@ -1,22 +1,26 @@
-# Report approval to fleet work
+# Autonomous report-to-fleet work
 
 [Documentation index](README.md)
 
-The report PR is the issue-creation decision record. The owner chooses which
-resulting fleet issues are valuable enough for an agent to implement.
+The report PR remains the issue-creation decision record. Routine reversible
+work advances through exact-head evidence; the owner is involved only for an
+explicit hold or an owner-only merge category.
 
 ```mermaid
 flowchart TD
     A[Run advisor against a verified fleet commit] --> P[Validate prospective issue plan]
     P --> B[Report PR in advisor]
-    B --> C{Reviewer decision}
-    C -->|Decline| D[No fleet issue creation]
-    C -->|Merge| E[Separate publisher validates approved report]
-    E -->|Eligible finding| F[Issue in infra-fleet-public linked to report PR]
-    E -->|Unchecked or incomplete| G[Coverage remains in report]
-    F --> H[Owner selects valuable issues for a fleet agent]
-    H --> I[Agent proposes fleet PR fixes]
-    I --> J[Fleet review and CI]
+    B --> C{Quality + ratchet + merge gate}
+    C -->|Close or hold| D[No fleet issue creation]
+    C -->|READY| E[Autonomous merge records the decision]
+    E --> V[Separate publisher validates merged report]
+    V -->|Eligible finding| F[Issue in infra-fleet-public linked to report PR]
+    V -->|Unchecked or incomplete| G[Coverage remains in report]
+    F --> H{Registered mechanical patch?}
+    H -->|Yes| I[Read-only plan creates opted-in Fleet PR]
+    H -->|No| K[Queue for a coding agent]
+    I --> J[Fleet intent gate + CI + merge gate]
+    K --> J
     J --> A
 ```
 
@@ -34,16 +38,20 @@ result or the same declined report creates no new PR. The deterministic stub
 runs the implemented checks; it does not invent missing checks. Before proposing
 a report, the workflow builds the complete prospective fleet issue plan with a
 placeholder approval record. Invalid recommendations, fingerprints, evidence,
-limits, or issue bodies therefore fail before asking the owner to review and
-merge a decision record.
+limits, or issue bodies therefore fail before a report can enter the autonomous
+lane.
 
-## Review and merge the report PR
+## Automatic report decision
 
-Inspect evidence, impact, suggested changes, trade-offs and coverage. Obtain
-required Quality checks; a default-token bot run may need maintainer approval
-or a reviewed maintainer push. Optional advisor-only App delivery is described
-in the [report guide](reports.md). Merge the report-only PR to approve eligible issue creation,
-or close it to decline that material report. Implementation PRs are separate.
+Every generated report contains `<!-- autonomous-merge -->`. After Quality and
+the ratchet pass, the trusted default-branch worker runs the merge gate against
+the exact head. `READY` merges and authorizes eligible issue creation. Remove
+the marker to hold the report, or close it to decline that material signature.
+The hourly run retries transient ordering between checks.
+
+The report workflow uses `GITHUB_TOKEN` and explicitly dispatches read-only
+Quality on the report branch because token-created PRs do not emit ordinary
+pull-request events. No report delivery secret is required.
 
 The configured fleet publisher independently revalidates the merged PR and exact
 approved report, then creates eligible issues in `infra-fleet-public`. Every new
@@ -51,17 +59,28 @@ issue links back to the report PR and approved report commit. Incomplete relevan
 collection, suppression and accepted trade-offs do not produce fresh fix
 requests.
 
+The merge worker dispatches publication explicitly because a token-authored
+merge does not start another workflow. A daily recovery run replays the newest
+merged report through the same idempotent publisher.
+
 Merging also updates `reports/report.json` on `main`, which the fleet's Grafana
 reads: the **Declared intent** row of its Fleet Application dashboard shows the
 approved counts, the reviewed fleet commit and the divergent positions beside
 the live golden signals. A declined or unmerged report never appears there.
 
-## Select fleet issues for an agent
+## Turn Fleet issues into fixes
 
-In the fleet project, ask the agent to inspect advisor-labelled issues and
-propose PR fixes for the ones you choose. The agent should check current source,
-the approving report and applicability before editing. Issue creation does not
-automatically start an agent. Review and merge its fleet PRs through fleet CI.
+The Fleet's `Advisor remediation` workflow polls the merged report. For a
+registered deterministic patcher it plans without write permission, transfers a
+patch artifact to a Fleet-owned write job, and opens an opted-in Fleet PR. The
+Fleet-owned job explicitly dispatches bounded validation on that exact branch;
+the intent gate, CI and merge gate decide it. No Advisor process receives a
+Fleet contents token.
+
+Other issues require a coding-agent runtime to inspect the current source and
+propose a PR. Include the autonomous marker; reversible evidence-approved work
+then merges without an owner click. IAM, credentials, permissions, migrations,
+permanent infrastructure, intent and merge authority remain owner decisions.
 
 Run another review after fixes. Existing findings reuse their issue identity;
 no-longer-detected findings receive a resolution note, while issue closure and

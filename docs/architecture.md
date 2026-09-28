@@ -5,7 +5,7 @@
 The MVP is a bounded intent-to-work pipeline for one known GitOps repository.
 It continuously evaluates declared positions, but it is not a general agent
 platform: configuration cannot invent executable checks and every mutation
-remains behind human review.
+remains behind a reviewed, exact-head merge gate.
 
 ```text
 Intent catalog → static check registry ───────────────┐
@@ -26,9 +26,9 @@ Prior report ──────────────────────�
                                                                      ↓
                                             revalidated issue plan → fleet issue
                                                                         │
-                                                       human decision / fleet PR
+                                           registered patch or coding-agent PR
                                                                         │
-                                                                  fleet CI + merge
+                                                    fleet intent + CI + merge gate
 ```
 
 ## Domain boundaries
@@ -77,12 +77,13 @@ existing publication plan validators still own evidence and eligibility checks.
 Fleet publication requires `FLEET_ISSUES_ENABLED=true`; optional feedback is
 independently enabled through `FLEET_FEEDBACK_ENABLED=true`.
 Remediation reuses issue-plan validation before selecting active, eligible
-fingerprints and needs a write token only when proposing a fleet PR.
-An optional advisor-only GitHub App delivers report PRs so their events trigger
-normal quality checks. Its identity is derived from the token-minting action,
-never report or PR prose. Bounded decline history recognizes that configured
-bot and the original GitHub Actions bot. The fallback requires no App but cannot
-trigger ordinary PR quality checks.
+fingerprints. Planning runs without write permission; a separate Fleet-owned job
+uses its repository token only to propose an opted-in Fleet PR.
+The repository `GITHUB_TOKEN` delivers report PRs. Because those writes do not
+emit ordinary pull-request events, trusted delivery code explicitly dispatches
+the read-only Quality workflow on the report branch. Quality resolves the exact
+PR base and head before producing checks; the autonomous worker observes its
+completion. No report-delivery App or personal token is required.
 
 ## Supporting adapters
 
@@ -310,19 +311,21 @@ consumes only that plan. It uses an installation token limited to
 changes issue state. Resolution means “no longer detected” and produces an
 idempotent note for human review, not automatic closure.
 
-The merged report-only PR is the fleet issue-creation decision record. A
+The merged report-only PR is the fleet issue-creation decision record. Its
+autonomous marker grants no authority: the trusted default-branch worker merges
+only after Quality, ratchet and `merge_ready.py` report exact-head success. A
 bounded GitHub API record proves the PR merged into advisor main and changed
 only the report JSON and Markdown. Trusted default-branch code materializes
 that merge's report and verifies it remains the current merged baseline before
 validating against current policy and intent. Every issue links to the PR and
-approved report commit. Retries use the same PR and deduplicate per fingerprint.
+accepted report commit. Retries use the same PR and deduplicate per fingerprint.
 Incomplete relevant collection defers issue and resolution actions rather than
 promoting historical carry-forwards into fresh fix requests.
 
-Unverified propositions remain in report coverage. There is no automatic
-advisor issue publisher or agent dispatcher. The maintainer selects valuable
-fleet issues and instructs a fleet agent to propose reviewed fixes. The earlier
-generated advisor tickets are retained as a linked coverage snapshot.
+Unverified propositions remain in report coverage. Registered mechanical
+findings may produce a Fleet-owned PR automatically. Findings without a patcher
+remain Fleet issues for a coding-agent runtime; the Advisor does not invent or
+execute code from issue prose.
 
 Fleet decision feedback is a third deterministic boundary. The GitHub adapter
 projects fleet issues into number, state, author, and label sets; title, body,
@@ -332,7 +335,7 @@ vocabulary. It resolves the fingerprint against the revalidated current report
 and refuses to widen one issue into a concern-level policy decision when that
 concern has multiple active findings. The resulting plan changes only
 `policy.yaml`, assigns a deterministic new policy version, and is proposed as a
-human-reviewed pull request in the advisor repository. A fleet token with
+gated pull request in the advisor repository. A fleet token with
 `issues: read` cannot change the fleet. A stale report caused by a policy or
 intent change pauses feedback without withdrawing an open proposal. An open
 workflow-authored proposal is withdrawn only after current evidence shows its
@@ -360,10 +363,11 @@ replacement remains protected by an exact lease.
 10. Compute stable fingerprints and compare with the prior report.
 11. Apply deterministic output limits and ordering rules.
 12. Write equivalent JSON and Markdown reports.
-13. Verify the merged report PR decision record, materialize its approved report
+13. Verify the merged report PR decision record, materialize its accepted report
     and publish eligible fleet issues. Keep unverified positions in coverage.
-14. A maintainer selects fleet issues for an agent; proposed fixes go through
-    fleet review and CI, then a subsequent advisor report evaluates the result.
+14. Plan registered remediations without write permission or hand other issues
+    to a coding agent. Opted-in PRs pass Fleet intent, CI and the exact-head merge
+    gate, then a subsequent Advisor report evaluates the result.
 
 ## Initial implementation shape
 

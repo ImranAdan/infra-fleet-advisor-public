@@ -1,0 +1,19 @@
+name: Autonomous merge
+on:
+  workflow_run:
+    workflows: [Intent Gate]
+    types: [completed]
+  schedule:
+    - cron: "7 * * * *"
+permissions:
+  actions: read
+  checks: read
+  contents: write
+  issues: read
+  pull-requests: write
+  statuses: read
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    steps:
+      - run: python3 .github/scripts/autonomous_merge.py
