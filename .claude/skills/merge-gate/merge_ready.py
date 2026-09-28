@@ -238,6 +238,17 @@ def _hunk_has_rbac_marker(lines: list[str], start: int) -> bool:
     return False
 
 
+def _hunk_has_terraform_migration(lines: list[str], start: int) -> bool:
+    """Report whether this diff hunk contains a Terraform state-migration block."""
+    for candidate in lines[start + 1 :]:
+        if candidate.startswith(("@@", "diff --git ")):
+            break
+        content = candidate[1:].strip() if candidate.startswith((" ", "+", "-")) else ""
+        if re.match(r"(?:moved|import|removed)\s*\{", content):
+            return True
+    return False
+
+
 def _path_findings(path: str) -> list[Finding]:
     return [
         _finding(category, f"{description}: {path}")
@@ -378,6 +389,12 @@ def scope_findings(diff: str) -> list[Finding]:
             findings.append(
                 _finding(category, f"{verb} a Kubernetes RBAC value in {path}: {stripped[:80]}")
             )
+        if (
+            TERRAFORM.search(path)
+            and line.startswith(("+", "-"))
+            and _hunk_has_terraform_migration(lines, hunk_start)
+        ):
+            findings.append(_finding("migration", f"changes a Terraform state migration in {path}"))
         findings.extend(_line_findings(path, line))
     return list(dict.fromkeys(findings))
 
@@ -860,6 +877,14 @@ def self_test() -> int:
             *_file("pyproject.toml", "+infra-fleet-advisor = 'other:main'"),
             *_file("db/migrations/0001_users.sql", "+ALTER TABLE users ADD COLUMN role text;"),
             *_file("infrastructure/staging/main.tf", "+moved {", "+  from = aws_s3_bucket.old"),
+            *_file(
+                "infrastructure/staging/existing-move.tf",
+                " moved {",
+                "-  from = aws_s3_bucket.old",
+                "+  from = aws_s3_bucket.renamed",
+                "   to = aws_s3_bucket.current",
+                " }",
+            ),
             *_file("docs/README.md", "+Prose about permissions and secrets.DEPLOY_TOKEN."),
             *_file(".github/workflows/lint.yml", "--- a/not-a-header", "+  contents: write"),
         ]
@@ -888,7 +913,11 @@ def self_test() -> int:
     assert "intent-policy" in categories and "decision-record" in categories, found
     assert "product-requirements" in categories and "dependency-manifest" in categories, found
     assert sum(category == "merge-authority" for category in categories) >= 7, found
-    assert categories.count("migration") >= 2, found
+    assert categories.count("migration") >= 3, found
+    assert any(
+        category == "migration" and "existing-move.tf" in description
+        for category, description in found
+    )
     assert _adds_privileged_trigger("pull_request_target:")
     assert _adds_privileged_trigger("on: pull_request_target")
     assert _adds_privileged_trigger("on: [push, pull_request_target]")
