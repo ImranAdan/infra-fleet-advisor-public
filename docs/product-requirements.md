@@ -175,8 +175,10 @@ Local review and manual dispatch default to deterministic synthesis without an
 API credential. Model synthesis must be explicitly selected. A local review
 writes separate output and does not advance the committed report baseline.
 Report delivery uses the repository `GITHUB_TOKEN`. Because its PR creation does
-not emit ordinary pull-request events, the delivery workflow explicitly
-dispatches read-only Quality on the report branch and passes the PR number.
+not provide an automatically runnable pull-request check, report-only changes
+are excluded from the native trigger. The delivery workflow explicitly
+dispatches read-only Quality on the report branch, passes the PR number, waits
+for that exact-head run, and then dispatches the autonomous merge worker.
 Quality resolves the exact base, head and title through GitHub before running
 the ordinary commit, test, drill, ratchet, workflow and security checks. No
 report-delivery App or personal token is required.

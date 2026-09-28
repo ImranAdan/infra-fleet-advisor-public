@@ -5,6 +5,12 @@ name: Quality
 on:
   pull_request:
     branches: [main]
+    # Report PRs are authored by github-actions[bot]. GitHub creates an
+    # action-required check suite for their pull_request event, which blocks
+    # branch protection even when the trusted exact-head dispatch succeeds.
+    # fleet-advisory.yml owns validation and wake-up for this report-only path.
+    paths-ignore:
+      - reports/**
   push:
     branches: [main]
   workflow_dispatch:

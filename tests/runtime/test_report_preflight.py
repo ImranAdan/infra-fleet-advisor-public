@@ -17,11 +17,33 @@ from infra_fleet_advisor.runtime.cli import EXIT_OK, EXIT_POLICY_ERROR, main
 
 ROOT = Path(__file__).parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "fleet-advisory.yml"
+QUALITY_WORKFLOW = ROOT / ".github" / "workflows" / "quality.yml"
 POLICY = ROOT / "tests" / "fixtures" / "policies" / "valid_policy.yaml"
 INTENTS = ROOT / "tests" / "fixtures" / "intents"
 PREFLIGHT = "Validate the prospective fleet issue plan"
 REVIEW = "Run the review"
 PR_STEPS = ("Compose the pull request body", "Open or update the advisory pull request")
+
+
+def test_report_only_prs_use_dispatched_quality_without_native_approval_gate() -> None:
+    """A bot-authored report must not create an action-required PR check suite."""
+    workflow = yaml.safe_load(QUALITY_WORKFLOW.read_text(encoding="utf-8"))
+    triggers = workflow.get("on", workflow.get(True))
+
+    assert "reports/**" in triggers["pull_request"]["paths-ignore"]
+    assert "pr_number" in triggers["workflow_dispatch"]["inputs"]
+
+
+def test_report_delivery_waits_for_quality_then_wakes_autonomous_merge() -> None:
+    [step] = [s for s in _advise_steps() if s.get("name") == PR_STEPS[-1]]
+    script = step["run"]
+
+    quality = script.index("gh workflow run quality.yml")
+    wait = script.index("gh run watch")
+    merge = script.index("gh workflow run autonomous-merge.yml")
+    assert quality < wait < merge
+    assert "--exit-status" in script
+    assert "*[!0-9]*" in script
 
 
 def _advise_steps() -> list[dict[str, Any]]:

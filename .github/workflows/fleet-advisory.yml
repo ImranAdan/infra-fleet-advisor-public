@@ -264,10 +264,36 @@ jobs:
             number="$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')"
           fi
 
-          # GITHUB_TOKEN does not emit pull_request workflow events. An explicit
-          # workflow_dispatch is the documented exception and binds the Quality
-          # checks to this report branch's exact head without another credential.
+          # GITHUB_TOKEN delivery cannot rely on an ordinary pull_request run.
+          # An explicit dispatch binds Quality to the exact report head. Wait
+          # for that run before waking the trusted merge worker; workflow_run
+          # chaining is suppressed for token-dispatched workflows.
+          head_sha="$(git rev-parse HEAD)"
           gh workflow run quality.yml --ref "$BRANCH" -f "pr_number=$number"
+          quality_run_id=""
+          for _attempt in {1..10}; do
+            quality_run_id="$(
+              gh run list \
+                --workflow quality.yml \
+                --branch "$BRANCH" \
+                --event workflow_dispatch \
+                --limit 10 \
+                --json databaseId,headSha \
+                --jq "map(select(.headSha == \"$head_sha\"))[0].databaseId // empty"
+            )"
+            if [ -n "$quality_run_id" ]; then
+              break
+            fi
+            sleep 1
+          done
+          case "$quality_run_id" in
+            ""|*[!0-9]*)
+              echo "The exact-head Quality dispatch could not be identified." >&2
+              exit 1
+              ;;
+          esac
+          gh run watch "$quality_run_id" --exit-status
+          gh workflow run autonomous-merge.yml
 
   # Canary drills: apply each declared violation in drills/ to a throwaway
   # worktree of the reviewed fleet and require its check to fire. A check that
