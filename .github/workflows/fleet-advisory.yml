@@ -29,6 +29,7 @@ permissions:
   actions: write
   contents: write
   pull-requests: write
+  statuses: write
 
 concurrency:
   group: fleet-advisory
@@ -293,6 +294,23 @@ jobs:
               ;;
           esac
           gh run watch "$quality_run_id" --exit-status
+          python3 .github/scripts/report_status_bridge.py \
+            "$number" "$head_sha" "$quality_run_id"
+
+          # Commit statuses are immediately queryable but the PR merge state
+          # is eventually consistent. Do not wake the worker into a known race.
+          merge_state="UNKNOWN"
+          for _attempt in {1..20}; do
+            merge_state="$(gh pr view "$number" --json mergeStateStatus --jq '.mergeStateStatus')"
+            if [ "$merge_state" != "BLOCKED" ] && [ "$merge_state" != "UNKNOWN" ]; then
+              break
+            fi
+            sleep 1
+          done
+          if [ "$merge_state" = "BLOCKED" ] || [ "$merge_state" = "UNKNOWN" ]; then
+            echo "Report PR remained $merge_state after required statuses were published." >&2
+            exit 1
+          fi
           gh workflow run autonomous-merge.yml
 
   # Canary drills: apply each declared violation in drills/ to a throwaway
