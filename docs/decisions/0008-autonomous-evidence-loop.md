@@ -27,11 +27,15 @@ decision record for Fleet issue publication, but the decision is now made by
 declared intent plus deterministic exact-head evidence. Closing a report PR
 still records a decline of that material signature.
 
-Both generated PR paths use `GITHUB_TOKEN`. Because GitHub suppresses ordinary
-pull-request workflow events created by that token, trusted default-branch code
-explicitly dispatches a read-only validation workflow on the generated branch.
+Both generated PR paths use `GITHUB_TOKEN`. Token-authored PR delivery cannot
+rely on a runnable ordinary pull-request workflow: GitHub may suppress it or
+hold it for approval. Trusted default-branch code explicitly dispatches a
+read-only validation workflow on the generated branch.
 No App credential or personal token is needed. The dispatch resolves and checks
-the PR's exact base and head before producing evidence.
+the PR's exact base and head before producing evidence. Advisor report-only
+changes are excluded from the native Quality trigger so a bot approval request
+cannot block branch protection; the report workflow waits for dispatched
+Quality and then dispatches the autonomous merge worker.
 
 Registered mechanical remediation moves into the Fleet repository. A read-only
 job runs merged Advisor code and exports a patch artifact. A separate Fleet job
