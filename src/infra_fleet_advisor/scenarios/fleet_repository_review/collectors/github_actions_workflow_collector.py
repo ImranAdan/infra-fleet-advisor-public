@@ -493,6 +493,29 @@ def collect(
     if untracked_count:
         summary_parts.append(f"{untracked_count} workflow file(s) not part of the verified commit")
 
+    # A complete scan can prove the named worker is absent. Keep the source on
+    # a real tracked file so every divergence remains reviewable; exclusions or
+    # partial collection leave the position unknown instead.
+    if (
+        status == "ok"
+        and not excluded_count
+        and files
+        and not any(item.kind == EVIDENCE_KIND_AUTONOMOUS_MERGE for item in evidence)
+    ):
+        rel_path = files[0].relative_to(checkout_root).as_posix()
+        evidence.append(
+            build_evidence(
+                collector_id=GHA_COLLECTOR_ID,
+                collector_version=GHA_COLLECTOR_VERSION,
+                kind=EVIDENCE_KIND_AUTONOMOUS_MERGE,
+                source_path=rel_path,
+                locator="workflow_set",
+                excerpt="No Autonomous merge workflow exists in the complete workflow set",
+                fact={"evidence_autonomy_complete": False},
+                identity_parts=(rel_path, "workflow_set"),
+            )
+        )
+
     return CollectorResult(
         evidence=tuple(evidence),
         coverage=CollectorCoverage(

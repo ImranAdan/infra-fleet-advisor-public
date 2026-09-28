@@ -32,6 +32,14 @@ def test_detects_evidence_gated_autonomous_merge(git_checkout) -> None:
     assert evidence.fact == {"evidence_autonomy_complete": True}
 
 
+def test_complete_scan_proves_the_autonomous_worker_is_missing(git_checkout) -> None:
+    repo, _sha = git_checkout("static_credentials_bad.yml")
+    result = gha_collector.collect(repo, LIMITS)
+    evidence = next(item for item in result.evidence if item.kind == EVIDENCE_KIND_AUTONOMOUS_MERGE)
+    assert evidence.source_path == ".github/workflows/static_credentials_bad.yml"
+    assert evidence.fact == {"evidence_autonomy_complete": False}
+
+
 def test_detects_static_credentials(git_checkout) -> None:
     repo, _sha = git_checkout("static_credentials_bad.yml")
     result = gha_collector.collect(repo, LIMITS)
@@ -122,7 +130,7 @@ def test_detects_unquoted_yaml_bool_for_ignore_unfixed(git_checkout) -> None:
 def test_similarly_named_action_is_not_misattributed(git_checkout) -> None:
     repo, _sha = git_checkout("similarly_named_action.yml")
     result = gha_collector.collect(repo, LIMITS)
-    assert result.evidence == ()
+    assert all(item.kind == EVIDENCE_KIND_AUTONOMOUS_MERGE for item in result.evidence)
 
 
 def test_symlink_escaping_checkout_root_is_not_read(tmp_path) -> None:

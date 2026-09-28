@@ -114,11 +114,12 @@ migration. Routine pull requests opt in through a visible marker. A trusted
 default-branch worker runs the same exact-head merge gate after CI and on a
 scheduled retry; removing the marker holds the pull request.
 
-Caveat: the check proves that the Fleet declares the closed worker workflow,
-permissions and protected gate invocation. It does not prove GitHub service
-availability or that an external coding-agent runtime is continuously running.
-The decision policy remains the authority for categories that require the
-owner.
+Caveat: a complete workflow scan proves whether the Fleet declares the closed
+worker workflow, permissions and protected gate invocation. Excluded, malformed
+or truncated workflow input leaves the position unknown. The check does not
+prove GitHub service availability or that an external coding-agent runtime is
+continuously running. The decision policy remains the authority for categories
+that require the owner.
 
 ### Evaluation
 

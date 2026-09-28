@@ -112,9 +112,9 @@ def test_authoritative_markdown_drives_the_production_review(git_checkout) -> No
 
     evaluations = {item.proposition_id: item for item in report.intent_evaluations}
     assert len(evaluations) == 22
-    # This compact fixture has no autonomous worker, so missing evidence is explicit.
-    assert evaluations["M-005"].status == "declared_unverified"
-    assert evaluations["M-005"].reason == "no_relevant_evidence"
+    # The complete workflow scan proves that this fixture has no autonomous worker.
+    assert evaluations["M-005"].status == "divergent"
+    assert evaluations["M-005"].reason == "evidence_conflicts_with_intent"
     assert evaluations["S-001"].status == "divergent"
     assert evaluations["S-007"].status == "divergent"
     assert evaluations["R-001"].status == "declared_unverified"
@@ -134,10 +134,13 @@ def test_authoritative_markdown_drives_the_production_review(git_checkout) -> No
     # The fixture has workflows but no Dependabot configuration.
     assert evaluations["S-010"].status == "divergent"
     assert {
-        item.status for key, item in evaluations.items() if key not in {"S-001", "S-007", "S-010"}
+        item.status
+        for key, item in evaluations.items()
+        if key not in {"S-001", "S-007", "S-010", "M-005"}
     } == {"declared_unverified"}
     assert {item.concern_key for item in report.recommendations} == {
         "ci_credentials_without_oidc",
+        "autonomous_merge_incomplete",
         "dependency_updates_not_configured",
         "wildcard_iam_permissions",
     }
