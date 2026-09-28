@@ -121,6 +121,106 @@ def _adds_remote_action(text: str) -> bool:
     return not target.startswith(("./", "/", "$/"))
 
 
+def _remote_action_is_pinned(text: str) -> bool:
+    """Require remote GitHub actions at a commit and container actions at a fixed image."""
+    match = re.match(r"(?:-\s*)?uses:\s+(\S+)", text)
+    if not match:
+        return True
+    target = match.group(1).strip("'\"")
+    if not _adds_remote_action(text):
+        return True
+    if target.startswith("docker://"):
+        return _container_ref_is_pinned(target.removeprefix("docker://"))
+    _, separator, ref = target.rpartition("@")
+    return bool(separator and re.fullmatch(r"[0-9a-f]{40}", ref))
+
+
+def _container_ref_is_pinned(reference: str) -> bool:
+    """Accept an immutable digest or an explicit non-latest image tag."""
+    if reference == "scratch":
+        return True
+    if re.search(r"@sha256:[0-9a-f]{64}\Z", reference):
+        return True
+    final = reference.rsplit("/", 1)[-1]
+    if ":" not in final:
+        return False
+    tag = final.rsplit(":", 1)[1]
+    return bool(tag and tag.casefold() != "latest" and not re.search(r"[$*?{}]", tag))
+
+
+def _docker_base_is_pinned(text: str) -> bool:
+    """Validate the image token in a Dockerfile FROM instruction."""
+    parts = text.split()
+    if not parts or parts[0].upper() != "FROM":
+        return True
+    images = [part for part in parts[1:] if not part.startswith("--")]
+    return bool(images and _container_ref_is_pinned(images[0]))
+
+
+def _changed_paths(diff: str) -> set[str]:
+    return {
+        match.group(2)
+        for line in diff.splitlines()
+        if (match := re.match(r"^diff --git a/(.*) b/(.*)$", line))
+    }
+
+
+def evidence_policy_failures(diff: str) -> list[str]:
+    """Reject dependency changes whose policy conditions CI cannot infer."""
+    failures: list[str] = []
+    path = ""
+    for line in diff.splitlines():
+        header = re.match(r"^diff --git a/(.*) b/(.*)$", line)
+        if header:
+            path = header.group(2)
+            continue
+        if not line.startswith("+") or line.startswith("+++"):
+            continue
+        text = line[1:].strip()
+        if (
+            WORKFLOW.search(path)
+            and _adds_remote_action(text)
+            and not _remote_action_is_pinned(text)
+        ):
+            failures.append(
+                f"remote action is not pinned to a full commit SHA: {path}: {text[:80]}"
+            )
+        if (
+            DOCKERFILE.search(path)
+            and re.match(r"FROM\s", text, re.I)
+            and not _docker_base_is_pinned(text)
+        ):
+            failures.append(
+                f"container base is not pinned to a fixed tag or digest: {path}: {text[:80]}"
+            )
+        if (
+            re.search(r"(?:^|/)requirements[^/]*\.txt$", path)
+            and text
+            and not text.startswith(("#", "-r ", "--requirement ", "-c ", "--constraint "))
+        ):
+            requirement = text.split(";", 1)[0].strip()
+            if "==" not in requirement:
+                failures.append(f"Python requirement is not exactly pinned: {path}: {text[:80]}")
+
+    changed = _changed_paths(diff)
+    lock_pairs = (
+        ("pyproject.toml", "uv.lock"),
+        ("package.json", "package-lock.json"),
+        ("go.mod", "go.sum"),
+    )
+    for manifest, lockfile in lock_pairs:
+        for path in changed:
+            if path.rsplit("/", 1)[-1] != manifest:
+                continue
+            parent = path.rsplit("/", 1)[0] if "/" in path else ""
+            expected = f"{parent}/{lockfile}" if parent else lockfile
+            if expected not in changed:
+                failures.append(
+                    f"dependency manifest changed without its resolved lockfile: {expected}"
+                )
+    return list(dict.fromkeys(failures))
+
+
 def _hunk_has_rbac_marker(lines: list[str], start: int) -> bool:
     """Report whether this unified-diff hunk contains unambiguous RBAC structure."""
     marker = re.compile(
@@ -597,7 +697,8 @@ def main(argv: list[str]) -> int:
     if not has_verification(pr["body"] or ""):
         blocked.append("no '## Verification' section with commands and results")
 
-    findings = scope_findings(gh("pr", "diff", number, "-R", repo))
+    diff = gh("pr", "diff", number, "-R", repo)
+    findings = scope_findings(diff)
     print(f"{repo}#{number} at {sha[:12]}: {len(runs)} check runs, {len(threads)} threads")
     for category, description in findings:
         print(f"DECISION {category}: {description}")
@@ -627,6 +728,7 @@ def main(argv: list[str]) -> int:
             key: str(details.get(key, "")) for key in ("path", "event", "head_sha")
         }
     evidence_failures = required_check_failures(runs, judge["required_checks"], workflow_runs, sha)
+    evidence_failures.extend(evidence_policy_failures(diff))
     if evidence_failures:
         for reason in evidence_failures:
             print(f"BLOCKED  {reason}")
@@ -798,6 +900,39 @@ def self_test() -> int:
     assert not _adds_remote_action("uses: $/.github/actions/build")
     assert not _adds_remote_action('uses: "$/actions/quoted"')
     assert _adds_remote_action("uses: actions/checkout@0123456789abcdef")
+    assert not _remote_action_is_pinned("uses: actions/checkout@v5")
+    assert not _remote_action_is_pinned("uses: actions/checkout@main")
+    assert _remote_action_is_pinned(f"uses: actions/checkout@{'a' * 40}")
+    assert _remote_action_is_pinned("uses: docker://python:3.13-slim")
+    assert not _remote_action_is_pinned("uses: docker://python:latest")
+    assert _docker_base_is_pinned("FROM python:3.13-slim AS build")
+    assert _docker_base_is_pinned(f"FROM python@sha256:{'a' * 64}")
+    assert not _docker_base_is_pinned("FROM python:latest")
+    assert not _docker_base_is_pinned("FROM python")
+    dependency_failures = evidence_policy_failures(
+        "\n".join(
+            [
+                *_file(".github/workflows/ci.yml", "+uses: actions/checkout@v5"),
+                *_file("app/Dockerfile", "+FROM python:latest"),
+                *_file("requirements.txt", "+requests>=2"),
+                *_file("pyproject.toml", '+"requests>=2"'),
+            ]
+        )
+    )
+    assert len(dependency_failures) == 4, dependency_failures
+    assert not evidence_policy_failures(
+        "\n".join(
+            [
+                *_file(".github/workflows/ci.yml", f"+uses: actions/checkout@{'a' * 40}"),
+                *_file("app/Dockerfile", "+FROM python:3.13-slim"),
+                *_file("requirements.txt", "+requests==2.34.2"),
+                *_file("pyproject.toml", '+"requests>=2"'),
+                *_file("uv.lock", "+name = 'requests'"),
+                *_file("apps/api/package.json", '+"requests": "1.0.0"'),
+                *_file("apps/api/package-lock.json", '+"requests": "1.0.0"'),
+            ]
+        )
+    )
 
     rules, judge = load_policy()
     assert judge["trusted_author"] == "github-actions[bot]"

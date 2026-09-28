@@ -34,6 +34,9 @@ python3 .claude/skills/merge-gate/merge_ready.py <PR_NUMBER> --merge
   head under GitHub Actions, and its Actions run must come from the exact
   workflow recorded in `decision-policy.toml`. A missing, skipped or same-name
   check from another workflow does not count.
+- **Dependency evidence:** remote actions need a full commit SHA, container
+  bases need a fixed tag or digest, requirements need exact pins, and changed
+  manifests need their sibling lockfiles.
 - **Mergeable:** GitHub reports the branch `CLEAN`: no conflicts, not behind.
 - **Exact head:** `--merge` passes the checked SHA to GitHub's
   `--match-head-commit`; a concurrent push makes the merge fail and requires a
