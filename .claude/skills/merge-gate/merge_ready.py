@@ -652,6 +652,9 @@ def self_test() -> int:
             *_file("uv.lock", "+name = x"),
             *_file("k8s/infrastructure/flagger/helmrelease.yaml", '+      version: "1.46.0"'),
             *_file(".claude/skills/merge-gate/merge_ready.py", "+def main(): return 0"),
+            *_file(".github/workflows/quality.yml", "+name: Weakened gate"),
+            *_file("db/migrations/0001_users.sql", "+ALTER TABLE users ADD COLUMN role text;"),
+            *_file("infrastructure/staging/main.tf", "+moved {", "+  from = aws_s3_bucket.old"),
             *_file("docs/README.md", "+Prose about permissions and secrets.DEPLOY_TOKEN."),
             *_file(".github/workflows/lint.yml", "--- a/not-a-header", "+  contents: write"),
         ]
@@ -661,7 +664,7 @@ def self_test() -> int:
     assert categories.count("permission-added") >= 7, found
     assert categories.count("permission-removed") >= 2, found
     assert categories.count("merge-authority") >= 4, found
-    assert categories.count("workflow") == 2, found
+    assert categories.count("workflow") == 3, found
     assert categories.count("iam") >= 2, found
     assert any(category == "iam" and "ecr:*" in description for category, description in found)
     assert any(
@@ -679,6 +682,8 @@ def self_test() -> int:
     assert categories.count("credential") >= 3 and categories.count("dependency") == 3, found
     assert "intent-policy" in categories and "decision-record" in categories, found
     assert "product-requirements" in categories and "dependency-manifest" in categories, found
+    assert categories.count("merge-authority") >= 5, found
+    assert categories.count("migration") >= 2, found
     assert _adds_privileged_trigger("pull_request_target:")
     assert _adds_privileged_trigger("on: pull_request_target")
     assert _adds_privileged_trigger("on: [push, pull_request_target]")
@@ -693,7 +698,47 @@ def self_test() -> int:
 
     rules, judge = load_policy()
     assert judge["trusted_author"] == "github-actions[bot]"
+    assert rules["dependency"]["decider"] == "evidence"
+    required = judge["required_checks"]
+    assert required == (
+        {
+            "name": "Ratchet guard",
+            "workflow": ".github/workflows/intent-gate.yml",
+        },
+    )
     sha = "a" * 40
+    required_run = {
+        "name": "Intent gate / Declared intent",
+        "status": "completed",
+        "conclusion": "success",
+        "app": "github-actions",
+        "run_id": "42",
+    }
+    workflow_runs = {
+        "42": {
+            "path": ".github/workflows/intent-gate.yml",
+            "event": "pull_request",
+            "head_sha": sha,
+        }
+    }
+    assert required_check_failures([required_run], required, workflow_runs, sha) == []
+    assert required_check_failures([], required, {}, sha) == [
+        "required evidence check did not run: Intent gate / Declared intent"
+    ]
+    for changed in (
+        {"conclusion": "skipped"},
+        {"app": "untrusted-app"},
+        {"run_id": "missing"},
+    ):
+        candidate = {**required_run, **changed}
+        assert required_check_failures([candidate], required, workflow_runs, sha)
+    for changed in (
+        {"path": ".github/workflows/fake.yml"},
+        {"event": "push"},
+        {"head_sha": "b" * 40},
+    ):
+        provenance = {"42": {**workflow_runs["42"], **changed}}
+        assert required_check_failures([required_run], required, provenance, sha)
     marker = f"<!-- merge-gate-judge sha={sha} -->\nDECISION: APPROVE\nRULES: dependency-pinned"
     bot = [{"author": "github-actions[bot]", "body": marker}]
     owner = [{"author": "ImranAdan", "body": marker}]
