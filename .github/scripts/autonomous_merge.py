@@ -127,6 +127,29 @@ def _self_test() -> int:
     assert shared_timeout(480, 4, GATE_TIMEOUT_SECONDS) == 112
     assert shared_timeout(480, 1, GATE_TIMEOUT_SECONDS) == GATE_TIMEOUT_SECONDS
     assert shared_timeout(SHUTDOWN_RESERVE_SECONDS, 1, GATE_TIMEOUT_SECONDS) == 0
+    pages = json.dumps(
+        [
+            [
+                {
+                    "number": 7,
+                    "body": f"Verification\n{MARKER}",
+                    "created_at": "2026-09-28T11:30:00Z",
+                    "draft": False,
+                    "head": {
+                        "ref": "feature",
+                        "repo": {"name": "repo", "owner": {"login": "owner"}},
+                    },
+                }
+            ],
+            [],
+        ]
+    )
+    assert _parse_pull_request_pages(pages) == [
+        {
+            **candidate,
+            "headRefName": "feature",
+        }
+    ]
     del os.environ["AUTONOMOUS_MERGE_POST_MERGE_WORKFLOW"]
     del os.environ["AUTONOMOUS_MERGE_POST_MERGE_HEAD"]
     print("self-test passed")
@@ -138,26 +161,44 @@ def _open_pull_requests(repository: str) -> list[dict[str, Any]]:
         [
             "/usr/bin/env",
             "gh",
-            "pr",
-            "list",
-            "--repo",
-            repository,
-            "--state",
-            "open",
-            "--limit",
-            "200",
-            "--json",
-            "number,body,createdAt,isDraft,headRefName,headRepository,headRepositoryOwner",
+            "api",
+            "--paginate",
+            "--slurp",
+            f"repos/{repository}/pulls?state=open&per_page=100",
         ],
         check=True,
         capture_output=True,
         text=True,
         timeout=LIST_TIMEOUT_SECONDS,
     )
-    value = json.loads(result.stdout)
-    if not isinstance(value, list):
-        raise ValueError("GitHub returned a non-list pull-request response")
-    return value
+    return _parse_pull_request_pages(result.stdout)
+
+
+def _parse_pull_request_pages(raw: str) -> list[dict[str, Any]]:
+    """Normalize every REST page into the fields used by the eligibility gate."""
+    pages = json.loads(raw)
+    if not isinstance(pages, list) or not all(isinstance(page, list) for page in pages):
+        raise ValueError("GitHub returned malformed pull-request pages")
+    normalized = []
+    for page in pages:
+        for item in page:
+            if not isinstance(item, dict) or not isinstance(item.get("number"), int):
+                raise ValueError("GitHub returned a malformed pull request")
+            head = item.get("head") if isinstance(item.get("head"), dict) else {}
+            repository = head.get("repo") if isinstance(head.get("repo"), dict) else {}
+            owner = repository.get("owner") if isinstance(repository.get("owner"), dict) else {}
+            normalized.append(
+                {
+                    "number": item["number"],
+                    "body": item.get("body"),
+                    "createdAt": item.get("created_at"),
+                    "isDraft": item.get("draft", False),
+                    "headRefName": head.get("ref"),
+                    "headRepository": {"name": repository.get("name")},
+                    "headRepositoryOwner": {"login": owner.get("login")},
+                }
+            )
+    return normalized
 
 
 def _summary(lines: list[str]) -> None:
