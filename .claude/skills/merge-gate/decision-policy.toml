@@ -1,27 +1,27 @@
-# Every surfaced category names one decider. The independent judge handles
-# reversible direction calls after the advisor intent gate; the owner keeps
-# changes that widen durable authority or access.
+# Every surfaced category names one decider. Deterministic evidence handles
+# reversible changes only after the declared advisor check passes from its
+# trusted workflow. The owner keeps durable authority, access and migrations.
 
 [[rule]]
 id = "dependency-pinned"
 category = "dependency"
-decider = "judge"
-guidance = """Approve an exact version, tag, digest or commit SHA whose CI and
-security scans pass on the head commit. Reject floating tags such as latest,
-open version ranges, or a dependency the change does not use."""
+decider = "evidence"
+guidance = """Require remote actions at a full commit SHA, container bases at a
+fixed tag or digest, and exactly pinned requirements. The gate validates these
+forms before accepting the head's passing tests and security scans."""
 
 [[rule]]
 id = "dependency-manifest"
 category = "dependency-manifest"
-decider = "judge"
-guidance = """Approve a lockfile or manifest change that only moves pinned
-versions or adds a dependency the change demonstrably uses, with tests
-passing. Reject unused additions."""
+decider = "evidence"
+guidance = """Require each changed dependency manifest to carry its sibling
+resolved lockfile where that ecosystem has one. Accept the locked graph only
+with passing tests and security scans."""
 
 [[rule]]
 id = "intent-and-policy"
 category = "intent-policy"
-decider = "judge"
+decider = "owner"
 guidance = """Treat declared intent and the advisor intent gate as the captain.
 Approve when the change follows that intent or an explicit owner request and
 keeps the position provable. Reject silent weakening of a check, drill or rule."""
@@ -29,32 +29,34 @@ keeps the position provable. Reject silent weakening of a check, drill or rule."
 [[rule]]
 id = "decision-record"
 category = "decision-record"
-decider = "judge"
-guidance = """Approve wording, status and consequence updates that match merged
-behavior. Reject a changed decision unsupported by owner direction or behavior."""
+decider = "evidence"
+guidance = """Accept reversible decision-record prose only after exact-head
+checks and recorded verification pass. A change that also touches declared
+intent or merge authority is routed to the owner by its additional category."""
 
 [[rule]]
 id = "product-requirements"
 category = "product-requirements"
-decider = "judge"
-guidance = """Approve requirements that match behavior the owner requested and
-the pull request implements. Reject unrequested scope growth."""
+decider = "evidence"
+guidance = """Accept reversible product-requirement prose only after exact-head
+checks and recorded verification pass. Declared intent and merge authority are
+separate owner categories and cannot be changed through this rule."""
 
 [[rule]]
 id = "permission-narrowed"
 category = "permission-removed"
-decider = "judge"
-guidance = """Approve removing or narrowing a permission when the workflow still
-has what its steps use. Reject a removal that falls back to broader defaults."""
+decider = "evidence"
+guidance = """Accept a removed permission after the affected head workflows and
+validation pass. Any added or widened permission is a separate owner category."""
 
 [[rule]]
 id = "workflow-change"
 category = "workflow"
-decider = "judge"
-guidance = """Approve automation changes only when event trust boundaries,
-checked-out code, inputs and token use stay least privilege and the behavior is
-covered by validation. Reject execution of pull-request code with privileged
-tokens, unsafe interpolation, or a path that can impersonate merge authority."""
+decider = "evidence"
+guidance = """Accept non-gate automation only after action validation and all
+head checks pass. Privileged triggers, merge-control logic, credentials, wider
+permissions, unpinned remote actions and gate-producing paths are blocked or
+routed to the owner by deterministic scope rules."""
 
 [[rule]]
 id = "permission-widened"
@@ -81,6 +83,12 @@ decider = "owner"
 guidance = "The permanent stack outlives rebuilds and holds the OIDC trust."
 
 [[rule]]
+id = "state-schema-data-migration"
+category = "migration"
+decider = "owner"
+guidance = "State, schema and data migrations are not proven reversible by reverting a merge commit."
+
+[[rule]]
 id = "merge-authority"
 category = "merge-authority"
 decider = "owner"
@@ -89,3 +97,8 @@ guidance = "The gate, judge, policy and merge rules determine agent authority."
 [judge]
 trusted_author = "github-actions[bot]"
 model = "claude-opus-5-5"
+
+[evidence]
+required_checks = [
+  { group = "ratchet", name = "Ratchet guard", workflow = ".github/workflows/quality.yml" },
+]

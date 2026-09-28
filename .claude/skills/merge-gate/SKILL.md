@@ -1,6 +1,6 @@
 ---
 name: merge-gate
-description: Decide whether an agent may merge a pull request without a human reading it. Runs merge_ready.py, which checks CI, review replies and verification evidence, then routes scoped decisions to the independent judge or owner policy. Use before merging any pull request you raised.
+description: Decide whether an agent may merge a pull request without a human reading it. Runs merge_ready.py, which verifies exact-head CI, advisor evidence, review replies and owner-only scope. Use before merging any pull request you raised.
 ---
 
 # Merge gate
@@ -30,6 +30,13 @@ python3 .claude/skills/merge-gate/merge_ready.py <PR_NUMBER> --merge
 
 - **Checks:** every check run and status on the head commit completed green.
   One still running is not green.
+- **Advisor evidence:** the ratchet check must complete successfully on this
+  head under GitHub Actions, and its Actions run must come from the exact
+  workflow recorded in `decision-policy.toml`. A missing, skipped or same-name
+  check from another workflow does not count.
+- **Dependency evidence:** remote actions need a full commit SHA, container
+  bases need a fixed tag or digest, requirements need exact pins, and changed
+  manifests need their sibling lockfiles.
 - **Mergeable:** GitHub reports the branch `CLEAN`: no conflicts, not behind.
 - **Exact head:** `--merge` passes the checked SHA to GitHub's
   `--match-head-commit`; a concurrent push makes the merge fail and requires a
@@ -39,11 +46,12 @@ python3 .claude/skills/merge-gate/merge_ready.py <PR_NUMBER> --merge
 - **Evidence:** the body has a `## Verification` section with at least one
   line of the form `` `command` → result``: what was run and what it showed (see the pull request template and
   the Verification section of `AGENTS.md`).
-- **Scope:** changes a human must decide, found in the diff: a workflow
+- **Scope:** changes the policy assigns to evidence or the owner, found in the diff: a workflow
   permission or `write` scope, a new `secrets.` reference, a remote action, a
   base image, a chart or dependency version, a dependency manifest, IAM,
-  permanent infrastructure, intent, policy, a decision record or product
-  requirements.
+  permanent infrastructure, migration, intent, policy, a decision record or
+  product requirements. Gate-producing files are merge authority and always
+  park for the owner.
 
 ## What it cannot check
 
@@ -61,8 +69,8 @@ An agent never adds `owner-approved` and never posts or imitates a
 `github-actions[bot]` judge comment. When the repository owner adds the label,
 the workflow records a trusted approval for that exact head SHA; the gate
 requires that record, the label, and a latest label event from the repository
-owner. Judge decisions are bound to the current head SHA too.
-The secret-backed judge runs only for branches in this repository, so a fork
-pull request stays at `JUDGE` for human handling. Declared intent and its
-advisor gate remain the first authority; the judge handles only reversible
-categories that policy assigns to it.
+owner. Evidence-decided categories need no comment or model: all checks must be
+green and the required advisor check must have trusted exact-head provenance.
+The optional Anthropic path runs only if a future policy category explicitly
+uses the `judge` decider. Declared intent and the ratchet remain the first
+authority, so neither evidence nor a judge approval can override them.

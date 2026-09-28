@@ -28,7 +28,11 @@ PATH_RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
     (
         "merge-authority",
         re.compile(
-            r"^(?:\.claude/skills/merge-gate/|\.github/workflows/merge-judge\.ya?ml$|"
+            r"^(?:\.claude/skills/merge-gate/|"
+            r"\.github/workflows/(?:merge-judge|quality)\.ya?ml$|"
+            r"\.github/actions/intent-gate/|scripts/(?:intent-gate|ratchet-guard)\.sh$|"
+            r"src/infra_fleet_advisor/runtime/(?:cli|intent_gate|ratchet)\.py$|"
+            r"pyproject\.toml$|"
             r"(?:AGENTS|CLAUDE)\.md$)"
         ),
         "merge authority changed",
@@ -53,6 +57,15 @@ PATH_RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
         "permanent-infrastructure",
         re.compile(r"^infrastructure/permanent/"),
         "permanent infrastructure changed",
+    ),
+    (
+        "migration",
+        re.compile(
+            r"(?:^|/)(?:migrations?|alembic/versions|db/(?:migrate|migrations))(?:/|$)|"
+            r"(?:^|/)schema\.(?:sql|prisma)$",
+            re.I,
+        ),
+        "state, schema or data migration changed",
     ),
     (
         "dependency-manifest",
@@ -108,6 +121,106 @@ def _adds_remote_action(text: str) -> bool:
     return not target.startswith(("./", "/", "$/"))
 
 
+def _remote_action_is_pinned(text: str) -> bool:
+    """Require remote GitHub actions at a commit and container actions at a fixed image."""
+    match = re.match(r"(?:-\s*)?uses:\s+(\S+)", text)
+    if not match:
+        return True
+    target = match.group(1).strip("'\"")
+    if not _adds_remote_action(text):
+        return True
+    if target.startswith("docker://"):
+        return _container_ref_is_pinned(target.removeprefix("docker://"))
+    _, separator, ref = target.rpartition("@")
+    return bool(separator and re.fullmatch(r"[0-9a-f]{40}", ref))
+
+
+def _container_ref_is_pinned(reference: str) -> bool:
+    """Accept an immutable digest or an explicit non-latest image tag."""
+    if reference == "scratch":
+        return True
+    if re.search(r"@sha256:[0-9a-f]{64}\Z", reference):
+        return True
+    final = reference.rsplit("/", 1)[-1]
+    if ":" not in final:
+        return False
+    tag = final.rsplit(":", 1)[1]
+    return bool(tag and tag.casefold() != "latest" and not re.search(r"[$*?{}]", tag))
+
+
+def _docker_base_is_pinned(text: str) -> bool:
+    """Validate the image token in a Dockerfile FROM instruction."""
+    parts = text.split()
+    if not parts or parts[0].upper() != "FROM":
+        return True
+    images = [part for part in parts[1:] if not part.startswith("--")]
+    return bool(images and _container_ref_is_pinned(images[0]))
+
+
+def _changed_paths(diff: str) -> set[str]:
+    return {
+        match.group(2)
+        for line in diff.splitlines()
+        if (match := re.match(r"^diff --git a/(.*) b/(.*)$", line))
+    }
+
+
+def evidence_policy_failures(diff: str) -> list[str]:
+    """Reject dependency changes whose policy conditions CI cannot infer."""
+    failures: list[str] = []
+    path = ""
+    for line in diff.splitlines():
+        header = re.match(r"^diff --git a/(.*) b/(.*)$", line)
+        if header:
+            path = header.group(2)
+            continue
+        if not line.startswith("+") or line.startswith("+++"):
+            continue
+        text = line[1:].strip()
+        if (
+            WORKFLOW.search(path)
+            and _adds_remote_action(text)
+            and not _remote_action_is_pinned(text)
+        ):
+            failures.append(
+                f"remote action is not pinned to a full commit SHA: {path}: {text[:80]}"
+            )
+        if (
+            DOCKERFILE.search(path)
+            and re.match(r"FROM\s", text, re.I)
+            and not _docker_base_is_pinned(text)
+        ):
+            failures.append(
+                f"container base is not pinned to a fixed tag or digest: {path}: {text[:80]}"
+            )
+        if (
+            re.search(r"(?:^|/)requirements[^/]*\.txt$", path)
+            and text
+            and not text.startswith(("#", "-r ", "--requirement ", "-c ", "--constraint "))
+        ):
+            requirement = text.split(";", 1)[0].strip()
+            if "==" not in requirement:
+                failures.append(f"Python requirement is not exactly pinned: {path}: {text[:80]}")
+
+    changed = _changed_paths(diff)
+    lock_pairs = (
+        ("pyproject.toml", "uv.lock"),
+        ("package.json", "package-lock.json"),
+        ("go.mod", "go.sum"),
+    )
+    for manifest, lockfile in lock_pairs:
+        for path in changed:
+            if path.rsplit("/", 1)[-1] != manifest:
+                continue
+            parent = path.rsplit("/", 1)[0] if "/" in path else ""
+            expected = f"{parent}/{lockfile}" if parent else lockfile
+            if expected not in changed:
+                failures.append(
+                    f"dependency manifest changed without its resolved lockfile: {expected}"
+                )
+    return list(dict.fromkeys(failures))
+
+
 def _hunk_has_rbac_marker(lines: list[str], start: int) -> bool:
     """Report whether this unified-diff hunk contains unambiguous RBAC structure."""
     marker = re.compile(
@@ -121,6 +234,17 @@ def _hunk_has_rbac_marker(lines: list[str], start: int) -> bool:
             candidate[1:].strip() if candidate.startswith((" ", "+", "-")) else candidate.strip()
         )
         if marker.match(content):
+            return True
+    return False
+
+
+def _hunk_has_terraform_migration(lines: list[str], start: int) -> bool:
+    """Report whether this diff hunk contains a Terraform state-migration block."""
+    for candidate in lines[start + 1 :]:
+        if candidate.startswith(("@@", "diff --git ")):
+            break
+        content = candidate[1:].strip() if candidate.startswith((" ", "+", "-")) else ""
+        if re.match(r"(?:moved|import|removed)\s*\{", content):
             return True
     return False
 
@@ -179,6 +303,9 @@ def _line_findings(path: str, line: str) -> list[Finding]:
         re.I,
     ):
         findings.append(_finding("iam", f"{verb} IAM configuration in {path}: {text[:80]}"))
+
+    if TERRAFORM.search(path) and re.match(r"(?:moved|import|removed)\s*\{", text):
+        findings.append(_finding("migration", f"{verb} a Terraform state migration in {path}"))
 
     if YAML.search(path) and re.match(
         r"(?:kind:\s*(?:Cluster)?Role(?:Binding)?\b|verbs:|apiGroups:|roleRef:|subjects:)", text
@@ -262,11 +389,17 @@ def scope_findings(diff: str) -> list[Finding]:
             findings.append(
                 _finding(category, f"{verb} a Kubernetes RBAC value in {path}: {stripped[:80]}")
             )
+        if (
+            TERRAFORM.search(path)
+            and line.startswith(("+", "-"))
+            and _hunk_has_terraform_migration(lines, hunk_start)
+        ):
+            findings.append(_finding("migration", f"changes a Terraform state migration in {path}"))
         findings.extend(_line_findings(path, line))
     return list(dict.fromkeys(findings))
 
 
-def load_policy(path: Path = POLICY_PATH) -> tuple[dict[str, dict[str, str]], dict[str, str]]:
+def load_policy(path: Path = POLICY_PATH) -> tuple[dict[str, dict[str, str]], dict[str, Any]]:
     """Load rules by category and the judge settings, failing closed."""
     data = tomllib.loads(path.read_text(encoding="utf-8"))
     rules: dict[str, dict[str, str]] = {}
@@ -276,7 +409,7 @@ def load_policy(path: Path = POLICY_PATH) -> tuple[dict[str, dict[str, str]], di
         required = ("id", "category", "decider", "guidance")
         if any(not isinstance(raw.get(key), str) or not raw[key].strip() for key in required):
             raise ValueError("each policy rule needs non-empty id, category, decider and guidance")
-        if raw["decider"] not in {"judge", "owner"}:
+        if raw["decider"] not in {"evidence", "judge", "owner"}:
             raise ValueError(f"invalid decider for {raw['category']}: {raw['decider']}")
         if raw["category"] in rules:
             raise ValueError(f"duplicate policy category: {raw['category']}")
@@ -287,7 +420,73 @@ def load_policy(path: Path = POLICY_PATH) -> tuple[dict[str, dict[str, str]], di
         for key in ("trusted_author", "model")
     ):
         raise ValueError("policy needs judge.trusted_author and judge.model")
-    return rules, {"trusted_author": judge["trusted_author"], "model": judge["model"]}
+    evidence = data.get("evidence")
+    required_checks = evidence.get("required_checks") if isinstance(evidence, dict) else None
+    if not isinstance(required_checks, list) or not required_checks:
+        raise ValueError("policy needs at least one evidence.required_checks entry")
+    normalized: list[dict[str, str]] = []
+    for item in required_checks:
+        if (
+            not isinstance(item, dict)
+            or set(item) != {"group", "name", "workflow"}
+            or any(not isinstance(item[key], str) or not item[key].strip() for key in item)
+            or not item["workflow"].startswith(".github/workflows/")
+        ):
+            raise ValueError("each required check needs exactly a group, name and workflow path")
+        normalized.append(
+            {"group": item["group"], "name": item["name"], "workflow": item["workflow"]}
+        )
+    return rules, {
+        "trusted_author": judge["trusted_author"],
+        "model": judge["model"],
+        "required_checks": tuple(normalized),
+    }
+
+
+def required_check_failures(
+    runs: list[dict[str, Any]],
+    required: tuple[dict[str, str], ...],
+    workflow_runs: dict[str, dict[str, str]],
+    sha: str,
+) -> list[str]:
+    """Require successful, current-head evidence from its declared workflow."""
+    failures: list[str] = []
+    groups = dict.fromkeys(spec["group"] for spec in required)
+    for group in groups:
+        specs = [spec for spec in required if spec["group"] == group]
+        named = [(run, spec) for run in runs for spec in specs if run.get("name") == spec["name"]]
+        if not named:
+            names = " or ".join(spec["name"] for spec in specs)
+            failures.append(f"required evidence check did not run: {names}")
+            continue
+        run, spec = max(named, key=lambda item: str(item[0].get("started_at", "")))
+        provenance = workflow_runs.get(str(run.get("run_id", "")), {})
+        workflow_path = provenance.get("path", "").split("@", 1)[0]
+        trusted = (
+            run.get("status") == "completed"
+            and run.get("conclusion") == "success"
+            and run.get("app") == "github-actions"
+            and workflow_path == spec["workflow"]
+            and provenance.get("event") == "pull_request"
+            and provenance.get("head_sha") == sha
+        )
+        if not trusted:
+            failures.append(
+                f"required evidence check lacks trusted successful provenance: {run.get('name')}"
+            )
+    return failures
+
+
+def _actions_run_id(repo: str, details_url: object) -> str | None:
+    """Extract a run id only from this repository's GitHub Actions job URL."""
+    if not isinstance(details_url, str):
+        return None
+    match = re.fullmatch(
+        rf"https://github\.com/{re.escape(repo)}/actions/runs/([0-9]+)/job/[0-9]+",
+        details_url,
+        re.I,
+    )
+    return match.group(1) if match else None
 
 
 def judge_decision(
@@ -474,7 +673,7 @@ def main(argv: list[str]) -> int:
         "--paginate",
         f"repos/{repo}/commits/{sha}/check-runs?per_page=100&filter=latest",
         "--jq",
-        ".check_runs[]|{name,status,conclusion}",
+        ".check_runs[]|{name,status,conclusion,started_at,app:.app.slug,details_url}",
     )
     latest: dict[str, str] = {}
     for status in gh_json_lines(
@@ -518,7 +717,8 @@ def main(argv: list[str]) -> int:
     if not has_verification(pr["body"] or ""):
         blocked.append("no '## Verification' section with commands and results")
 
-    findings = scope_findings(gh("pr", "diff", number, "-R", repo))
+    diff = gh("pr", "diff", number, "-R", repo)
+    findings = scope_findings(diff)
     print(f"{repo}#{number} at {sha[:12]}: {len(runs)} check runs, {len(threads)} threads")
     for category, description in findings:
         print(f"DECISION {category}: {description}")
@@ -534,6 +734,26 @@ def main(argv: list[str]) -> int:
         print(f"PARK  decision policy is invalid: {exc}")
         print("verdict: PARK")
         return 10
+    required_names = {item["name"] for item in judge["required_checks"]}
+    workflow_runs: dict[str, dict[str, str]] = {}
+    for run in runs:
+        if run.get("name") not in required_names:
+            continue
+        run_id = _actions_run_id(repo, run.get("details_url"))
+        if not run_id:
+            continue
+        run["run_id"] = run_id
+        details = json.loads(gh("api", f"repos/{repo}/actions/runs/{run_id}"))
+        workflow_runs[run_id] = {
+            key: str(details.get(key, "")) for key in ("path", "event", "head_sha")
+        }
+    evidence_failures = required_check_failures(runs, judge["required_checks"], workflow_runs, sha)
+    evidence_failures.extend(evidence_policy_failures(diff))
+    if evidence_failures:
+        for reason in evidence_failures:
+            print(f"BLOCKED  {reason}")
+        print("verdict: BLOCKED")
+        return 1
     comments = gh_json_lines(
         "api",
         "--paginate",
@@ -652,6 +872,22 @@ def self_test() -> int:
             *_file("uv.lock", "+name = x"),
             *_file("k8s/infrastructure/flagger/helmrelease.yaml", '+      version: "1.46.0"'),
             *_file(".claude/skills/merge-gate/merge_ready.py", "+def main(): return 0"),
+            *_file(".github/workflows/quality.yml", "+name: Weakened gate"),
+            *_file(
+                "src/infra_fleet_advisor/runtime/intent_gate.py",
+                "+def positions(_report): return {}",
+            ),
+            *_file("pyproject.toml", "+infra-fleet-advisor = 'other:main'"),
+            *_file("db/migrations/0001_users.sql", "+ALTER TABLE users ADD COLUMN role text;"),
+            *_file("infrastructure/staging/main.tf", "+moved {", "+  from = aws_s3_bucket.old"),
+            *_file(
+                "infrastructure/staging/existing-move.tf",
+                " moved {",
+                "-  from = aws_s3_bucket.old",
+                "+  from = aws_s3_bucket.renamed",
+                "   to = aws_s3_bucket.current",
+                " }",
+            ),
             *_file("docs/README.md", "+Prose about permissions and secrets.DEPLOY_TOKEN."),
             *_file(".github/workflows/lint.yml", "--- a/not-a-header", "+  contents: write"),
         ]
@@ -661,7 +897,7 @@ def self_test() -> int:
     assert categories.count("permission-added") >= 7, found
     assert categories.count("permission-removed") >= 2, found
     assert categories.count("merge-authority") >= 4, found
-    assert categories.count("workflow") == 2, found
+    assert categories.count("workflow") == 3, found
     assert categories.count("iam") >= 2, found
     assert any(category == "iam" and "ecr:*" in description for category, description in found)
     assert any(
@@ -679,6 +915,18 @@ def self_test() -> int:
     assert categories.count("credential") >= 3 and categories.count("dependency") == 3, found
     assert "intent-policy" in categories and "decision-record" in categories, found
     assert "product-requirements" in categories and "dependency-manifest" in categories, found
+    assert sum(category == "merge-authority" for category in categories) >= 7, found
+    assert categories.count("migration") >= 3, found
+    assert any(
+        category == "migration" and "existing-move.tf" in description
+        for category, description in found
+    )
+    assert not any(
+        category == "migration"
+        for category, _ in scope_findings(
+            "\n".join(_file("app/queries/find_user.sql", "+SELECT * FROM users;"))
+        )
+    )
     assert _adds_privileged_trigger("pull_request_target:")
     assert _adds_privileged_trigger("on: pull_request_target")
     assert _adds_privileged_trigger("on: [push, pull_request_target]")
@@ -690,10 +938,94 @@ def self_test() -> int:
     assert not _adds_remote_action("uses: $/.github/actions/build")
     assert not _adds_remote_action('uses: "$/actions/quoted"')
     assert _adds_remote_action("uses: actions/checkout@0123456789abcdef")
+    assert not _remote_action_is_pinned("uses: actions/checkout@v5")
+    assert not _remote_action_is_pinned("uses: actions/checkout@main")
+    assert _remote_action_is_pinned(f"uses: actions/checkout@{'a' * 40}")
+    assert _remote_action_is_pinned("uses: docker://python:3.13-slim")
+    assert not _remote_action_is_pinned("uses: docker://python:latest")
+    assert _docker_base_is_pinned("FROM python:3.13-slim AS build")
+    assert _docker_base_is_pinned(f"FROM python@sha256:{'a' * 64}")
+    assert not _docker_base_is_pinned("FROM python:latest")
+    assert not _docker_base_is_pinned("FROM python")
+    dependency_failures = evidence_policy_failures(
+        "\n".join(
+            [
+                *_file(".github/workflows/ci.yml", "+uses: actions/checkout@v5"),
+                *_file("app/Dockerfile", "+FROM python:latest"),
+                *_file("requirements.txt", "+requests>=2"),
+                *_file("pyproject.toml", '+"requests>=2"'),
+            ]
+        )
+    )
+    assert len(dependency_failures) == 4, dependency_failures
+    assert not evidence_policy_failures(
+        "\n".join(
+            [
+                *_file(".github/workflows/ci.yml", f"+uses: actions/checkout@{'a' * 40}"),
+                *_file("app/Dockerfile", "+FROM python:3.13-slim"),
+                *_file("requirements.txt", "+requests==2.34.2"),
+                *_file("pyproject.toml", '+"requests>=2"'),
+                *_file("uv.lock", "+name = 'requests'"),
+                *_file("apps/api/package.json", '+"requests": "1.0.0"'),
+                *_file("apps/api/package-lock.json", '+"requests": "1.0.0"'),
+            ]
+        )
+    )
 
     rules, judge = load_policy()
     assert judge["trusted_author"] == "github-actions[bot]"
+    assert rules["dependency"]["decider"] == "evidence"
+    required = judge["required_checks"]
+    assert required == (
+        {
+            "group": "ratchet",
+            "name": "Ratchet guard",
+            "workflow": ".github/workflows/quality.yml",
+        },
+    )
     sha = "a" * 40
+    required_run = {
+        "name": "Ratchet guard",
+        "status": "completed",
+        "conclusion": "success",
+        "app": "github-actions",
+        "run_id": "42",
+        "started_at": "2026-09-28T01:00:00Z",
+    }
+    workflow_runs = {
+        "42": {
+            "path": ".github/workflows/quality.yml",
+            "event": "pull_request",
+            "head_sha": sha,
+        }
+    }
+    assert required_check_failures([required_run], required, workflow_runs, sha) == []
+    assert required_check_failures([], required, {}, sha) == [
+        "required evidence check did not run: Ratchet guard"
+    ]
+    for changed in (
+        {"conclusion": "skipped"},
+        {"app": "untrusted-app"},
+        {"run_id": "missing"},
+    ):
+        candidate = {**required_run, **changed}
+        assert required_check_failures([candidate], required, workflow_runs, sha)
+    for changed in (
+        {"path": ".github/workflows/fake.yml"},
+        {"event": "push"},
+        {"head_sha": "b" * 40},
+    ):
+        provenance = {"42": {**workflow_runs["42"], **changed}}
+        assert required_check_failures([required_run], required, provenance, sha)
+    assert (
+        required_check_failures(
+            [required_run],
+            required,
+            {"42": {**workflow_runs["42"], "path": ".github/workflows/quality.yml@main"}},
+            sha,
+        )
+        == []
+    )
     marker = f"<!-- merge-gate-judge sha={sha} -->\nDECISION: APPROVE\nRULES: dependency-pinned"
     bot = [{"author": "github-actions[bot]", "body": marker}]
     owner = [{"author": "ImranAdan", "body": marker}]
@@ -710,14 +1042,14 @@ def self_test() -> int:
     ]
     dependency = [_finding("dependency", "base image")]
     decision = judge_decision(bot, sha, judge["trusted_author"])
-    assert decide(dependency, rules, set(), decision)[0] == "READY"
+    assert decide(dependency, rules, set(), None)[0] == "READY"
     assert (
         decide(dependency, rules, set(), judge_decision(owner, sha, judge["trusted_author"]))[0]
-        == "JUDGE"
+        == "READY"
     )
     assert (
         decide(dependency, rules, set(), judge_decision(old, sha, judge["trusted_author"]))[0]
-        == "JUDGE"
+        == "READY"
     )
     assert judge_decision(injected, sha, judge["trusted_author"]) is None
 
@@ -725,9 +1057,9 @@ def self_test() -> int:
     rejected = judge_decision(
         [{"author": "github-actions[bot]", "body": reject}], sha, judge["trusted_author"]
     )
-    assert decide(dependency, rules, set(), rejected)[0] == "BLOCKED"
+    assert decide(dependency, rules, set(), rejected)[0] == "READY"
     two = dependency + [_finding("intent-policy", "intent")]
-    assert decide(two, rules, set(), decision)[0] == "JUDGE"
+    assert decide(two, rules, set(), decision)[0] == "PARK"
 
     credential = [_finding("credential", "secret")]
     assert decide(credential, rules, set(), decision)[0] == "PARK"

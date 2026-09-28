@@ -70,8 +70,9 @@ have verified were already fixed or are stale.
 
 Never add `owner-approved` and never post or imitate a merge-judge comment.
 Changes to scope, requirements, decisions, permissions, credentials and
-dependencies follow the gate's policy: reversible categories go to the judge;
-durable authority and access changes park for the owner.
+dependencies follow the gate's policy: reversible categories may be decided by
+trusted exact-head evidence; durable authority, access and migrations park for
+the owner.
 
 The grant covers pull requests you raised. It never covers force-pushing over
 someone else's work, changing repository settings, or anything in another

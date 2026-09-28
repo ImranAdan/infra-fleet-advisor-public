@@ -53,7 +53,9 @@ if ! review "$advisor_root" "$output/head"; then
   echo 'ratchet failed: the head advisor could not produce a comparable report' >&2
   exit 8
 fi
-uv run --frozen --project "$advisor_root" infra-fleet-advisor ratchet \
+# The proposed advisor produces the head report, but trusted base-branch code
+# compares it. Otherwise a change to the comparator could approve itself.
+uv run --frozen --project "$work/advisor" infra-fleet-advisor ratchet \
   --base-report "$output/base/report.json" \
   --head-report "$output/head/report.json" \
   ${GITHUB_STEP_SUMMARY:+--summary "$GITHUB_STEP_SUMMARY"}

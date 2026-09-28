@@ -241,7 +241,7 @@ proves the work.
   consumers in the fleet.
 - `merge-gate`: `merge_ready.py <PR>` decides whether an agent may merge a
   pull request unread: `READY`, `PARK` (the owner decides), `JUDGE` (the
-  independent judge decides) or `BLOCKED`.
+  optional independent judge decides) or `BLOCKED`.
 
 Every pull request carries a `## Verification` section with the commands run
 and what they showed (see `.github/pull_request_template.md`). An agent merges
@@ -251,6 +251,15 @@ its own pull request only by rerunning the gate with `--merge` after it reports
 workflow binds an owner-applied label to the exact head SHA; a label without
 that trusted record, or whose latest label event was not made by the repository
 owner, does not approve a merge.
+
+The default path is key-free. Reversible categories marked `evidence` in the
+decision policy can reach `READY` only after every head check passes and the
+successful `Ratchet guard` check is traced to the expected GitHub Actions
+workflow on that exact head. Added authority, credentials, IAM, permanent
+infrastructure, migrations, declared intent and the merge system remain owner
+decisions. The optional Anthropic path is dormant unless a future policy
+category explicitly names `judge` as its decider. The ratchet and declared
+intent remain the first authority.
 
 When a verification lesson recurs, encode it as a check (a test, a drill, a
 doctor line) rather than another paragraph here.
