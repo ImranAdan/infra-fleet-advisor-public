@@ -100,5 +100,5 @@ model = "claude-opus-5-5"
 
 [evidence]
 required_checks = [
-  { name = "Ratchet guard", workflow = ".github/workflows/quality.yml" },
+  { group = "ratchet", name = "Ratchet guard", workflow = ".github/workflows/quality.yml" },
 ]

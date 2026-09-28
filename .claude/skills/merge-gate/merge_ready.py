@@ -62,7 +62,7 @@ PATH_RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
         "migration",
         re.compile(
             r"(?:^|/)(?:migrations?|alembic/versions|db/(?:migrate|migrations))(?:/|$)|"
-            r"(?:^|/)(?:schema\.(?:sql|prisma)|[^/]+\.sql)$",
+            r"(?:^|/)schema\.(?:sql|prisma)$",
             re.I,
         ),
         "state, schema or data migration changed",
@@ -428,12 +428,14 @@ def load_policy(path: Path = POLICY_PATH) -> tuple[dict[str, dict[str, str]], di
     for item in required_checks:
         if (
             not isinstance(item, dict)
-            or set(item) != {"name", "workflow"}
+            or set(item) != {"group", "name", "workflow"}
             or any(not isinstance(item[key], str) or not item[key].strip() for key in item)
             or not item["workflow"].startswith(".github/workflows/")
         ):
-            raise ValueError("each required check needs exactly a name and workflow path")
-        normalized.append({"name": item["name"], "workflow": item["workflow"]})
+            raise ValueError("each required check needs exactly a group, name and workflow path")
+        normalized.append(
+            {"group": item["group"], "name": item["name"], "workflow": item["workflow"]}
+        )
     return rules, {
         "trusted_author": judge["trusted_author"],
         "model": judge["model"],
@@ -449,27 +451,28 @@ def required_check_failures(
 ) -> list[str]:
     """Require successful, current-head evidence from its declared workflow."""
     failures: list[str] = []
-    for spec in required:
-        named = [run for run in runs if run.get("name") == spec["name"]]
+    groups = dict.fromkeys(spec["group"] for spec in required)
+    for group in groups:
+        specs = [spec for spec in required if spec["group"] == group]
+        named = [(run, spec) for run in runs for spec in specs if run.get("name") == spec["name"]]
         if not named:
-            failures.append(f"required evidence check did not run: {spec['name']}")
+            names = " or ".join(spec["name"] for spec in specs)
+            failures.append(f"required evidence check did not run: {names}")
             continue
-        trusted = False
-        for run in named:
-            provenance = workflow_runs.get(str(run.get("run_id", "")), {})
-            if (
-                run.get("status") == "completed"
-                and run.get("conclusion") == "success"
-                and run.get("app") == "github-actions"
-                and provenance.get("path") == spec["workflow"]
-                and provenance.get("event") == "pull_request"
-                and provenance.get("head_sha") == sha
-            ):
-                trusted = True
-                break
+        run, spec = max(named, key=lambda item: str(item[0].get("started_at", "")))
+        provenance = workflow_runs.get(str(run.get("run_id", "")), {})
+        workflow_path = provenance.get("path", "").split("@", 1)[0]
+        trusted = (
+            run.get("status") == "completed"
+            and run.get("conclusion") == "success"
+            and run.get("app") == "github-actions"
+            and workflow_path == spec["workflow"]
+            and provenance.get("event") == "pull_request"
+            and provenance.get("head_sha") == sha
+        )
         if not trusted:
             failures.append(
-                f"required evidence check lacks trusted successful provenance: {spec['name']}"
+                f"required evidence check lacks trusted successful provenance: {run.get('name')}"
             )
     return failures
 
@@ -670,7 +673,7 @@ def main(argv: list[str]) -> int:
         "--paginate",
         f"repos/{repo}/commits/{sha}/check-runs?per_page=100&filter=latest",
         "--jq",
-        ".check_runs[]|{name,status,conclusion,app:.app.slug,details_url}",
+        ".check_runs[]|{name,status,conclusion,started_at,app:.app.slug,details_url}",
     )
     latest: dict[str, str] = {}
     for status in gh_json_lines(
@@ -969,6 +972,7 @@ def self_test() -> int:
     required = judge["required_checks"]
     assert required == (
         {
+            "group": "ratchet",
             "name": "Ratchet guard",
             "workflow": ".github/workflows/quality.yml",
         },
@@ -980,6 +984,7 @@ def self_test() -> int:
         "conclusion": "success",
         "app": "github-actions",
         "run_id": "42",
+        "started_at": "2026-09-28T01:00:00Z",
     }
     workflow_runs = {
         "42": {
@@ -1006,6 +1011,15 @@ def self_test() -> int:
     ):
         provenance = {"42": {**workflow_runs["42"], **changed}}
         assert required_check_failures([required_run], required, provenance, sha)
+    assert (
+        required_check_failures(
+            [required_run],
+            required,
+            {"42": {**workflow_runs["42"], "path": ".github/workflows/quality.yml@main"}},
+            sha,
+        )
+        == []
+    )
     marker = f"<!-- merge-gate-judge sha={sha} -->\nDECISION: APPROVE\nRULES: dependency-pinned"
     bot = [{"author": "github-actions[bot]", "body": marker}]
     owner = [{"author": "ImranAdan", "body": marker}]
