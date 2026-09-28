@@ -63,9 +63,14 @@ jobs:
           REPORT_PR: ${{ github.event.pull_request.number || inputs.report_pr }}
         run: |
           if [ -z "$REPORT_PR" ]; then
-            REPORT_PR="$(gh api \
-              "repos/${GITHUB_REPOSITORY}/pulls?state=closed&head=${GITHUB_REPOSITORY_OWNER}%3Aadvisory%2Flatest&sort=updated&direction=desc&per_page=20" \
-              --jq '[.[] | select(.merged_at != null)][0].number // empty')"
+            REPORT_PR="$(
+              for page in 1 2 3 4 5; do
+                response="$(gh api \
+                  "repos/${GITHUB_REPOSITORY}/pulls?state=closed&head=${GITHUB_REPOSITORY_OWNER}%3Aadvisory%2Flatest&sort=updated&direction=desc&per_page=100&page=${page}")"
+                jq -c '.[]' <<< "$response"
+                [ "$(jq 'length' <<< "$response")" -eq 100 ] || break
+              done | jq -sr '[.[] | select(.merged_at != null)] | sort_by(.merged_at) | last | .number // empty'
+            )"
           fi
           if [[ ! "$REPORT_PR" =~ ^[1-9][0-9]{0,9}$ ]]; then
             echo '::error::A positive merged report PR number is required.'

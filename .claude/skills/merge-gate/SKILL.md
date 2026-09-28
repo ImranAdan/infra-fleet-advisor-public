@@ -76,6 +76,8 @@ the workflow records a trusted approval for that exact head SHA; the gate
 requires that record, the label, and a latest label event from the repository
 owner. Evidence-decided categories need no comment or model: all checks must be
 green and the required advisor check must have trusted exact-head provenance.
+Workflow-dispatch evidence is also bound to its registered generated head
+branch; a successful run from an ordinary feature branch is not evidence.
 The optional Anthropic path runs only if a future policy category explicitly
 uses the `judge` decider. Declared intent and the ratchet remain the first
 authority, so neither evidence nor a judge approval can override them.

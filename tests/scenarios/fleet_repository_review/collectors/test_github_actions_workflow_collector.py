@@ -25,7 +25,7 @@ LIMITS = ExecutionLimits(
 
 
 def test_detects_evidence_gated_autonomous_merge(git_checkout) -> None:
-    repo, _sha = git_checkout("autonomous_merge_good.yml")
+    repo, _sha = git_checkout("autonomous_merge_good.yml", "intent_gate_named.yml")
     result = gha_collector.collect(repo, LIMITS)
     evidence = next(item for item in result.evidence if item.kind == EVIDENCE_KIND_AUTONOMOUS_MERGE)
     assert evidence.source_path == ".github/workflows/autonomous_merge_good.yml"
@@ -50,14 +50,41 @@ def test_detects_evidence_gated_autonomous_merge(git_checkout) -> None:
             "      - continue-on-error: true\n"
             "        run: python3 .github/scripts/autonomous_merge.py",
         ),
+        (
+            "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n"
+            "        with:\n"
+            "          ref: ${{ github.event.repository.default_branch }}\n"
+            "          persist-credentials: false\n",
+            "",
+        ),
+        ("  statuses: read", "  statuses: read\n  packages: write"),
+        ("workflows: [Intent Gate]", "workflows: [Template Contract]"),
+        ("types: [completed]", "types: [requested]"),
+        ('cron: "7 * * * *"', 'cron: "not-a-schedule"'),
     ],
 )
 def test_autonomous_merge_requires_a_runnable_privileged_worker(git_checkout, old, new) -> None:
-    repo, _sha = git_checkout("autonomous_merge_good.yml")
+    repo, _sha = git_checkout("autonomous_merge_good.yml", "intent_gate_named.yml")
     workflow = repo / ".github" / "workflows" / "autonomous_merge_good.yml"
     original = workflow.read_text(encoding="utf-8")
     assert old in original
     workflow.write_text(original.replace(old, new), encoding="utf-8")
+
+    result = gha_collector.collect(repo, LIMITS)
+    evidence = next(item for item in result.evidence if item.kind == EVIDENCE_KIND_AUTONOMOUS_MERGE)
+
+    assert evidence.fact == {"evidence_autonomy_complete": False}
+
+
+def test_autonomous_merge_requires_the_named_trigger_workflow_to_exist(git_checkout) -> None:
+    repo, _sha = git_checkout("autonomous_merge_good.yml", "intent_gate_named.yml")
+    gate = repo / ".github" / "workflows" / "intent_gate_named.yml"
+    gate.write_text(
+        gate.read_text(encoding="utf-8").replace(
+            "name: Intent Gate", "name: Intent Gate without autonomous follow-up"
+        ),
+        encoding="utf-8",
+    )
 
     result = gha_collector.collect(repo, LIMITS)
     evidence = next(item for item in result.evidence if item.kind == EVIDENCE_KIND_AUTONOMOUS_MERGE)

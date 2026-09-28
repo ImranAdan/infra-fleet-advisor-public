@@ -15,6 +15,9 @@ from typing import Any
 MARKER = "<!-- autonomous-merge -->"
 GATE = Path(".claude/skills/merge-gate/merge_ready.py")
 DEFERRED = {1, 10, 11}
+LIST_TIMEOUT_SECONDS = 60
+GATE_TIMEOUT_SECONDS = 120
+HANDOFF_TIMEOUT_SECONDS = 60
 
 
 def eligible(pr: dict[str, Any], repository: str, now: datetime, minimum_age: int) -> bool:
@@ -114,6 +117,7 @@ def _open_pull_requests(repository: str) -> list[dict[str, Any]]:
         check=True,
         capture_output=True,
         text=True,
+        timeout=LIST_TIMEOUT_SECONDS,
     )
     value = json.loads(result.stdout)
     if not isinstance(value, list):
@@ -144,42 +148,69 @@ def main() -> int:
         print("AUTONOMOUS_MERGE_MIN_AGE_SECONDS cannot be negative", file=sys.stderr)
         return 2
 
-    candidates = [
-        pr
-        for pr in _open_pull_requests(repository)
-        if eligible(pr, repository, datetime.now(UTC), minimum_age)
-    ]
     lines = ["## Autonomous merge", ""]
+    try:
+        open_pull_requests = _open_pull_requests(repository)
+    except subprocess.TimeoutExpired:
+        message = f"Pull-request discovery timed out after {LIST_TIMEOUT_SECONDS} seconds."
+        lines.append(message)
+        _summary(lines)
+        print(message, file=sys.stderr)
+        return 1
+    candidates = [
+        pr for pr in open_pull_requests if eligible(pr, repository, datetime.now(UTC), minimum_age)
+    ]
     unexpected = False
     if not candidates:
         lines.append("No eligible pull request is ready for evaluation.")
     for pr in candidates:
         number = str(pr["number"])
-        result = subprocess.run(  # noqa: S603 - fixed gate and API-derived PR number
-            [sys.executable, str(GATE), number, "--repo", repository, "--merge"],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        output = (result.stdout + result.stderr).strip()
-        state = "merged" if result.returncode == 0 else "deferred"
-        if result.returncode not in DEFERRED | {0}:
+        try:
+            result = subprocess.run(  # noqa: S603 - fixed gate and API-derived PR number
+                [sys.executable, str(GATE), number, "--repo", repository, "--merge"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=GATE_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired:
+            output = f"Gate timed out after {GATE_TIMEOUT_SECONDS} seconds."
             state = "error"
             unexpected = True
-        if result.returncode == 0:
+            result = None
+        else:
+            output = (result.stdout + result.stderr).strip()
+            state = "merged" if result.returncode == 0 else "deferred"
+            if result.returncode not in DEFERRED | {0}:
+                state = "error"
+                unexpected = True
+        if result is not None and result.returncode == 0:
             command = post_merge_command(pr, repository)
             if command is not None:
-                handoff = subprocess.run(  # noqa: S603 - command is built from trusted env only
-                    command, check=False, capture_output=True, text=True
-                )
-                output = "\n".join(
-                    part
-                    for part in (output, handoff.stdout.strip(), handoff.stderr.strip())
-                    if part
-                )
-                if handoff.returncode != 0:
+                try:
+                    handoff = subprocess.run(  # noqa: S603 - trusted env builds the command
+                        command,
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                        timeout=HANDOFF_TIMEOUT_SECONDS,
+                    )
+                except subprocess.TimeoutExpired:
+                    timeout_message = (
+                        f"Post-merge handoff timed out after {HANDOFF_TIMEOUT_SECONDS} seconds."
+                    )
+                    output = "\n".join((output, timeout_message))
                     state = "merged; post-merge handoff failed"
                     unexpected = True
+                else:
+                    output = "\n".join(
+                        part
+                        for part in (output, handoff.stdout.strip(), handoff.stderr.strip())
+                        if part
+                    )
+                    if handoff.returncode != 0:
+                        state = "merged; post-merge handoff failed"
+                        unexpected = True
         lines.extend(
             [
                 f"### PR #{number}: {state}",

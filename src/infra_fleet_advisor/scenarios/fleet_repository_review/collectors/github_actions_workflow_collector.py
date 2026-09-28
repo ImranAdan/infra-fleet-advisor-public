@@ -33,6 +33,8 @@ _PUSH_COMMAND = re.compile(
 # A job condition calling one of these still runs after its dependencies fail.
 _STATUS_OVERRIDE = re.compile(r"\b(?:always|failure|cancelled)\s*\(")
 _AUTONOMOUS_WORKER_COMMAND = "python3 .github/scripts/autonomous_merge.py"
+_AUTONOMOUS_TRIGGER_WORKFLOW = "Intent Gate"
+_DEFAULT_BRANCH_EXPRESSION = "${{ github.event.repository.default_branch }}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,9 +71,6 @@ def _grants_id_token_write(permissions: Any) -> bool:
 
 def _grants_repository_permission(permissions: Any, name: str, level: str) -> bool:
     """Whether the effective GitHub job permissions grant at least `level`."""
-    if isinstance(permissions, str):
-        aggregate = permissions.strip().lower()
-        return aggregate == "write-all" or (aggregate == "read-all" and level == "read")
     if not isinstance(permissions, dict):
         return False
     actual = permissions.get(name)
@@ -84,6 +83,70 @@ def _grants_repository_permission(permissions: Any, name: str, level: str) -> bo
 def _runs_unconditionally(item: dict[str, Any]) -> bool:
     """Only an absent condition proves that every declared trigger reaches an item."""
     return "if" not in item
+
+
+def _worker_permissions_are_bounded(permissions: Any) -> bool:
+    """Require every scope used by the gate and no unrelated write scope."""
+    if not isinstance(permissions, dict):
+        return False
+    required = {
+        "actions": "read",
+        "checks": "read",
+        "contents": "write",
+        "issues": "read",
+        "pull-requests": "write",
+        "statuses": "read",
+    }
+    if not all(
+        _grants_repository_permission(permissions, name, level) for name, level in required.items()
+    ):
+        return False
+    return all(
+        not (isinstance(level, str) and level.strip().lower() == "write")
+        or name in {"contents", "pull-requests"}
+        for name, level in permissions.items()
+    )
+
+
+def _checks_out_trusted_merge_code(step: dict[str, Any]) -> bool:
+    uses = step.get("uses")
+    raw_with = step.get("with")
+    return (
+        isinstance(uses, str)
+        and _matches_action(uses, "actions/checkout")
+        and _runs_unconditionally(step)
+        and not _is_truthy_yaml_value(step.get("continue-on-error"))
+        and isinstance(raw_with, dict)
+        and raw_with.get("ref") == _DEFAULT_BRANCH_EXPRESSION
+        and not _is_truthy_yaml_value(raw_with.get("persist-credentials"))
+    )
+
+
+def _has_recoverable_trigger(triggers: Any, workflow_names: frozenset[str]) -> bool:
+    """Require the real intent gate completion plus a syntactically usable cron."""
+    if not isinstance(triggers, dict):
+        return False
+    workflow_run = triggers.get("workflow_run")
+    schedule = triggers.get("schedule")
+    if not isinstance(workflow_run, dict) or not isinstance(schedule, list):
+        return False
+    names = workflow_run.get("workflows")
+    types = workflow_run.get("types")
+    named = [names] if isinstance(names, str) else names
+    events = [types] if isinstance(types, str) else types
+    has_gate = (
+        isinstance(named, list)
+        and _AUTONOMOUS_TRIGGER_WORKFLOW in named
+        and _AUTONOMOUS_TRIGGER_WORKFLOW in workflow_names
+    )
+    completes = isinstance(events, list) and "completed" in events
+    usable_schedule = any(
+        isinstance(item, dict)
+        and isinstance(item.get("cron"), str)
+        and len(item["cron"].split()) == 5
+        for item in schedule
+    )
+    return has_gate and completes and usable_schedule
 
 
 def _input_is_disabled(with_block: dict[str, Any], key: str) -> bool:
@@ -309,7 +372,9 @@ def _publication_evidence(workflow: dict[str, Any], rel_path: str) -> list[Evide
     return evidence
 
 
-def _autonomous_merge_evidence(workflow: dict[str, Any], rel_path: str) -> Evidence | None:
+def _autonomous_merge_evidence(
+    workflow: dict[str, Any], rel_path: str, workflow_names: frozenset[str]
+) -> Evidence | None:
     """Describe the closed workflow shape that invokes the protected merge worker."""
     if workflow.get("name") != "Autonomous merge":
         return None
@@ -325,13 +390,12 @@ def _autonomous_merge_evidence(workflow: dict[str, Any], rel_path: str) -> Evide
             effective_permissions = (
                 job.get("permissions") if "permissions" in job else workflow_permissions
             )
-            permissions_complete = (
-                _grants_repository_permission(effective_permissions, "contents", "write")
-                and _grants_repository_permission(effective_permissions, "pull-requests", "write")
-                and _grants_repository_permission(effective_permissions, "checks", "read")
-            )
+            permissions_complete = _worker_permissions_are_bounded(effective_permissions)
+            trusted_checkout_seen = False
             for step in job.get("steps") or []:
                 if not isinstance(step, dict) or not isinstance(step.get("run"), str):
+                    if isinstance(step, dict) and _checks_out_trusted_merge_code(step):
+                        trusted_checkout_seen = True
                     continue
                 if step["run"].strip() != _AUTONOMOUS_WORKER_COMMAND:
                     continue
@@ -340,17 +404,13 @@ def _autonomous_merge_evidence(workflow: dict[str, Any], rel_path: str) -> Evide
                     and _runs_unconditionally(step)
                     and not _is_truthy_yaml_value(step.get("continue-on-error"))
                     and permissions_complete
+                    and trusted_checkout_seen
                 )
                 if runnable_worker:
                     break
             if runnable_worker:
                 break
-    complete = (
-        isinstance(triggers, dict)
-        and "workflow_run" in triggers
-        and "schedule" in triggers
-        and runnable_worker
-    )
+    complete = _has_recoverable_trigger(triggers, workflow_names) and runnable_worker
     return build_evidence(
         collector_id=GHA_COLLECTOR_ID,
         collector_version=GHA_COLLECTOR_VERSION,
@@ -452,6 +512,21 @@ def collect(
     files = eligible_files[: limits.max_workflow_files]
     truncated_count = len(eligible_files) - len(files)
 
+    workflow_names: set[str] = set()
+    for path in files:
+        try:
+            if (
+                path.is_symlink()
+                or not path.resolve().is_relative_to(checkout_real)
+                or path.stat().st_size > limits.max_file_bytes
+            ):
+                continue
+            parsed = yaml.safe_load(path.read_text(encoding="utf-8"))
+            if isinstance(parsed, dict) and isinstance(parsed.get("name"), str):
+                workflow_names.add(parsed["name"])
+        except (OSError, yaml.YAMLError):
+            continue
+
     evidence: list[Evidence] = []
     failures = 0
     for path in files:
@@ -502,7 +577,7 @@ def collect(
                     if item is not None:
                         evidence.append(item)
             evidence.extend(_publication_evidence(workflow, rel_path))
-            autonomous = _autonomous_merge_evidence(workflow, rel_path)
+            autonomous = _autonomous_merge_evidence(workflow, rel_path, frozenset(workflow_names))
             if autonomous is not None:
                 evidence.append(autonomous)
         except (OSError, yaml.YAMLError, UnsafePathError):

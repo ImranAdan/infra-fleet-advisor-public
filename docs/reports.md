@@ -28,9 +28,12 @@ PRs created with that token, so the advisory workflow explicitly dispatches
 workflow resolves the base, title and exact head from GitHub, then runs the same
 commit, test, drill, ratchet, workflow and security jobs as an ordinary PR.
 
-The dispatch is associated with the report branch head. Its completion wakes
-the autonomous merge worker. Do not remove required checks to make a report
-mergeable.
+The dispatch is associated with the report branch head, and the merge gate
+accepts dispatched ratchet evidence only from `advisory/latest`. Its completion
+wakes the autonomous merge worker. Do not remove required checks to make a
+report mergeable. The daily publication recovery scans a bounded report history
+and selects the latest merge time, so later activity on an older PR cannot hide
+the current decision record.
 
 ## Automatic merge, hold and decline
 
