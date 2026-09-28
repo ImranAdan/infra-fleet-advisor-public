@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,9 @@ DEFERRED = {1, 10, 11}
 LIST_TIMEOUT_SECONDS = 60
 GATE_TIMEOUT_SECONDS = 120
 HANDOFF_TIMEOUT_SECONDS = 60
+WORKER_BUDGET_SECONDS = 480
+SHUTDOWN_RESERVE_SECONDS = 30
+MAX_CANDIDATES_PER_RUN = 20
 
 
 def eligible(pr: dict[str, Any], repository: str, now: datetime, minimum_age: int) -> bool:
@@ -60,6 +64,28 @@ def post_merge_command(pr: dict[str, Any], repository: str) -> list[str] | None:
     ]
 
 
+def ordered_candidates(candidates: list[dict[str, Any]], now: datetime) -> list[dict[str, Any]]:
+    """Return a bounded hourly window so a slow prefix cannot starve later PRs."""
+    ordered = sorted(candidates, key=lambda item: int(item["number"]))
+    if not ordered:
+        return []
+    window = min(MAX_CANDIDATES_PER_RUN, len(ordered))
+    hour = int(now.timestamp() // 3600)
+    start = (hour * window) % len(ordered)
+    rotated = ordered[start:] + ordered[:start]
+    return rotated[:window]
+
+
+def shared_timeout(remaining_seconds: float, remaining_operations: int, maximum: int) -> int:
+    """Share the run budget between remaining operations and preserve shutdown time."""
+    if remaining_operations < 1:
+        return 0
+    distributable = remaining_seconds - SHUTDOWN_RESERVE_SECONDS
+    if distributable < 1:
+        return 0
+    return min(maximum, max(1, int(distributable / remaining_operations)))
+
+
 def _self_test() -> int:
     now = datetime(2026, 9, 28, 12, tzinfo=UTC)
     candidate = {
@@ -92,6 +118,15 @@ def _self_test() -> int:
         "report_pr=7",
     ]
     assert post_merge_command({**candidate, "headRefName": "feature"}, "owner/repo") is None
+    candidates = [{**candidate, "number": number} for number in range(1, 26)]
+    first_window = ordered_candidates(candidates, now)
+    next_window = ordered_candidates(candidates, now.replace(hour=13))
+    assert len(first_window) == MAX_CANDIDATES_PER_RUN
+    assert {item["number"] for item in first_window} != {item["number"] for item in next_window}
+    assert {item["number"] for item in first_window + next_window} == set(range(1, 26))
+    assert shared_timeout(480, 4, GATE_TIMEOUT_SECONDS) == 112
+    assert shared_timeout(480, 1, GATE_TIMEOUT_SECONDS) == GATE_TIMEOUT_SECONDS
+    assert shared_timeout(SHUTDOWN_RESERVE_SECONDS, 1, GATE_TIMEOUT_SECONDS) == 0
     del os.environ["AUTONOMOUS_MERGE_POST_MERGE_WORKFLOW"]
     del os.environ["AUTONOMOUS_MERGE_POST_MERGE_HEAD"]
     print("self-test passed")
@@ -157,24 +192,54 @@ def main() -> int:
         _summary(lines)
         print(message, file=sys.stderr)
         return 1
-    candidates = [
-        pr for pr in open_pull_requests if eligible(pr, repository, datetime.now(UTC), minimum_age)
+    now = datetime.now(UTC)
+    eligible_candidates = [
+        pr for pr in open_pull_requests if eligible(pr, repository, now, minimum_age)
     ]
+    candidates = ordered_candidates(eligible_candidates, now)
+    deadline = time.monotonic() + WORKER_BUDGET_SECONDS
     unexpected = False
     if not candidates:
         lines.append("No eligible pull request is ready for evaluation.")
-    for pr in candidates:
+    elif len(candidates) < len(eligible_candidates):
+        lines.append(
+            f"Evaluating {len(candidates)} of {len(eligible_candidates)} eligible pull requests "
+            "in this hour's rotating window."
+        )
+        lines.append("")
+    for index, pr in enumerate(candidates):
         number = str(pr["number"])
+        remaining = candidates[index:]
+        remaining_operations = len(remaining) + sum(
+            post_merge_command(candidate, repository) is not None for candidate in remaining
+        )
+        gate_timeout = shared_timeout(
+            deadline - time.monotonic(), remaining_operations, GATE_TIMEOUT_SECONDS
+        )
+        if gate_timeout == 0:
+            output = "Shared execution budget is exhausted; retrying in the next hourly window."
+            state = "deferred"
+            result = None
+            lines.extend(
+                [
+                    f"### PR #{number}: {state}",
+                    "",
+                    f"<pre>{html.escape(output)}</pre>",
+                    "",
+                ]
+            )
+            print(f"PR #{number}: {state}\n{output}")
+            continue
         try:
             result = subprocess.run(  # noqa: S603 - fixed gate and API-derived PR number
                 [sys.executable, str(GATE), number, "--repo", repository, "--merge"],
                 check=False,
                 capture_output=True,
                 text=True,
-                timeout=GATE_TIMEOUT_SECONDS,
+                timeout=gate_timeout,
             )
         except subprocess.TimeoutExpired:
-            output = f"Gate timed out after {GATE_TIMEOUT_SECONDS} seconds."
+            output = f"Gate timed out after its {gate_timeout}-second shared budget."
             state = "error"
             unexpected = True
             result = None
@@ -187,30 +252,45 @@ def main() -> int:
         if result is not None and result.returncode == 0:
             command = post_merge_command(pr, repository)
             if command is not None:
-                try:
-                    handoff = subprocess.run(  # noqa: S603 - trusted env builds the command
-                        command,
-                        check=False,
-                        capture_output=True,
-                        text=True,
-                        timeout=HANDOFF_TIMEOUT_SECONDS,
+                handoff_timeout = shared_timeout(
+                    deadline - time.monotonic(),
+                    len(candidates) - index,
+                    HANDOFF_TIMEOUT_SECONDS,
+                )
+                if handoff_timeout == 0:
+                    output = "\n".join(
+                        (
+                            output,
+                            "Post-merge handoff deferred because the shared budget is exhausted.",
+                        )
                     )
-                except subprocess.TimeoutExpired:
-                    timeout_message = (
-                        f"Post-merge handoff timed out after {HANDOFF_TIMEOUT_SECONDS} seconds."
-                    )
-                    output = "\n".join((output, timeout_message))
                     state = "merged; post-merge handoff failed"
                     unexpected = True
                 else:
-                    output = "\n".join(
-                        part
-                        for part in (output, handoff.stdout.strip(), handoff.stderr.strip())
-                        if part
-                    )
-                    if handoff.returncode != 0:
+                    try:
+                        handoff = subprocess.run(  # noqa: S603 - trusted env command
+                            command,
+                            check=False,
+                            capture_output=True,
+                            text=True,
+                            timeout=handoff_timeout,
+                        )
+                    except subprocess.TimeoutExpired:
+                        timeout_message = (
+                            f"Post-merge handoff timed out after {handoff_timeout} seconds."
+                        )
+                        output = "\n".join((output, timeout_message))
                         state = "merged; post-merge handoff failed"
                         unexpected = True
+                    else:
+                        output = "\n".join(
+                            part
+                            for part in (output, handoff.stdout.strip(), handoff.stderr.strip())
+                            if part
+                        )
+                        if handoff.returncode != 0:
+                            state = "merged; post-merge handoff failed"
+                            unexpected = True
         lines.extend(
             [
                 f"### PR #{number}: {state}",

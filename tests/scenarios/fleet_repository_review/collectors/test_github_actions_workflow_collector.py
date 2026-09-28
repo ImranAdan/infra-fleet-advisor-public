@@ -92,6 +92,19 @@ def test_autonomous_merge_requires_the_named_trigger_workflow_to_exist(git_check
     assert evidence.fact == {"evidence_autonomy_complete": False}
 
 
+def test_excluded_trigger_workflow_leaves_autonomy_unknown(git_checkout) -> None:
+    repo, _sha = git_checkout("autonomous_merge_good.yml", "intent_gate_named.yml")
+
+    result = gha_collector.collect(
+        repo,
+        LIMITS,
+        excluded_paths=frozenset({".github/workflows/intent_gate_named.yml"}),
+    )
+
+    assert result.coverage.status == "partial"
+    assert not any(item.kind == EVIDENCE_KIND_AUTONOMOUS_MERGE for item in result.evidence)
+
+
 def test_complete_scan_proves_the_autonomous_worker_is_missing(git_checkout) -> None:
     repo, _sha = git_checkout("static_credentials_bad.yml")
     result = gha_collector.collect(repo, LIMITS)

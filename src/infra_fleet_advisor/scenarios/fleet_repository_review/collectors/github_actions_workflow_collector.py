@@ -373,10 +373,15 @@ def _publication_evidence(workflow: dict[str, Any], rel_path: str) -> list[Evide
 
 
 def _autonomous_merge_evidence(
-    workflow: dict[str, Any], rel_path: str, workflow_names: frozenset[str]
+    workflow: dict[str, Any],
+    rel_path: str,
+    workflow_names: frozenset[str],
+    workflow_set_complete: bool,
 ) -> Evidence | None:
     """Describe the closed workflow shape that invokes the protected merge worker."""
     if workflow.get("name") != "Autonomous merge":
+        return None
+    if _AUTONOMOUS_TRIGGER_WORKFLOW not in workflow_names and not workflow_set_complete:
         return None
     # PyYAML 1.1 treats the unquoted key `on` as boolean True.
     triggers = workflow.get("on", cast(Any, workflow).get(True))
@@ -513,6 +518,7 @@ def collect(
     truncated_count = len(eligible_files) - len(files)
 
     workflow_names: set[str] = set()
+    workflow_set_complete = not (excluded_count or untracked_count or truncated_count)
     for path in files:
         try:
             if (
@@ -520,11 +526,15 @@ def collect(
                 or not path.resolve().is_relative_to(checkout_real)
                 or path.stat().st_size > limits.max_file_bytes
             ):
+                workflow_set_complete = False
                 continue
             parsed = yaml.safe_load(path.read_text(encoding="utf-8"))
             if isinstance(parsed, dict) and isinstance(parsed.get("name"), str):
                 workflow_names.add(parsed["name"])
+            elif not isinstance(parsed, dict):
+                workflow_set_complete = False
         except (OSError, yaml.YAMLError):
+            workflow_set_complete = False
             continue
 
     evidence: list[Evidence] = []
@@ -577,7 +587,12 @@ def collect(
                     if item is not None:
                         evidence.append(item)
             evidence.extend(_publication_evidence(workflow, rel_path))
-            autonomous = _autonomous_merge_evidence(workflow, rel_path, frozenset(workflow_names))
+            autonomous = _autonomous_merge_evidence(
+                workflow,
+                rel_path,
+                frozenset(workflow_names),
+                workflow_set_complete,
+            )
             if autonomous is not None:
                 evidence.append(autonomous)
         except (OSError, yaml.YAMLError, UnsafePathError):
@@ -586,7 +601,7 @@ def collect(
 
     if not all_files:
         status = "failed"
-    elif failures or truncated_count or untracked_count:
+    elif failures or excluded_count or truncated_count or untracked_count:
         status = "partial"
     else:
         status = "ok"
