@@ -3,7 +3,7 @@
     {
       "collector_id": "github_actions_workflow_collector",
       "error_summary": null,
-      "evidence_count": 18,
+      "evidence_count": 19,
       "status": "ok"
     },
     {
@@ -336,14 +336,14 @@
     },
     {
       "category": "maintainability",
-      "check_key": null,
+      "check_key": "fleet_autonomous_merge",
       "document_id": "infra_fleet_public_maintainability",
       "evidence_ids": [],
       "priority": "high",
       "proposition_id": "M-005",
-      "reason": "check_not_declared",
-      "statement": "An agent merges the pull requests it raises in this fleet and its advisor\nwithout waiting for the owner or calling a paid model, whenever evidence alone\ndecides. Evidence decides when every GitHub Actions check on the exact head\ncommit passes, including the advisor's gate for that repository (the intent\ngate for the fleet, the ratchet guard for the advisor), no review thread is\nunresolved, and the pull request records its verification. The advisor is the\ncaptain: a merge that its gate would reject never happens.\n\nAutonomy stops where a mistake is hard to see or hard to undo. The owner still\ndecides changes to credentials, added or widened permissions, IAM, permanent\ninfrastructure, and the merge system itself. The merge system includes the\nworkflows, scripts and code that produce the advisor's gate checks, so no\nchange can approve itself by weakening its own gate.\n\nMissing, running or failed evidence means no approval; the system never\napproves by default or by timeout. Anything merged without the owner must be\nreversible by reverting its merge commit, without a state, schema or data\nmigration.\n\nCaveat: declaring this position grants nothing. Merges stay governed by the\nmerge gate's decision policy until the gate implements M-005, and that\nimplementation must enforce every safeguard above before any category moves\nfrom the owner or the judge to agents. Until a check exists, the position\nreports `check_not_declared` and records the owner's standing decision for\nagents and reviewers.",
-      "status": "declared_unverified"
+      "reason": "complete_evidence_supports_intent",
+      "statement": "An agent merges the pull requests it raises in this fleet without waiting for\nthe owner or calling a paid model whenever evidence alone decides. The Advisor\nmay also propose registered mechanical Fleet fixes through this lane. Evidence\ndecides when every GitHub Actions check on the exact head\ncommit passes, including the advisor's gate for that repository (the intent\ngate for the fleet, the ratchet guard for the advisor), no review thread is\nunresolved, and the pull request records its verification. The advisor is the\ncaptain: a merge that its gate would reject never happens.\n\nAutonomy stops where a mistake is hard to see or hard to undo. The owner still\ndecides changes to credentials, added or widened permissions, IAM, permanent\ninfrastructure, and the merge system itself. The merge system includes the\nworkflows, scripts and code that produce the advisor's gate checks, so no\nchange can approve itself by weakening its own gate.\n\nMissing, running or failed evidence means no approval; the system never\napproves by default or by timeout. Anything merged without the owner must be\nreversible by reverting its merge commit, without a state, schema or data\nmigration. Routine pull requests opt in through a visible marker. A trusted\ndefault-branch worker runs the same exact-head merge gate after CI and on a\nscheduled retry; removing the marker holds the pull request.\n\nCaveat: a complete workflow scan proves whether the Fleet declares the closed\nworker workflow, permissions and protected gate invocation. Excluded, malformed\nor truncated workflow input leaves the position unknown. The check does not\nprove GitHub service availability or that an external coding-agent runtime is\ncontinuously running. The decision policy remains the authority for categories\nthat require the owner.",
+      "status": "satisfied"
     },
     {
       "category": "reliability",
@@ -486,17 +486,17 @@
       "application_contract_collector": "1.1.0",
       "dependency_update_collector": "1.0.0",
       "fleet_lifecycle_collector": "1.4.0",
-      "github_actions_workflow_collector": "1.5.0",
+      "github_actions_workflow_collector": "1.6.1",
       "kubernetes_deployment_collector": "2.0.0",
       "kubernetes_security_collector": "2.0.0",
       "terraform_cost_collector": "1.4.0",
       "terraform_iam_collector": "1.4.0"
     },
-    "intent_digest": "intent-md-v1:99af881f455f2f6586001a013dd8b75a38d0512aa82a543a61159c67e60393db",
+    "intent_digest": "intent-md-v1:12cedeb5a52d826b71305eaffb35570718437201260203918b120479380b47ea",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.1",
-    "run_started_at": "2026-09-27T23:20:45.979910+00:00",
-    "source_commit_sha": "84223ab2e7ea43d5f7e86c5addeda363e9ae66ca",
+    "run_started_at": "2026-09-28T18:22:30.821686+00:00",
+    "source_commit_sha": "a8342ad423b7ed7f001f734bfae9916783e2f86f",
     "source_label": "infra-fleet-public"
   },
   "recommendations": [

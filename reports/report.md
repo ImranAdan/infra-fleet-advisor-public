@@ -1,14 +1,14 @@
 # Infra Fleet Advisor report
 
-- Source: `infra-fleet-public` @ `84223ab2e7ea43d5f7e86c5addeda363e9ae66ca`
+- Source: `infra-fleet-public` @ `a8342ad423b7ed7f001f734bfae9916783e2f86f`
 - Advisor version: `0.1.0` · Policy version: `1.1`
-- Model: `stub-synthesizer-v1` · Run started: `2026-09-27T23:20:45.979910+00:00`
-- Intent catalog: `intent-md-v1:99af881f455f2f6586001a013dd8b75a38d0512aa82a543a61159c67e60393db`
+- Model: `stub-synthesizer-v1` · Run started: `2026-09-28T18:22:30.821686+00:00`
+- Intent catalog: `intent-md-v1:12cedeb5a52d826b71305eaffb35570718437201260203918b120479380b47ea`
 - Lifecycle: 0 new, 0 unchanged, 10 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
 
-- `github_actions_workflow_collector`: ok (18 evidence)
+- `github_actions_workflow_collector`: ok (19 evidence)
 - `terraform_iam_collector`: ok (0 evidence)
 - `terraform_cost_collector`: ok (7 evidence)
 - `kubernetes_deployment_collector`: ok (4 evidence)
@@ -20,7 +20,7 @@
 
 ## Intent evaluation
 
-**Coverage:** 21 of 22 positions have a check — 6 satisfied, 0 divergent, 15 checked but unproven; 1 declared without a check.
+**Coverage:** 22 of 22 positions have a check — 7 satisfied, 0 divergent, 15 checked but unproven; 0 declared without a check.
 
 - `declared_unverified` `infra_fleet_public_cost/C-001` — Staging application worker capacity scales to zero outside an owner-defined
   usage window. A delayed startup of up to 30 minutes is acceptable when it avoids
@@ -85,9 +85,10 @@
   theoretical. Per-application AWS resources (its ECR repository, release
   workflow and secrets) are outside this position.
   - Category: `maintainability` · Priority: `medium` · Check: `fleet_application_swappable` · Reason: `collector_cannot_prove_satisfaction`
-- `declared_unverified` `infra_fleet_public_maintainability/M-005` — An agent merges the pull requests it raises in this fleet and its advisor
-  without waiting for the owner or calling a paid model, whenever evidence alone
-  decides. Evidence decides when every GitHub Actions check on the exact head
+- `satisfied` `infra_fleet_public_maintainability/M-005` — An agent merges the pull requests it raises in this fleet without waiting for
+  the owner or calling a paid model whenever evidence alone decides. The Advisor
+  may also propose registered mechanical Fleet fixes through this lane. Evidence
+  decides when every GitHub Actions check on the exact head
   commit passes, including the advisor's gate for that repository (the intent
   gate for the fleet, the ratchet guard for the advisor), no review thread is
   unresolved, and the pull request records its verification. The advisor is the
@@ -102,15 +103,17 @@
   Missing, running or failed evidence means no approval; the system never
   approves by default or by timeout. Anything merged without the owner must be
   reversible by reverting its merge commit, without a state, schema or data
-  migration.
+  migration. Routine pull requests opt in through a visible marker. A trusted
+  default-branch worker runs the same exact-head merge gate after CI and on a
+  scheduled retry; removing the marker holds the pull request.
   
-  Caveat: declaring this position grants nothing. Merges stay governed by the
-  merge gate's decision policy until the gate implements M-005, and that
-  implementation must enforce every safeguard above before any category moves
-  from the owner or the judge to agents. Until a check exists, the position
-  reports \`check\_not\_declared\` and records the owner's standing decision for
-  agents and reviewers.
-  - Category: `maintainability` · Priority: `high` · Check: `not_declared` · Reason: `check_not_declared`
+  Caveat: a complete workflow scan proves whether the Fleet declares the closed
+  worker workflow, permissions and protected gate invocation. Excluded, malformed
+  or truncated workflow input leaves the position unknown. The check does not
+  prove GitHub service availability or that an external coding-agent runtime is
+  continuously running. The decision policy remains the authority for categories
+  that require the owner.
+  - Category: `maintainability` · Priority: `high` · Check: `fleet_autonomous_merge` · Reason: `complete_evidence_supports_intent`
 - `satisfied` `infra_fleet_public_reliability/R-001` — Owner-managed application Deployments under \`k8s/applications/\` retain enough
   healthy capacity during rollout. Temporary capacity cost is acceptable when it
   prevents user-visible interruption.
