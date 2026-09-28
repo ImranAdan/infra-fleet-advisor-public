@@ -32,6 +32,39 @@ def test_detects_evidence_gated_autonomous_merge(git_checkout) -> None:
     assert evidence.fact == {"evidence_autonomy_complete": True}
 
 
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("  merge:\n    runs-on:", "  merge:\n    if: false\n    runs-on:"),
+        (
+            "  merge:\n    runs-on:",
+            "  merge:\n    permissions:\n      contents: read\n"
+            "      pull-requests: read\n      checks: read\n    runs-on:",
+        ),
+        (
+            "      - run: python3 .github/scripts/autonomous_merge.py",
+            "      - if: false\n        run: python3 .github/scripts/autonomous_merge.py",
+        ),
+        (
+            "      - run: python3 .github/scripts/autonomous_merge.py",
+            "      - continue-on-error: true\n"
+            "        run: python3 .github/scripts/autonomous_merge.py",
+        ),
+    ],
+)
+def test_autonomous_merge_requires_a_runnable_privileged_worker(git_checkout, old, new) -> None:
+    repo, _sha = git_checkout("autonomous_merge_good.yml")
+    workflow = repo / ".github" / "workflows" / "autonomous_merge_good.yml"
+    original = workflow.read_text(encoding="utf-8")
+    assert old in original
+    workflow.write_text(original.replace(old, new), encoding="utf-8")
+
+    result = gha_collector.collect(repo, LIMITS)
+    evidence = next(item for item in result.evidence if item.kind == EVIDENCE_KIND_AUTONOMOUS_MERGE)
+
+    assert evidence.fact == {"evidence_autonomy_complete": False}
+
+
 def test_complete_scan_proves_the_autonomous_worker_is_missing(git_checkout) -> None:
     repo, _sha = git_checkout("static_credentials_bad.yml")
     result = gha_collector.collect(repo, LIMITS)

@@ -67,6 +67,25 @@ def _grants_id_token_write(permissions: Any) -> bool:
     return isinstance(value, str) and value.strip().lower() == "write"
 
 
+def _grants_repository_permission(permissions: Any, name: str, level: str) -> bool:
+    """Whether the effective GitHub job permissions grant at least `level`."""
+    if isinstance(permissions, str):
+        aggregate = permissions.strip().lower()
+        return aggregate == "write-all" or (aggregate == "read-all" and level == "read")
+    if not isinstance(permissions, dict):
+        return False
+    actual = permissions.get(name)
+    if not isinstance(actual, str):
+        return False
+    actual = actual.strip().lower()
+    return actual == "write" or (actual == "read" and level == "read")
+
+
+def _runs_unconditionally(item: dict[str, Any]) -> bool:
+    """Only an absent condition proves that every declared trigger reaches an item."""
+    return "if" not in item
+
+
 def _input_is_disabled(with_block: dict[str, Any], key: str) -> bool:
     if key not in with_block:
         return True
@@ -296,27 +315,41 @@ def _autonomous_merge_evidence(workflow: dict[str, Any], rel_path: str) -> Evide
         return None
     # PyYAML 1.1 treats the unquoted key `on` as boolean True.
     triggers = workflow.get("on", cast(Any, workflow).get(True))
-    permissions = workflow.get("permissions")
+    workflow_permissions = workflow.get("permissions")
     jobs = workflow.get("jobs")
-    commands: list[str] = []
+    runnable_worker = False
     if isinstance(jobs, dict):
         for job in jobs.values():
             if not isinstance(job, dict):
                 continue
-            commands.extend(
-                step["run"]
-                for step in (job.get("steps") or [])
-                if isinstance(step, dict) and isinstance(step.get("run"), str)
+            effective_permissions = (
+                job.get("permissions") if "permissions" in job else workflow_permissions
             )
+            permissions_complete = (
+                _grants_repository_permission(effective_permissions, "contents", "write")
+                and _grants_repository_permission(effective_permissions, "pull-requests", "write")
+                and _grants_repository_permission(effective_permissions, "checks", "read")
+            )
+            for step in job.get("steps") or []:
+                if not isinstance(step, dict) or not isinstance(step.get("run"), str):
+                    continue
+                if step["run"].strip() != _AUTONOMOUS_WORKER_COMMAND:
+                    continue
+                runnable_worker = (
+                    _runs_unconditionally(job)
+                    and _runs_unconditionally(step)
+                    and not _is_truthy_yaml_value(step.get("continue-on-error"))
+                    and permissions_complete
+                )
+                if runnable_worker:
+                    break
+            if runnable_worker:
+                break
     complete = (
         isinstance(triggers, dict)
         and "workflow_run" in triggers
         and "schedule" in triggers
-        and isinstance(permissions, dict)
-        and permissions.get("contents") == "write"
-        and permissions.get("pull-requests") == "write"
-        and permissions.get("checks") == "read"
-        and any(command.strip() == _AUTONOMOUS_WORKER_COMMAND for command in commands)
+        and runnable_worker
     )
     return build_evidence(
         collector_id=GHA_COLLECTOR_ID,
