@@ -25,13 +25,15 @@ REVIEW = "Run the review"
 PR_STEPS = ("Compose the pull request body", "Open or update the advisory pull request")
 
 
-def test_report_only_prs_use_dispatched_quality_without_native_approval_gate() -> None:
-    """A bot-authored report must not create an action-required PR check suite."""
+def test_report_only_prs_relay_dispatched_quality_into_required_statuses() -> None:
+    """A bot report gets exact-head evidence without an approval-required run."""
     workflow = yaml.safe_load(QUALITY_WORKFLOW.read_text(encoding="utf-8"))
     triggers = workflow.get("on", workflow.get(True))
+    advisory = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
 
     assert "reports/**" in triggers["pull_request"]["paths-ignore"]
     assert "pr_number" in triggers["workflow_dispatch"]["inputs"]
+    assert advisory["permissions"]["statuses"] == "write"
 
 
 def test_report_delivery_waits_for_quality_then_wakes_autonomous_merge() -> None:
@@ -40,10 +42,12 @@ def test_report_delivery_waits_for_quality_then_wakes_autonomous_merge() -> None
 
     quality = script.index("gh workflow run quality.yml")
     wait = script.index("gh run watch")
+    bridge = script.index("report_status_bridge.py")
     merge = script.index("gh workflow run autonomous-merge.yml")
-    assert quality < wait < merge
+    assert quality < wait < bridge < merge
     assert "--exit-status" in script
     assert "*[!0-9]*" in script
+    assert 'merge_state="UNKNOWN"' in script
 
 
 def _advise_steps() -> list[dict[str, Any]]:
