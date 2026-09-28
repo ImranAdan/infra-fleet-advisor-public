@@ -28,7 +28,11 @@ PATH_RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
     (
         "merge-authority",
         re.compile(
-            r"^(?:\.claude/skills/merge-gate/|\.github/workflows/merge-judge\.ya?ml$|"
+            r"^(?:\.claude/skills/merge-gate/|"
+            r"\.github/workflows/(?:merge-judge|quality)\.ya?ml$|"
+            r"\.github/actions/intent-gate/|scripts/(?:intent-gate|ratchet-guard)\.sh$|"
+            r"src/infra_fleet_advisor/runtime/(?:cli|intent_gate|ratchet)\.py$|"
+            r"pyproject\.toml$|"
             r"(?:AGENTS|CLAUDE)\.md$)"
         ),
         "merge authority changed",
@@ -53,6 +57,15 @@ PATH_RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
         "permanent-infrastructure",
         re.compile(r"^infrastructure/permanent/"),
         "permanent infrastructure changed",
+    ),
+    (
+        "migration",
+        re.compile(
+            r"(?:^|/)(?:migrations?|alembic/versions|db/(?:migrate|migrations))(?:/|$)|"
+            r"(?:^|/)(?:schema\.(?:sql|prisma)|[^/]+\.sql)$",
+            re.I,
+        ),
+        "state, schema or data migration changed",
     ),
     (
         "dependency-manifest",
@@ -180,6 +193,9 @@ def _line_findings(path: str, line: str) -> list[Finding]:
     ):
         findings.append(_finding("iam", f"{verb} IAM configuration in {path}: {text[:80]}"))
 
+    if TERRAFORM.search(path) and re.match(r"(?:moved|import|removed)\s*\{", text):
+        findings.append(_finding("migration", f"{verb} a Terraform state migration in {path}"))
+
     if YAML.search(path) and re.match(
         r"(?:kind:\s*(?:Cluster)?Role(?:Binding)?\b|verbs:|apiGroups:|roleRef:|subjects:)", text
     ):
@@ -266,7 +282,7 @@ def scope_findings(diff: str) -> list[Finding]:
     return list(dict.fromkeys(findings))
 
 
-def load_policy(path: Path = POLICY_PATH) -> tuple[dict[str, dict[str, str]], dict[str, str]]:
+def load_policy(path: Path = POLICY_PATH) -> tuple[dict[str, dict[str, str]], dict[str, Any]]:
     """Load rules by category and the judge settings, failing closed."""
     data = tomllib.loads(path.read_text(encoding="utf-8"))
     rules: dict[str, dict[str, str]] = {}
@@ -276,7 +292,7 @@ def load_policy(path: Path = POLICY_PATH) -> tuple[dict[str, dict[str, str]], di
         required = ("id", "category", "decider", "guidance")
         if any(not isinstance(raw.get(key), str) or not raw[key].strip() for key in required):
             raise ValueError("each policy rule needs non-empty id, category, decider and guidance")
-        if raw["decider"] not in {"judge", "owner"}:
+        if raw["decider"] not in {"evidence", "judge", "owner"}:
             raise ValueError(f"invalid decider for {raw['category']}: {raw['decider']}")
         if raw["category"] in rules:
             raise ValueError(f"duplicate policy category: {raw['category']}")
@@ -287,7 +303,70 @@ def load_policy(path: Path = POLICY_PATH) -> tuple[dict[str, dict[str, str]], di
         for key in ("trusted_author", "model")
     ):
         raise ValueError("policy needs judge.trusted_author and judge.model")
-    return rules, {"trusted_author": judge["trusted_author"], "model": judge["model"]}
+    evidence = data.get("evidence")
+    required_checks = evidence.get("required_checks") if isinstance(evidence, dict) else None
+    if not isinstance(required_checks, list) or not required_checks:
+        raise ValueError("policy needs at least one evidence.required_checks entry")
+    normalized: list[dict[str, str]] = []
+    for item in required_checks:
+        if (
+            not isinstance(item, dict)
+            or set(item) != {"name", "workflow"}
+            or any(not isinstance(item[key], str) or not item[key].strip() for key in item)
+            or not item["workflow"].startswith(".github/workflows/")
+        ):
+            raise ValueError("each required check needs exactly a name and workflow path")
+        normalized.append({"name": item["name"], "workflow": item["workflow"]})
+    return rules, {
+        "trusted_author": judge["trusted_author"],
+        "model": judge["model"],
+        "required_checks": tuple(normalized),
+    }
+
+
+def required_check_failures(
+    runs: list[dict[str, Any]],
+    required: tuple[dict[str, str], ...],
+    workflow_runs: dict[str, dict[str, str]],
+    sha: str,
+) -> list[str]:
+    """Require successful, current-head evidence from its declared workflow."""
+    failures: list[str] = []
+    for spec in required:
+        named = [run for run in runs if run.get("name") == spec["name"]]
+        if not named:
+            failures.append(f"required evidence check did not run: {spec['name']}")
+            continue
+        trusted = False
+        for run in named:
+            provenance = workflow_runs.get(str(run.get("run_id", "")), {})
+            if (
+                run.get("status") == "completed"
+                and run.get("conclusion") == "success"
+                and run.get("app") == "github-actions"
+                and provenance.get("path") == spec["workflow"]
+                and provenance.get("event") == "pull_request"
+                and provenance.get("head_sha") == sha
+            ):
+                trusted = True
+                break
+        if not trusted:
+            failures.append(
+                f"required evidence check lacks trusted successful provenance: {spec['name']}"
+            )
+    return failures
+
+
+def _actions_run_id(repo: str, details_url: object) -> str | None:
+    """Extract a run id only from this repository's GitHub Actions job URL."""
+    if not isinstance(details_url, str):
+        return None
+    match = re.fullmatch(
+        rf"https://github\.com/{re.escape(repo)}/actions/runs/([0-9]+)/job/[0-9]+",
+        details_url,
+        re.I,
+    )
+    return match.group(1) if match else None
 
 
 def judge_decision(
@@ -474,7 +553,7 @@ def main(argv: list[str]) -> int:
         "--paginate",
         f"repos/{repo}/commits/{sha}/check-runs?per_page=100&filter=latest",
         "--jq",
-        ".check_runs[]|{name,status,conclusion}",
+        ".check_runs[]|{name,status,conclusion,app:.app.slug,details_url}",
     )
     latest: dict[str, str] = {}
     for status in gh_json_lines(
@@ -534,6 +613,25 @@ def main(argv: list[str]) -> int:
         print(f"PARK  decision policy is invalid: {exc}")
         print("verdict: PARK")
         return 10
+    required_names = {item["name"] for item in judge["required_checks"]}
+    workflow_runs: dict[str, dict[str, str]] = {}
+    for run in runs:
+        if run.get("name") not in required_names:
+            continue
+        run_id = _actions_run_id(repo, run.get("details_url"))
+        if not run_id:
+            continue
+        run["run_id"] = run_id
+        details = json.loads(gh("api", f"repos/{repo}/actions/runs/{run_id}"))
+        workflow_runs[run_id] = {
+            key: str(details.get(key, "")) for key in ("path", "event", "head_sha")
+        }
+    evidence_failures = required_check_failures(runs, judge["required_checks"], workflow_runs, sha)
+    if evidence_failures:
+        for reason in evidence_failures:
+            print(f"BLOCKED  {reason}")
+        print("verdict: BLOCKED")
+        return 1
     comments = gh_json_lines(
         "api",
         "--paginate",
@@ -653,6 +751,11 @@ def self_test() -> int:
             *_file("k8s/infrastructure/flagger/helmrelease.yaml", '+      version: "1.46.0"'),
             *_file(".claude/skills/merge-gate/merge_ready.py", "+def main(): return 0"),
             *_file(".github/workflows/quality.yml", "+name: Weakened gate"),
+            *_file(
+                "src/infra_fleet_advisor/runtime/intent_gate.py",
+                "+def positions(_report): return {}",
+            ),
+            *_file("pyproject.toml", "+infra-fleet-advisor = 'other:main'"),
             *_file("db/migrations/0001_users.sql", "+ALTER TABLE users ADD COLUMN role text;"),
             *_file("infrastructure/staging/main.tf", "+moved {", "+  from = aws_s3_bucket.old"),
             *_file("docs/README.md", "+Prose about permissions and secrets.DEPLOY_TOKEN."),
@@ -682,7 +785,7 @@ def self_test() -> int:
     assert categories.count("credential") >= 3 and categories.count("dependency") == 3, found
     assert "intent-policy" in categories and "decision-record" in categories, found
     assert "product-requirements" in categories and "dependency-manifest" in categories, found
-    assert categories.count("merge-authority") >= 5, found
+    assert sum(category == "merge-authority" for category in categories) >= 7, found
     assert categories.count("migration") >= 2, found
     assert _adds_privileged_trigger("pull_request_target:")
     assert _adds_privileged_trigger("on: pull_request_target")
@@ -703,12 +806,12 @@ def self_test() -> int:
     assert required == (
         {
             "name": "Ratchet guard",
-            "workflow": ".github/workflows/intent-gate.yml",
+            "workflow": ".github/workflows/quality.yml",
         },
     )
     sha = "a" * 40
     required_run = {
-        "name": "Intent gate / Declared intent",
+        "name": "Ratchet guard",
         "status": "completed",
         "conclusion": "success",
         "app": "github-actions",
@@ -716,14 +819,14 @@ def self_test() -> int:
     }
     workflow_runs = {
         "42": {
-            "path": ".github/workflows/intent-gate.yml",
+            "path": ".github/workflows/quality.yml",
             "event": "pull_request",
             "head_sha": sha,
         }
     }
     assert required_check_failures([required_run], required, workflow_runs, sha) == []
     assert required_check_failures([], required, {}, sha) == [
-        "required evidence check did not run: Intent gate / Declared intent"
+        "required evidence check did not run: Ratchet guard"
     ]
     for changed in (
         {"conclusion": "skipped"},
@@ -755,14 +858,14 @@ def self_test() -> int:
     ]
     dependency = [_finding("dependency", "base image")]
     decision = judge_decision(bot, sha, judge["trusted_author"])
-    assert decide(dependency, rules, set(), decision)[0] == "READY"
+    assert decide(dependency, rules, set(), None)[0] == "READY"
     assert (
         decide(dependency, rules, set(), judge_decision(owner, sha, judge["trusted_author"]))[0]
-        == "JUDGE"
+        == "READY"
     )
     assert (
         decide(dependency, rules, set(), judge_decision(old, sha, judge["trusted_author"]))[0]
-        == "JUDGE"
+        == "READY"
     )
     assert judge_decision(injected, sha, judge["trusted_author"]) is None
 
@@ -770,9 +873,9 @@ def self_test() -> int:
     rejected = judge_decision(
         [{"author": "github-actions[bot]", "body": reject}], sha, judge["trusted_author"]
     )
-    assert decide(dependency, rules, set(), rejected)[0] == "BLOCKED"
+    assert decide(dependency, rules, set(), rejected)[0] == "READY"
     two = dependency + [_finding("intent-policy", "intent")]
-    assert decide(two, rules, set(), decision)[0] == "JUDGE"
+    assert decide(two, rules, set(), decision)[0] == "PARK"
 
     credential = [_finding("credential", "secret")]
     assert decide(credential, rules, set(), decision)[0] == "PARK"

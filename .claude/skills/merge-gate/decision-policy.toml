@@ -1,11 +1,11 @@
-# Every surfaced category names one decider. The independent judge handles
-# reversible direction calls after the advisor intent gate; the owner keeps
-# changes that widen durable authority or access.
+# Every surfaced category names one decider. Deterministic evidence handles
+# reversible changes only after the declared advisor check passes from its
+# trusted workflow. The owner keeps durable authority, access and migrations.
 
 [[rule]]
 id = "dependency-pinned"
 category = "dependency"
-decider = "judge"
+decider = "evidence"
 guidance = """Approve an exact version, tag, digest or commit SHA whose CI and
 security scans pass on the head commit. Reject floating tags such as latest,
 open version ranges, or a dependency the change does not use."""
@@ -13,7 +13,7 @@ open version ranges, or a dependency the change does not use."""
 [[rule]]
 id = "dependency-manifest"
 category = "dependency-manifest"
-decider = "judge"
+decider = "evidence"
 guidance = """Approve a lockfile or manifest change that only moves pinned
 versions or adds a dependency the change demonstrably uses, with tests
 passing. Reject unused additions."""
@@ -21,7 +21,7 @@ passing. Reject unused additions."""
 [[rule]]
 id = "intent-and-policy"
 category = "intent-policy"
-decider = "judge"
+decider = "owner"
 guidance = """Treat declared intent and the advisor intent gate as the captain.
 Approve when the change follows that intent or an explicit owner request and
 keeps the position provable. Reject silent weakening of a check, drill or rule."""
@@ -29,28 +29,28 @@ keeps the position provable. Reject silent weakening of a check, drill or rule."
 [[rule]]
 id = "decision-record"
 category = "decision-record"
-decider = "judge"
+decider = "evidence"
 guidance = """Approve wording, status and consequence updates that match merged
 behavior. Reject a changed decision unsupported by owner direction or behavior."""
 
 [[rule]]
 id = "product-requirements"
 category = "product-requirements"
-decider = "judge"
+decider = "evidence"
 guidance = """Approve requirements that match behavior the owner requested and
 the pull request implements. Reject unrequested scope growth."""
 
 [[rule]]
 id = "permission-narrowed"
 category = "permission-removed"
-decider = "judge"
+decider = "evidence"
 guidance = """Approve removing or narrowing a permission when the workflow still
 has what its steps use. Reject a removal that falls back to broader defaults."""
 
 [[rule]]
 id = "workflow-change"
 category = "workflow"
-decider = "judge"
+decider = "evidence"
 guidance = """Approve automation changes only when event trust boundaries,
 checked-out code, inputs and token use stay least privilege and the behavior is
 covered by validation. Reject execution of pull-request code with privileged
@@ -81,6 +81,12 @@ decider = "owner"
 guidance = "The permanent stack outlives rebuilds and holds the OIDC trust."
 
 [[rule]]
+id = "state-schema-data-migration"
+category = "migration"
+decider = "owner"
+guidance = "State, schema and data migrations are not proven reversible by reverting a merge commit."
+
+[[rule]]
 id = "merge-authority"
 category = "merge-authority"
 decider = "owner"
@@ -89,3 +95,8 @@ guidance = "The gate, judge, policy and merge rules determine agent authority."
 [judge]
 trusted_author = "github-actions[bot]"
 model = "claude-opus-5-5"
+
+[evidence]
+required_checks = [
+  { name = "Ratchet guard", workflow = ".github/workflows/quality.yml" },
+]
