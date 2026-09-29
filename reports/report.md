@@ -1,8 +1,8 @@
 # Infra Fleet Advisor report
 
-- Source: `infra-fleet-public` @ `a8342ad423b7ed7f001f734bfae9916783e2f86f`
+- Source: `infra-fleet-public` @ `1010604335161177321ca94e774af5cded7c3130`
 - Advisor version: `0.1.0` · Policy version: `1.1`
-- Model: `stub-synthesizer-v1` · Run started: `2026-09-28T18:22:30.821686+00:00`
+- Model: `stub-synthesizer-v1` · Run started: `2026-09-29T10:45:07.940440+00:00`
 - Intent catalog: `intent-md-v1:12cedeb5a52d826b71305eaffb35570718437201260203918b120479380b47ea`
 - Lifecycle: 0 new, 0 unchanged, 10 resolved, 0 suppressed (0 rejected)
 
@@ -14,7 +14,7 @@
 - `kubernetes_deployment_collector`: ok (4 evidence)
 - `kubernetes_security_collector`: ok (4 evidence)
 - `fleet_lifecycle_collector`: ok (3 evidence)
-- `dependency_update_collector`: ok (8 evidence)
+- `dependency_update_collector`: ok (9 evidence)
 - `application_config_collector`: ok (1 evidence)
 - `application_contract_collector`: ok (1 evidence)
 
