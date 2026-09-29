@@ -84,12 +84,12 @@ theoretical. Per-application AWS resources (its ECR repository, release
 workflow and secrets) are outside this position.
 
 Locally, the application dashboard may also run any other contracted
-application on demand beside the selected one. A launched application is
-deployed from the same Git revision with the same platform services, filled
-from its own contract, under an identity limited to application workloads and
-app-owned Grafana dashboard ConfigMaps, and stopping it removes that stack.
-The control API is isolated from other pods. Launching adds no platform code
-that names an application.
+application on demand beside the selected one. Whenever it does, a launched
+application is deployed from the same Git revision with the same platform
+services, filled from its own contract, under an identity limited to application
+workloads in `applications` and app-owned Grafana dashboard ConfigMaps in
+`observability`, and stopping it removes that stack. The control API is isolated
+from other pods. Launching adds no platform code that names an application.
 
 ### Evaluation
 

@@ -58,10 +58,11 @@ reads the Fleet's app contracts, searches every tracked platform file for an
 application name, and requires every Canary, HPA and NetworkPolicy in the
 applications namespace to take its name from `${APP_NAME}`. It diverges when
 the selected contract is missing, fewer than two applications ship contracts,
-or the platform names or literally binds an app. The on-demand local control
-plane is exercised by the Fleet's live acceptance workflow; this static check
-does not prove its launch, pruning, RBAC or network-isolation behavior. It
-cannot prove the absence of coupling, because a script could name an
+or the platform names or literally binds an app. For the current optional
+control-plane implementation, the Fleet's live acceptance drives launch,
+Gateway access, stop/pruning and peer-pod API isolation; its rendered contract
+test pins the RBAC resource scope. This static collector does not prove those
+behaviors. It cannot prove the absence of coupling, because a script could name an
 application no contract declares; an unreadable or excluded contract leaves
 the result unknown unless readable evidence already shows coupling.
 
