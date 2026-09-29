@@ -86,9 +86,10 @@ workflow and secrets) are outside this position.
 Locally, the application dashboard may also run any other contracted
 application on demand beside the selected one. A launched application is
 deployed from the same Git revision with the same platform services, filled
-from its own contract, under an identity that can change only the
-applications namespace, and stopping it removes that stack. Launching adds no
-platform code that names an application.
+from its own contract, under an identity limited to application workloads and
+app-owned Grafana dashboard ConfigMaps, and stopping it removes that stack.
+The control API is isolated from other pods. Launching adds no platform code
+that names an application.
 
 ### Evaluation
 

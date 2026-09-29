@@ -98,6 +98,9 @@ profile lifecycle, local first use, AWS onboarding and teardown, and whether the
 platform names no application of its own. Accepted
 risks are checked as guardrails: the check proves the conditions that made the
 risk acceptable still hold.
+The fleet's local multi-application control plane is additionally proven by its
+live Kubernetes acceptance workflow; repository analysis alone does not attest
+that runtime lifecycle.
 Positions without relevant, complete evidence are never assumed satisfied. Repository
 analysis does not establish live infrastructure health.
 
