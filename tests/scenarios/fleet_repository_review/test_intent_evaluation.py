@@ -146,6 +146,8 @@ def test_autonomous_merge_requires_the_complete_closed_worker_shape() -> None:
 
 
 def test_persistent_iam_check_ignores_wildcards_outside_its_declared_scope() -> None:
+    # The collector covers only the declared scope, so its complete coverage
+    # with no persistent wildcard proves the position.
     staging = _evidence(
         collector_id=TF_IAM_COLLECTOR_ID,
         kind=EVIDENCE_KIND_IAM_WILDCARD,
@@ -157,8 +159,7 @@ def test_persistent_iam_check_ignores_wildcards_outside_its_declared_scope() -> 
         evidence=(staging,),
         coverage=_coverage(TF_IAM_COLLECTOR_ID),
     )
-    assert compilation.evaluations[0].status == "declared_unverified"
-    assert compilation.evaluations[0].reason == "collector_cannot_prove_satisfaction"
+    assert compilation.evaluations[0].status == "satisfied"
 
     persistent = _evidence(
         collector_id=TF_IAM_COLLECTOR_ID,
@@ -364,6 +365,17 @@ def test_registered_check_cannot_be_relabelled_to_another_category() -> None:
             evidence=(),
             coverage=(),
         )
+
+
+def test_persistent_iam_check_is_unproven_when_iam_collection_is_incomplete() -> None:
+    compilation = compile_intents(
+        _catalog(CHECK_PERSISTENT_IAM_AVOIDS_WILDCARDS),
+        enabled_categories=frozenset({"security"}),
+        evidence=(),
+        coverage=_coverage(TF_IAM_COLLECTOR_ID, status="partial"),
+    )
+    assert compilation.evaluations[0].status == "declared_unverified"
+    assert compilation.evaluations[0].reason == "collector_incomplete"
 
 
 @pytest.mark.parametrize(

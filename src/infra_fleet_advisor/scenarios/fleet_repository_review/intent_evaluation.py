@@ -149,7 +149,10 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
                 collector_id=TF_IAM_COLLECTOR_ID,
                 source_path_prefixes=("infrastructure/permanent",),
             ),
-            can_prove_satisfaction=False,
+            # The collector covers exactly this scope and fails closed on any
+            # IAM it cannot read: modules, unknown IAM types, dynamic blocks,
+            # external policy ARNs and non-literal decision fields.
+            can_prove_satisfaction=True,
         ),
         CHECK_TRIVY_DOES_NOT_IGNORE_UNFIXED: IntentCheckDefinition(
             concern_key=CONCERN_TRIVY_IGNORE_UNFIXED,

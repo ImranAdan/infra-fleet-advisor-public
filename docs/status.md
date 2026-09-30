@@ -20,7 +20,7 @@ issue-creation decision record. See the [workflow](WORKFLOW.md) and
 | Collector | Supported evidence | Limitations |
 |---|---|---|
 | GitHub Actions | Tracked workflow settings and the local composite actions they call (one level deep), including Trivy scanning configuration, per ECR-publishing job scan gates, and the closed autonomous-merge workflow shape (M-005) | Repository configuration only; the autonomy check cannot prove GitHub service availability or the presence of an external coding-agent runtime; exclusions and malformed or truncated input can leave coverage incomplete |
-| Terraform IAM | Persistent-stack policies under `infrastructure/permanent/`; bounded JSON/HCL objects, local condition traversals and fixed-prefix resource ARN interpolation | Referenced policy documents and unknown decision fields remain partial within the persistent scope; no policy URL fetch or Terraform execution |
+| Terraform IAM | Every block under `infrastructure/permanent/` that can grant IAM: `jsonencode` policies on `aws_iam_policy` and role, user and group policies, literal `aws_iam_policy_document` data sources and the policies that reference them, and policy attachments naming an `aws_iam_policy` in the same root module. Bounded JSON/HCL objects, local condition traversals and fixed-prefix resource ARN interpolation. S-007 can be satisfied | Closed world: a module, a `.tf.json` or override file, a policy-excluded file, an unknown IAM type, a `dynamic` block, a policy-named attribute outside the parsed set (a repository or key policy, `inline_policy`, `managed_policy_arns`), an external or AWS-managed policy ARN, or a non-literal action, effect or resource leaves coverage partial. A trust policy is not read because it grants no actions. No policy URL fetch or Terraform execution; it cannot see permissions created outside Terraform |
 | Terraform cost | CloudWatch log-group retention (resources and the pinned EKS module's control-plane log group), ECR lifecycle policies, AWS provider `default_tags` cost-allocation keys, EKS managed node-group bounds with statically enabled node-autoscaler presence, EKS public-endpoint exposure by root module (S-006), and scheduled release of staging capacity through an `aws_autoscaling_schedule` to zero or a scheduled workflow that destroys Terraform or runs `./fleet down --profile aws-staging` (C-001) | Literal values only; dynamic `count`/`for_each` enablement remains unverified. Module log groups use published defaults for trusted majors; implicit AWS-created log groups are invisible, so C-003 cannot be proven satisfied |
 | Dependency updates | Tracked dependency manifests (Dockerfiles, Python requirements, npm, Go, pinned Terraform, workflows) by directory, matched against `.github/dependabot.yml` | File names only; repository alert and security-update settings cannot be read, so S-010 is divergence-only |
 | Application config | Literal `app.config[...]` session-cookie settings in tracked Flask applications under `applications/`, parsed with `ast` and never imported | Module-level literals only; runtime overrides are invisible, so S-008 is divergence-only |
@@ -30,9 +30,9 @@ issue-creation decision record. See the [workflow](WORKFLOW.md) and
 | Fleet lifecycle | The tracked `fleet` facade and fixed local and AWS strategy modules; closed lifecycle dispatch plus local pinned-tool, checkout-state, explicit-context, and next-command controls | Static shell structure only; it detects absent controls but cannot prove downloads, idempotence, runtime readiness, credential behavior, or teardown effects |
 
 The security, reliability, cost and maintainability catalogs contain
-twenty-two positions, all with registered checks. Only eight checks can prove a
-position satisfied: S-002, S-003, S-004, S-009, R-001, C-004, M-004 and M-005.
-The other fourteen are divergence-only: complete, clean evidence leaves them
+twenty-two positions, all with registered checks. Only nine checks can prove a
+position satisfied: S-002, S-003, S-004, S-007, S-009, R-001, C-004, M-004 and M-005.
+The other thirteen are divergence-only: complete, clean evidence leaves them
 `declared_unverified` (`collector_cannot_prove_satisfaction`). Unverified
 positions and incomplete evaluation remain explicit report coverage and do not
 create issues in either repository.
@@ -41,9 +41,11 @@ Untracked Terraform downloads, including `.terraform` module files, are not
 evidence. Workflow and IAM collectors apply policy exclusions and tracked-path
 filtering before source-file limits. IAM collection follows the registered
 persistent-stack scope, so an unparseable staging-only policy cannot make S-007
-incomplete. Within that scope, the wildcard check does not establish effective
-permissions after conditions and denies, and a referenced policy document remains
-a visible gap because the advisor does not fetch it.
+incomplete. Within that scope, S-007 is satisfied only when every IAM grant was
+read and no Allow statement names a service-wide action (`*`, `eks:*`, or a
+wildcard service), whatever its Resource; a prefix such as `ec2:Describe*` is
+accepted. The check does not establish effective permissions after conditions
+and denies.
 
 The deployment collector combines one workload's facts across rendered
 profiles, so a rollout or hardening control must hold everywhere. It also
@@ -71,7 +73,8 @@ Terraform or GitHub call succeeds.
 `drills/fleet-mutations.yaml` lists one literal, declared violation of the real
 fleet per registered check. `infra-fleet-advisor drill` applies each in a
 throwaway worktree, runs the ordinary review and requires the named
-proposition to diverge; the nightly advisory workflow and every pull request (the Quality workflow)
+proposition to diverge, or, with `expect: declared_unverified`, to lose a proof
+it held on the fleet; the nightly advisory workflow and every pull request (the Quality workflow)
 run them as a separate, read-only job. A drill reports `caught`, `missed` (the check no longer sees the
 fleet), `stale` (the fleet no longer contains the drill's text) or
 `already divergent` (the position cannot regress). Coverage counts a check

@@ -101,6 +101,60 @@ def test_a_drill_applies_its_first_variant_the_fleet_still_contains(tmp_path: Pa
     assert "| `C-001` | `eks.tf` | caught |" in to_markdown(results)
 
 
+def test_an_unverified_drill_is_caught_only_when_the_fleet_held_a_proof(tmp_path: Path) -> None:
+    fleet = tmp_path / "fleet"
+    fleet.mkdir()
+    _git(fleet, "init", "-q")
+    (fleet / "eks.tf").write_text("retention = 14\nmax = 2\n", encoding="utf-8")
+    _git(fleet, "add", "-A")
+    _git(fleet, "commit", "-qm", "base")
+
+    def review(worktree: Path, sha: str, output: Path) -> None:
+        _fake_review(worktree, sha, output)
+        report = json.loads((output / "report.json").read_text(encoding="utf-8"))
+        if "retention = local.x" in (worktree / "eks.tf").read_text(encoding="utf-8"):
+            report["intent_evaluations"][0]["status"] = "declared_unverified"
+        (output / "report.json").write_text(json.dumps(report), encoding="utf-8")
+
+    unverified = "declared_unverified"
+    drills = (
+        Drill("C-001", "eks.tf", "retention = 14", "retention = local.x", expect=unverified),
+        Drill("C-001", "eks.tf", "retention = 14", "retention = 15", expect=unverified),
+        # C-002 is already unverified on the fleet, so the drill proves nothing.
+        Drill("C-002", "eks.tf", "max = 2", "max = 1", expect=unverified),
+    )
+
+    results = run_drills(fleet, drills, review, tmp_path / "out")
+
+    assert [r.outcome for r in results] == ["caught", "missed", "missed"]
+
+
+def test_drill_file_reads_an_expectation_and_rejects_unknown_ones(tmp_path: Path) -> None:
+    path = tmp_path / "drills.yaml"
+    path.write_text(
+        "drills:\n  - {proposition: C-1, path: a, find: b, replace: c,"
+        " expect: declared_unverified}\n",
+        encoding="utf-8",
+    )
+    assert load_drills(path)[0].expect == "declared_unverified"
+    path.write_text(
+        "drills:\n  - {proposition: C-1, path: a, find: b, replace: c, expect: satisfied}\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(PolicyError):
+        load_drills(path)
+
+
+def test_aliased_drills_keep_their_shared_expectation(tmp_path: Path) -> None:
+    path = tmp_path / "drills.yaml"
+    path.write_text(
+        "drills:\n  - &d {proposition: C-1, path: a, find: b, replace: c,"
+        " expect: declared_unverified}\n  - *d\n",
+        encoding="utf-8",
+    )
+    assert [d.expect for d in load_drills(path)] == ["declared_unverified"] * 2
+
+
 def test_drill_file_accepts_variants_and_validates_each(tmp_path: Path) -> None:
     path = tmp_path / "drills.yaml"
     path.write_text(

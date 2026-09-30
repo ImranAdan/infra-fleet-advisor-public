@@ -1,7 +1,8 @@
 """Prove each registered check still sees the real fleet.
 
 A drill applies one literal, declared violation to a throwaway worktree of the
-fleet, runs the ordinary review, and expects the named proposition to diverge.
+fleet, runs the ordinary review, and expects the named proposition to diverge,
+or, with `expect: declared_unverified`, to lose a proof it held on the fleet.
 A drill may list variants: the first whose text the fleet still contains is
 applied, so a drill can match the fleet before and after a change to it.
 Drills are trusted data from this repository; the fleet is only read and its
@@ -22,6 +23,7 @@ from infra_fleet_advisor.core.errors import PolicyError, UnsafePathError
 from infra_fleet_advisor.core.paths import validate_repo_relative_path
 
 DrillOutcome = Literal["caught", "missed", "stale", "already_divergent"]
+_EXPECTATIONS = {"divergent", "declared_unverified"}
 _MAX_DRILLS = 64
 _MAX_VARIANTS = 8
 _MUTATION_FIELDS = {"path", "find", "replace"}
@@ -41,6 +43,7 @@ class Drill:
     find: str
     replace: str
     alternatives: tuple[Mutation, ...] = ()
+    expect: str = "divergent"
 
     def mutations(self) -> tuple[Mutation, ...]:
         return (Mutation(self.path, self.find, self.replace), *self.alternatives)
@@ -77,19 +80,26 @@ def load_drills(path: Path) -> tuple[Drill, ...]:
         if not isinstance(item, dict) or not isinstance(item.get("proposition"), str):
             raise PolicyError("each drill needs a proposition")
         proposition = item["proposition"]
-        if set(item) == {"proposition", "variants"}:
+        # Read, never pop: a YAML alias shares this dict with another drill.
+        expect = item.get("expect", "divergent")
+        if expect not in _EXPECTATIONS:
+            raise PolicyError("drill expect must be divergent or declared_unverified")
+        keys = set(item) - {"expect"}
+        if keys == {"proposition", "variants"}:
             variants = item["variants"]
             if not isinstance(variants, list) or not 2 <= len(variants) <= _MAX_VARIANTS:
                 raise PolicyError("drill variants must list between 2 and 8 mutations")
             mutations = [_mutation(proposition, variant) for variant in variants]
-        elif set(item) == {"proposition", *_MUTATION_FIELDS}:
+        elif keys == {"proposition", *_MUTATION_FIELDS}:
             mutations = [_mutation(proposition, {k: item[k] for k in _MUTATION_FIELDS})]
         else:
             raise PolicyError(
                 "each drill needs exactly proposition, path, find and replace, or variants"
             )
         first, *rest = mutations
-        drills.append(Drill(proposition, first.path, first.find, first.replace, tuple(rest)))
+        drills.append(
+            Drill(proposition, first.path, first.find, first.replace, tuple(rest), expect)
+        )
     return tuple(drills)
 
 
@@ -158,7 +168,12 @@ def run_drills(
                 _git(worktree, "commit", "--quiet", "--all", "-m", f"drill {drill.proposition}")
                 output = work_dir / f"drill-{index:02d}-{drill.proposition}"
                 review(worktree, _git(worktree, "rev-parse", "HEAD"), output)
-                caught = _statuses(output).get(drill.proposition) == "divergent"
+                # An unverified result proves nothing unless the fleet held a proof.
+                caught = (
+                    _statuses(output).get(drill.proposition)
+                    == drill.expect
+                    != base.get(drill.proposition)
+                )
                 results.append(DrillResult(drill, "caught" if caught else "missed", applied))
         finally:
             _git(checkout, "worktree", "remove", "--force", str(worktree))

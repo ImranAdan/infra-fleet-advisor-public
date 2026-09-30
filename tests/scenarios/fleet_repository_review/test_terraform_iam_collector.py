@@ -497,3 +497,189 @@ def test_ambiguous_dynamic_and_deep_literals_are_incomplete(tmp_path, policy) ->
     )
     assert result.evidence == ()
     assert result.coverage.status == "partial"
+
+
+_FLEET_SHAPE = """
+data "aws_caller_identity" "current" {}
+
+resource "aws_iam_openid_connect_provider" "github" {
+  url = "https://token.actions.githubusercontent.com"
+}
+
+resource "aws_iam_role" "ci" {
+  name = "ci"
+  assume_role_policy = jsonencode({
+    Statement = [{ Effect = "Allow", Action = "sts:AssumeRoleWithWebIdentity" }]
+  })
+}
+
+resource "aws_iam_policy" "ci" {
+  policy = jsonencode({
+    Statement = [{ Effect = "Allow", Action = ["ec2:Describe*"], Resource = "*" }]
+  })
+  depends_on = [aws_iam_role_policy_attachment.ci]
+}
+
+resource "aws_iam_role_policy_attachment" "ci" {
+  role       = aws_iam_role.ci.name
+  policy_arn = aws_iam_policy.ci.arn
+}
+
+resource "aws_ecr_lifecycle_policy" "app" {
+  repository = "app"
+  policy     = jsonencode({ rules = [] })
+}
+"""
+
+
+def test_complete_persistent_iam_is_fully_accounted_for(tmp_path) -> None:
+    result = _collect_text(tmp_path, _FLEET_SHAPE)
+
+    assert result.coverage.status == "ok"
+    assert result.evidence == ()
+
+
+def test_service_wide_wildcard_on_a_scoped_resource_is_still_a_grant(tmp_path) -> None:
+    result = _collect_text(
+        tmp_path,
+        'resource "aws_iam_role_policy" "ci" {\n policy = jsonencode({ Statement = [{'
+        ' Effect = "Allow", Action = ["eks:*", "ec2:Describe*", "*:Get*"],'
+        ' Resource = "arn:aws:eks:eu-west-2:1:cluster/x" }] })\n}',
+    )
+
+    assert result.coverage.status == "ok"
+    assert result.evidence[0].fact["wildcard_actions"] == "eks:*, *:Get*"
+
+
+_DOCUMENT = """
+data "aws_iam_policy_document" "ci" {
+  statement {
+    sid       = "Read"
+    actions   = [ACTIONS]
+    resources = ["*"]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestedRegion"
+      values   = ["eu-west-2"]
+    }
+  }
+  statement {
+    effect    = "Deny"
+    actions   = ["iam:*"]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_policy" "ci" {
+  policy = data.aws_iam_policy_document.ci.json
+}
+"""
+
+
+def test_literal_policy_document_is_parsed_and_referenced(tmp_path) -> None:
+    result = _collect_text(tmp_path, _DOCUMENT.replace("ACTIONS", '"ec2:DescribeVpcs"'))
+
+    assert result.coverage.status == "ok"
+    assert result.evidence == ()
+
+
+def test_wildcard_in_policy_document_is_evidence_on_the_document(tmp_path) -> None:
+    result = _collect_text(tmp_path, _DOCUMENT.replace("ACTIONS", '"s3:*"'))
+
+    assert result.coverage.status == "ok"
+    [item] = result.evidence
+    assert item.locator == "data.aws_iam_policy_document.ci"
+    assert item.fact["wildcard_actions"] == "s3:*"
+
+
+@pytest.mark.parametrize(
+    ("find", "replace"),
+    [
+        # An AWS-managed or external policy's contents are unknown.
+        ("aws_iam_policy.ci.arn", '"arn:aws:iam::aws:policy/ReadOnlyAccess"'),
+        ("aws_iam_policy.ci.arn", "aws_iam_policy.elsewhere.arn"),
+        ("aws_iam_policy.ci.arn", "var.policy_arn"),
+        ('name = "ci"', 'name = "ci"\n  managed_policy_arns = [var.arn]'),
+        ('name = "ci"', 'name = "ci"\n  inline_policy {\n    policy = var.p\n  }'),
+        ('name = "ci"', 'name = "ci"\n  dynamic "inline_policy" {\n    for_each = []\n  }'),
+        ('Action = ["ec2:Describe*"]', 'Action = ["ec2:${var.action}"]'),
+        ('data "aws_caller_identity" "current" {}', 'module "iam" {\n  source = "./iam"\n}'),
+        (
+            'data "aws_caller_identity" "current" {}',
+            'resource "aws_iam_user" "bot" {\n  name = "bot"\n}',
+        ),
+        (
+            'data "aws_caller_identity" "current" {}',
+            'data "aws_iam_policy" "admin" {\n  name = "AdministratorAccess"\n}',
+        ),
+        ("aws_ecr_lifecycle_policy", "aws_ecr_repository_policy"),
+        (
+            'data "aws_caller_identity" "current" {}',
+            'resource "aws_kms_key" "k" {\n  dynamic "policy" {\n    for_each = []\n  }\n}',
+        ),
+        # The same address declared twice cannot be resolved to one policy.
+        ('resource "aws_iam_role" "ci"', 'resource "aws_iam_policy" "ci"'),
+    ],
+)
+def test_iam_the_collector_cannot_read_leaves_coverage_partial(tmp_path, find, replace) -> None:
+    assert find in _FLEET_SHAPE
+    result = _collect_text(tmp_path, _FLEET_SHAPE.replace(find, replace))
+
+    assert result.evidence == ()
+    assert result.coverage.status == "partial"
+
+
+@pytest.mark.parametrize(
+    ("find", "replace"),
+    [
+        ('sid       = "Read"', 'not_actions = ["s3:*"]'),
+        ("statement {\n    effect", 'dynamic "statement" {\n    effect'),
+        (
+            'sid       = "Read"',
+            'sid = "Read"\n    not_principals {\n      type = "*"\n    }\n    other {\n    }',
+        ),
+        ("data.aws_iam_policy_document.ci.json", "data.aws_iam_policy_document.other.json"),
+        (
+            "statement {\n    effect",
+            "source_policy_documents = [var.doc]\n  statement {\n    effect",
+        ),
+        ('effect    = "Deny"', "effect = var.effect"),
+    ],
+)
+def test_policy_documents_the_collector_cannot_read_leave_coverage_partial(
+    tmp_path, find, replace
+) -> None:
+    text = _DOCUMENT.replace("ACTIONS", '"ec2:DescribeVpcs"')
+    assert find in text
+    result = _collect_text(tmp_path, text.replace(find, replace))
+
+    assert result.coverage.status == "partial"
+
+
+@pytest.mark.parametrize("name", ["iam.tf.json", "override.tf", "iam_override.tf"])
+def test_json_and_override_files_leave_coverage_partial(tmp_path, name) -> None:
+    root = tmp_path / "infrastructure/permanent"
+    root.mkdir(parents=True)
+    (root / "main.tf").write_text(_FLEET_SHAPE, encoding="utf-8")
+    (root / name).write_text("{}", encoding="utf-8")
+
+    result = tf_collector.collect(tmp_path, LIMITS)
+
+    assert result.coverage.status == "partial"
+
+
+def test_policy_excluded_file_leaves_coverage_partial(git_checkout) -> None:
+    repo, _sha = git_checkout(terraform_files=("scoped_iam_policy.tf",))
+    excluded = frozenset({"infrastructure/permanent/scoped_iam_policy.tf"})
+
+    result = tf_collector.collect(repo, LIMITS, excluded_paths=excluded)
+
+    assert result.coverage.status == "partial"
+
+
+def test_missing_declared_scope_is_failed(tmp_path) -> None:
+    result = tf_collector.collect(
+        tmp_path, LIMITS, included_path_prefixes=("infrastructure/permanent",)
+    )
+
+    assert result.coverage.status == "failed"

@@ -137,10 +137,10 @@ CONCERN_TEMPLATES: dict[str, ConcernTemplate] = {
     CONCERN_WILDCARD_IAM_PERMISSIONS: ConcernTemplate(
         category="security",
         priority="critical",
-        title="IAM policy grants a wildcard action on all resources",
+        title="IAM policy grants a service-wide wildcard action",
         summary=(
-            "A Terraform-managed IAM policy statement allows a wildcard action "
-            "(e.g. service:*) with Resource set to *."
+            "A Terraform-managed IAM policy statement allows a service-wide wildcard "
+            "action (e.g. service:*)."
         ),
         impact=(
             "Overly broad IAM grants expand the blast radius if the associated role's "
