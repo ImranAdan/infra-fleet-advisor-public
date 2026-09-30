@@ -2,7 +2,7 @@
 
 - Source: `infra-fleet-public` @ `9cffa4da780168a32b00c14556a990643a6624f7`
 - Advisor version: `0.1.0` · Policy version: `1.1`
-- Model: `stub-synthesizer-v1` · Run started: `2026-09-30T20:40:29.999146+00:00`
+- Model: `stub-synthesizer-v1` · Run started: `2026-09-30T20:53:39.294617+00:00`
 - Intent catalog: `intent-md-v1:9a2cd76925fdc474067a3025da83cbdd44e89d169ba2f95e1d7b35a2e3fd5989`
 - Lifecycle: 0 new, 0 unchanged, 10 resolved, 0 suppressed (0 rejected)
 
@@ -20,7 +20,7 @@
 
 ## Intent evaluation
 
-**Coverage:** 22 of 22 positions have a check — 7 satisfied, 0 divergent, 15 checked but unproven; 0 declared without a check.
+**Coverage:** 22 of 22 positions have a check — 8 satisfied, 0 divergent, 14 checked but unproven; 0 declared without a check.
 
 - `declared_unverified` `infra_fleet_public_cost/C-001` — Staging application worker capacity scales to zero outside an owner-defined
   usage window. A delayed startup of up to 30 minutes is acceptable when it avoids
@@ -161,7 +161,7 @@
   
   Evidence: \[staging access decision\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/EKS-ACCESS.md)
   - Category: `security` · Priority: `high` · Check: `eks_public_endpoint_staging_only` · Reason: `collector_cannot_prove_satisfaction`
-- `declared_unverified` `infra_fleet_public_security/S-007` — Service-wide IAM action wildcards such as \`eks:\*\` are not acceptable for a
+- `satisfied` `infra_fleet_public_security/S-007` — Service-wide IAM action wildcards such as \`eks:\*\` are not acceptable for a
   production or persistent environment.
   
   Evidence: \[current IAM disposition\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/SECURITY-CONCERNS.md)
@@ -170,7 +170,7 @@
   the read-only \`ec2:Describe\*\` prefix. Several IAM write actions still use
   \`Resource = "\*"\`; that residual risk and live AWS validation are outside the
   registered service-action-wildcard check.
-  - Category: `security` · Priority: `critical` · Check: `persistent_iam_avoids_wildcards` · Reason: `collector_cannot_prove_satisfaction`
+  - Category: `security` · Priority: `critical` · Check: `persistent_iam_avoids_wildcards` · Reason: `complete_evidence_supports_intent`
 - `declared_unverified` `infra_fleet_public_security/S-008` — CSRF protection is not required for the current API-first staging application.
   
   Evidence: \[documented CSRF decision\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/SECURITY-CONCERNS.md)
