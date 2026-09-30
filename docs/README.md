@@ -38,7 +38,6 @@ These describe the product and implementation in more detail than the guides.
 - [Product requirements](product-requirements.md)
 - [Architecture](architecture.md)
 - [Product research](product-research.md)
-- [Coverage review](COVERAGE-REVIEW.md): history of the retired generated backlog.
 
 ## Product decision records
 

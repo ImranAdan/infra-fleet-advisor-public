@@ -328,8 +328,7 @@ is chosen manually from the coverage summary; novel prose never installs or
 executes a check.
 
 The earlier capability-ticket behavior in PDR 0004 is superseded by PDR 0006.
-The historical tickets are linked in `docs/COVERAGE-REVIEW.md`. The optional
-offline `capability-plan` diagnostic does not publish anything.
+The optional offline `capability-plan` diagnostic does not publish anything.
 
 After issue publication, registered deterministic patchers may propose opted-in
 Fleet PRs automatically. Other issues require a coding-agent runtime. Every fix

@@ -72,4 +72,4 @@ automatically expanding an advisor backlog. The optional offline
 is no supported CLI or workflow for publishing advisor capability tickets.
 
 See [the operating workflow](../WORKFLOW.md) and
-[the historical coverage review](../COVERAGE-REVIEW.md).
+[the historical coverage review](https://github.com/ImranAdan/infra-fleet-advisor-public/blob/9b1210c/docs/COVERAGE-REVIEW.md).
