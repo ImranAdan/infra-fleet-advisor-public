@@ -249,11 +249,16 @@ available source budget. IAM collection follows the registered
 quoted condition keys, local traversals in fields that do not decide the finding,
 and interpolated Resource strings only when fixed text proves they cannot equal
 the exact wildcard `*`. It distinguishes comments from string values and heredoc
-examples. Duplicate keys, malformed statements, dynamic Action/Effect values,
-unknown Resource values, and referenced policy documents make coverage
-partial. It never executes Terraform, resolves local references, or fetches a
-policy URL. The wildcard check detects explicit Allow/Action/Resource grants;
-it does not establish the effective permissions after conditions and denies.
+examples. It reads literal `aws_iam_policy_document` data sources and resolves
+`data.aws_iam_policy_document.<name>.json` and `aws_iam_policy.<name>.arn`
+attachments within the same root module only. Its scope is closed: modules,
+JSON or override files, unknown IAM types, `dynamic` blocks, policy-named
+attributes outside the parsed set, external policy ARNs, duplicate addresses
+or keys, malformed statements and non-literal Action/Effect/Resource values
+make coverage partial, so S-007 is satisfied only by complete evidence. It
+never executes Terraform or fetches a policy URL. The wildcard check detects
+Allow statements with a service-wide action on any Resource; it does not
+establish the effective permissions after conditions and denies.
 
 Historical-only recommendation citations retain their original evidence facts.
 Freshly validated recommendations use the current collection even when a

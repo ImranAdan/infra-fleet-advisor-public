@@ -58,7 +58,9 @@ Add one literal mutation to `drills/fleet-mutations.yaml`. It must change the
 real Fleet in a throwaway worktree and make the named proposition diverge. If
 the Fleet later moves or rewrites that text, the drill becomes stale and fails
 visibly. A drill whose `find` equals its `replace` is rejected: it cannot prove
-anything.
+anything. A check that can prove satisfaction also needs a drill with
+`expect: declared_unverified` whose mutation the collector cannot read: it
+proves an unknown shape costs the proof instead of looking healthy.
 
 When a Fleet change will move a drill's text, land the drill update first as
 `variants`: an ordered list of mutations, of which the first the Fleet still

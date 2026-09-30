@@ -1,6 +1,7 @@
 # Canary mutations for infra-fleet-public. Each drill is one deliberate,
 # literal violation of a declared position in the real fleet. `drill` applies
-# it in a throwaway worktree and expects the named proposition to diverge, so
+# it in a throwaway worktree and expects the named proposition to diverge (or,
+# with `expect: declared_unverified`, to lose a proof it held), so
 # a check that silently stops seeing the fleet (a moved file, a renamed block)
 # fails loudly instead of inflating coverage. Data only: `find` and `replace`
 # are literal text, every occurrence in `path` is replaced, and a `find` that
@@ -18,6 +19,13 @@ drills:
     path: infrastructure/permanent/github-oidc.tf
     find: 'Action    = "ecr:GetAuthorizationToken"'
     replace: 'Action    = "ecr:*"'
+  # S-007 can be proven, so IAM the collector cannot read must cost the proof:
+  # a repository policy is a policy document outside the parsed set.
+  - proposition: S-007
+    path: infrastructure/permanent/ecr.tf
+    find: 'resource "aws_ecr_lifecycle_policy" "load_harness" {'
+    replace: 'resource "aws_ecr_repository_policy" "load_harness" {'
+    expect: declared_unverified
   - proposition: S-010
     path: .github/dependabot.yml
     find: 'directory: "/platform/local/git-server"'

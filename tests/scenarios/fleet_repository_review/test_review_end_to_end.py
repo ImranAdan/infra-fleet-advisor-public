@@ -418,15 +418,17 @@ def test_third_run_marks_removed_finding_resolved(git_checkout) -> None:
         evidence_by_id={e.evidence_id: e for e in first.evidence},
     )
 
-    # This repo has no Terraform at all — the Terraform collector's "missing
-    # infrastructure directory" case reports "ok" with zero evidence rather
-    # than "failed", so it doesn't block the GHA finding from resolving.
+    # This repo has no Terraform at all. The IAM collector's declared
+    # persistent scope is missing, so it cannot prove S-007, but that failure
+    # does not block the GHA finding from resolving.
     clean_repo, clean_sha = git_checkout("oidc_and_trivy_good.yml")
     second = _run(clean_repo, clean_sha, prior=prior)
 
     assert second.recommendations[0].status == "resolved"
     assert second.resolved_count == 1
-    assert all(c.status == "ok" for c in second.coverage)
+    assert {c.collector_id for c in second.coverage if c.status != "ok"} == {
+        "terraform_iam_collector"
+    }
 
 
 @pytest.mark.parametrize("fixed", [True, False])
