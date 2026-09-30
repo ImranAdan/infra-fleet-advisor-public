@@ -79,6 +79,11 @@ drills:
     path: k8s/profiles/local/policies/require-local-images.yaml
     find: "container.image.startsWith('fleet-local-registry:5000/')"
     replace: "container.image.startsWith('fleet-local-registry:5000/load-harness:')"
+  # The selection is one value: including a second app diverges.
+  - proposition: M-004
+    path: k8s/applications/kustomization.yaml
+    find: "  - load-harness\n"
+    replace: "  - load-harness\n  - podinfo\n"
   - proposition: M-005
     variants:
       - path: .github/workflows/autonomous-merge.yml
