@@ -145,6 +145,16 @@ def test_drill_file_reads_an_expectation_and_rejects_unknown_ones(tmp_path: Path
         load_drills(path)
 
 
+def test_aliased_drills_keep_their_shared_expectation(tmp_path: Path) -> None:
+    path = tmp_path / "drills.yaml"
+    path.write_text(
+        "drills:\n  - &d {proposition: C-1, path: a, find: b, replace: c,"
+        " expect: declared_unverified}\n  - *d\n",
+        encoding="utf-8",
+    )
+    assert [d.expect for d in load_drills(path)] == ["declared_unverified"] * 2
+
+
 def test_drill_file_accepts_variants_and_validates_each(tmp_path: Path) -> None:
     path = tmp_path / "drills.yaml"
     path.write_text(

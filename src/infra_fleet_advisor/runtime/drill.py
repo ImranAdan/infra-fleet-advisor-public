@@ -80,15 +80,17 @@ def load_drills(path: Path) -> tuple[Drill, ...]:
         if not isinstance(item, dict) or not isinstance(item.get("proposition"), str):
             raise PolicyError("each drill needs a proposition")
         proposition = item["proposition"]
-        expect = item.pop("expect", "divergent")
+        # Read, never pop: a YAML alias shares this dict with another drill.
+        expect = item.get("expect", "divergent")
         if expect not in _EXPECTATIONS:
             raise PolicyError("drill expect must be divergent or declared_unverified")
-        if set(item) == {"proposition", "variants"}:
+        keys = set(item) - {"expect"}
+        if keys == {"proposition", "variants"}:
             variants = item["variants"]
             if not isinstance(variants, list) or not 2 <= len(variants) <= _MAX_VARIANTS:
                 raise PolicyError("drill variants must list between 2 and 8 mutations")
             mutations = [_mutation(proposition, variant) for variant in variants]
-        elif set(item) == {"proposition", *_MUTATION_FIELDS}:
+        elif keys == {"proposition", *_MUTATION_FIELDS}:
             mutations = [_mutation(proposition, {k: item[k] for k in _MUTATION_FIELDS})]
         else:
             raise PolicyError(
