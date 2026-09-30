@@ -5,6 +5,8 @@ from infra_fleet_advisor.core.errors import PolicyError
 from infra_fleet_advisor.core.evidence import Evidence
 from infra_fleet_advisor.core.report import CollectorCoverage
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
+    APP_CONTRACT_COLLECTOR_ID,
+    EVIDENCE_KIND_APPLICATION_COUPLING,
     EVIDENCE_KIND_AUTONOMOUS_MERGE,
     EVIDENCE_KIND_CREDENTIAL_METHOD,
     EVIDENCE_KIND_DEPLOYMENT_ROLLOUT_CAPACITY,
@@ -16,6 +18,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     TF_IAM_COLLECTOR_ID,
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.intent_evaluation import (
+    CHECK_APPLICATION_SWAPPABLE,
     CHECK_DEPLOYMENT_ROLLOUT_CAPACITY,
     CHECK_FLEET_AUTONOMOUS_MERGE,
     CHECK_FLEET_LOCAL_FIRST_USE,
@@ -373,3 +376,30 @@ def test_persistent_iam_check_is_unproven_when_iam_collection_is_incomplete() ->
     )
     assert compilation.evaluations[0].status == "declared_unverified"
     assert compilation.evaluations[0].reason == "collector_incomplete"
+
+
+@pytest.mark.parametrize(
+    ("swappable", "coverage", "status", "reason"),
+    (
+        (True, "ok", "satisfied", "complete_evidence_supports_intent"),
+        (True, "partial", "declared_unverified", "collector_incomplete"),
+        (False, "partial", "divergent", "evidence_conflicts_with_intent"),
+    ),
+)
+def test_swappable_application_is_proven_only_by_complete_evidence(
+    swappable: bool, coverage: str, status: str, reason: str
+) -> None:
+    evidence = _evidence(
+        collector_id=APP_CONTRACT_COLLECTOR_ID,
+        kind=EVIDENCE_KIND_APPLICATION_COUPLING,
+        path="k8s/fleet-app/fleet-app.yaml",
+        fact={"swappable": swappable},
+    )
+    result = compile_intents(
+        _catalog(CHECK_APPLICATION_SWAPPABLE, category="maintainability"),
+        enabled_categories=frozenset({"maintainability"}),
+        evidence=(evidence,),
+        coverage=_coverage(APP_CONTRACT_COLLECTOR_ID, coverage),
+    )
+
+    assert (result.evaluations[0].status, result.evaluations[0].reason) == (status, reason)

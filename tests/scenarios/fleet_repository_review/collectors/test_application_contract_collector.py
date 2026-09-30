@@ -54,6 +54,9 @@ def test_a_platform_that_names_no_app_with_two_contracts_is_swappable(tmp_path: 
         "application_count": 2,
         "platform_files_naming_an_app": 0,
         "platform_objects_with_literal_bindings": 0,
+        "selection_consistent": True,
+        "uncontracted_application_sources": 0,
+        "on_demand_launcher": False,
         "swappable": True,
     }
     assert evidence.source_path == "k8s/fleet-app/fleet-app.yaml"
@@ -288,3 +291,185 @@ def test_an_unknown_app_contract_directory_is_not_treated_as_platform(tmp_path: 
     assert result.coverage.status == "partial"
     assert "swappable" not in evidence.fact
     assert evidence.fact["platform_objects_with_literal_bindings"] == 0
+
+
+def test_including_an_app_the_contract_does_not_select_is_divergent(tmp_path: Path) -> None:
+    result = _fleet(
+        tmp_path, {"k8s/applications/kustomization.yaml": "resources: [platform, shop, blog]\n"}
+    )
+
+    [evidence] = result.evidence
+    assert result.coverage.status == "ok"
+    assert evidence.fact["selection_consistent"] is False
+    assert evidence.fact["swappable"] is False
+
+
+def test_a_selected_contract_that_drifts_from_the_app_contract_is_divergent(
+    tmp_path: Path,
+) -> None:
+    drifted = _contract("shop").replace("APP_PORT: '80'", "APP_PORT: '81'")
+    result = _fleet(tmp_path, {"k8s/fleet-app/fleet-app.yaml": drifted})
+
+    assert result.evidence[0].fact["selection_consistent"] is False
+    assert result.evidence[0].fact["swappable"] is False
+
+
+@pytest.mark.parametrize(
+    "selection",
+    ("resources: [platform, ../../elsewhere/shop]\n", "resources: platform\n", "- [\n"),
+)
+def test_an_unresolvable_selection_leaves_the_verdict_unknown(
+    tmp_path: Path, selection: str
+) -> None:
+    result = _fleet(tmp_path, {"k8s/applications/kustomization.yaml": selection})
+
+    assert result.coverage.status == "partial"
+    assert "swappable" not in result.evidence[0].fact
+
+
+def test_application_source_without_a_contract_leaves_the_verdict_unknown(
+    tmp_path: Path,
+) -> None:
+    result = _fleet(tmp_path, {"applications/wiki/Dockerfile": "FROM scratch\n"})
+
+    [evidence] = result.evidence
+    assert result.coverage.status == "partial"
+    assert "wiki" in (result.coverage.error_summary or "")
+    assert evidence.fact["uncontracted_application_sources"] == 1
+    assert "swappable" not in evidence.fact
+
+
+def test_contracted_application_sources_are_complete(tmp_path: Path) -> None:
+    result = _fleet(
+        tmp_path,
+        {"applications/shop/Dockerfile": "FROM x\n", "applications/blog/Dockerfile": "FROM x\n"},
+    )
+
+    assert result.coverage.status == "ok"
+    assert result.evidence[0].fact["swappable"] is True
+
+
+def test_a_platform_workload_in_the_app_namespace_is_an_app_of_its_own(tmp_path: Path) -> None:
+    path = "k8s/applications/extras/deployment.yaml"
+    result = _fleet(
+        tmp_path,
+        {path: "kind: Deployment\nmetadata: {name: wiki, namespace: applications}\n"},
+    )
+
+    [evidence] = result.evidence
+    assert evidence.fact["platform_objects_with_literal_bindings"] == 1
+    assert evidence.fact["swappable"] is False
+    assert evidence.source_path == path
+
+
+def test_an_app_bound_object_without_a_namespace_is_unknown(tmp_path: Path) -> None:
+    result = _fleet(
+        tmp_path,
+        {
+            "k8s/applications/platform/hpa.yaml": "kind: HorizontalPodAutoscaler\n"
+            "metadata: {name: '${APP_NAME}'}\n"
+        },
+    )
+
+    assert result.coverage.status == "partial"
+    assert result.evidence[0].fact["platform_objects_with_literal_bindings"] == 0
+
+
+def _patched(tmp_path: Path, patch: str, kind: str = "HorizontalPodAutoscaler"):
+    return _fleet(
+        tmp_path,
+        {
+            "k8s/profiles/local/applications/kustomization.yaml": (
+                "resources: [../../../applications]\npatches:\n"
+                f"  - target: {{kind: {kind}}}\n    patch: |-\n"
+                + "".join(f"      {line}\n" for line in patch.splitlines())
+            )
+        },
+    )
+
+
+def test_a_patch_that_retargets_an_app_bound_field_literally_is_coupling(tmp_path: Path) -> None:
+    result = _patched(tmp_path, "- op: replace\n  path: /spec/scaleTargetRef/name\n  value: wiki")
+
+    [evidence] = result.evidence
+    assert evidence.fact["platform_objects_with_literal_bindings"] == 1
+    assert evidence.fact["swappable"] is False
+
+
+@pytest.mark.parametrize(
+    ("patch", "kind"),
+    (
+        ("- op: replace\n  path: /spec/maxReplicas\n  value: 3", "HorizontalPodAutoscaler"),
+        ("- op: add\n  path: /metadata/name\n  value: ${APP_NAME}-x", "HorizontalPodAutoscaler"),
+        ("- op: add\n  path: /metadata/name\n  value: fleet", "Gateway"),
+    ),
+)
+def test_a_patch_outside_app_bound_fields_is_safe(tmp_path: Path, patch: str, kind: str) -> None:
+    result = _patched(tmp_path, patch, kind)
+
+    assert result.coverage.status == "ok"
+    assert result.evidence[0].fact["swappable"] is True
+
+
+@pytest.mark.parametrize(
+    "patch",
+    (
+        "- op: add\n  path: /spec\n  value: {scaleTargetRef: {name: wiki}}",
+        "- op: move\n  from: /x\n  path: /metadata/name",
+        "kind: HorizontalPodAutoscaler\nmetadata: {name: wiki}",
+    ),
+)
+def test_an_unresolvable_patch_leaves_the_verdict_unknown(tmp_path: Path, patch: str) -> None:
+    result = _patched(tmp_path, patch)
+
+    assert result.coverage.status == "partial"
+
+
+def test_a_declared_on_demand_launcher_keeps_the_position_unproven(tmp_path: Path) -> None:
+    result = _fleet(
+        tmp_path,
+        {
+            "k8s/control-plane/rbac.yaml": (
+                "kind: Role\nmetadata: {name: launcher, namespace: flux-system}\n"
+                "rules:\n  - apiGroups: [kustomize.toolkit.fluxcd.io]\n"
+                "    resources: [kustomizations]\n    verbs: [get, create]\n"
+            )
+        },
+    )
+
+    [evidence] = result.evidence
+    assert result.coverage.status == "partial"
+    assert "on-demand" in (result.coverage.error_summary or "")
+    assert evidence.fact["on_demand_launcher"] is True
+    assert evidence.fact["swappable"] is True
+
+
+@pytest.mark.parametrize(
+    "rbac",
+    (
+        "kind: Role\nmetadata: {name: reader, namespace: applications}\n"
+        "rules: [{apiGroups: [apps], resources: [deployments], verbs: [list]}]\n",
+        "kind: ClusterRole\nmetadata:\n  name: crd-controller\n"
+        "  labels: {app.kubernetes.io/part-of: flux}\n"
+        "rules: [{apiGroups: ['*'], resources: ['*'], verbs: ['*']}]\n",
+    ),
+)
+def test_read_only_or_flux_rbac_is_not_a_launcher(tmp_path: Path, rbac: str) -> None:
+    result = _fleet(tmp_path, {"k8s/control-plane/rbac.yaml": rbac})
+
+    assert result.coverage.status == "ok"
+    assert result.evidence[0].fact["on_demand_launcher"] is False
+
+
+def test_a_broad_role_binding_is_a_launcher(tmp_path: Path) -> None:
+    result = _fleet(
+        tmp_path,
+        {
+            "k8s/control-plane/rbac.yaml": (
+                "kind: ClusterRoleBinding\nmetadata: {name: dashboard}\n"
+                "roleRef: {kind: ClusterRole, name: cluster-admin}\n"
+            )
+        },
+    )
+
+    assert result.evidence[0].fact["on_demand_launcher"] is True
