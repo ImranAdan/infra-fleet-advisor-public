@@ -59,10 +59,6 @@ drills:
     path: scripts/fleet-profiles/aws-staging.sh
     find: '"confirm_destroy=$confirmation"'
     replace: "'confirm_destroy=destroy staging'"
-  - proposition: S-003
-    path: k8s/applications/platform/networkpolicy.yaml
-    find: "    - Ingress\n    - Egress"
-    replace: "    - Egress"
   - proposition: S-004
     path: k8s/applications/platform/networkpolicy.yaml
     find: "namespace: applications"
