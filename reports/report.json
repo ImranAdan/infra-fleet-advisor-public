@@ -331,7 +331,7 @@
       "priority": "medium",
       "proposition_id": "M-004",
       "reason": "collector_cannot_prove_satisfaction",
-      "statement": "The platform runs whichever application its contract,\n`k8s/fleet-app/fleet-app.yaml`, selects, and names none of its own. Routing,\nprogressive delivery, autoscaling, network policy, admission, the local build\nand the acceptance test read the application from that contract, so replacing\nthe application is a contract change rather than a platform migration. At\nleast two applications ship contracts, so the swap stays exercised rather than\ntheoretical. Per-application AWS resources (its ECR repository, release\nworkflow and secrets) are outside this position.",
+      "statement": "The platform runs whichever application its contract,\n`k8s/fleet-app/fleet-app.yaml`, selects, and names none of its own. Routing,\nprogressive delivery, autoscaling, network policy, admission, the local build\nand the acceptance test read the application from that contract, so replacing\nthe application is a contract change rather than a platform migration. At\nleast two applications ship contracts, so the swap stays exercised rather than\ntheoretical. Per-application AWS resources (its ECR repository, release\nworkflow and secrets) are outside this position.\n\nLocally, the application dashboard may also run any other contracted\napplication on demand beside the selected one. Whenever it does, a launched\napplication is deployed from the same Git revision with the same platform\nservices, filled from its own contract, under an identity limited to application\nworkloads in `applications` and app-owned Grafana dashboard ConfigMaps in\n`observability`, and stopping it removes that stack. The control API is isolated\nfrom other pods. Launching adds no platform code that names an application.",
       "status": "declared_unverified"
     },
     {
@@ -483,7 +483,7 @@
     "advisor_version": "0.1.0",
     "collector_versions": {
       "application_config_collector": "1.0.0",
-      "application_contract_collector": "1.1.0",
+      "application_contract_collector": "1.2.0",
       "dependency_update_collector": "1.0.0",
       "fleet_lifecycle_collector": "1.4.0",
       "github_actions_workflow_collector": "1.6.1",
@@ -492,10 +492,10 @@
       "terraform_cost_collector": "1.4.0",
       "terraform_iam_collector": "1.4.0"
     },
-    "intent_digest": "intent-md-v1:12cedeb5a52d826b71305eaffb35570718437201260203918b120479380b47ea",
+    "intent_digest": "intent-md-v1:9a2cd76925fdc474067a3025da83cbdd44e89d169ba2f95e1d7b35a2e3fd5989",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.1",
-    "run_started_at": "2026-09-29T10:45:07.940440+00:00",
+    "run_started_at": "2026-09-30T19:38:23.562578+00:00",
     "source_commit_sha": "1010604335161177321ca94e774af5cded7c3130",
     "source_label": "infra-fleet-public"
   },

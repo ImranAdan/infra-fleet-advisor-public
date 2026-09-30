@@ -2,8 +2,8 @@
 
 - Source: `infra-fleet-public` @ `1010604335161177321ca94e774af5cded7c3130`
 - Advisor version: `0.1.0` · Policy version: `1.1`
-- Model: `stub-synthesizer-v1` · Run started: `2026-09-29T10:45:07.940440+00:00`
-- Intent catalog: `intent-md-v1:12cedeb5a52d826b71305eaffb35570718437201260203918b120479380b47ea`
+- Model: `stub-synthesizer-v1` · Run started: `2026-09-30T19:38:23.562578+00:00`
+- Intent catalog: `intent-md-v1:9a2cd76925fdc474067a3025da83cbdd44e89d169ba2f95e1d7b35a2e3fd5989`
 - Lifecycle: 0 new, 0 unchanged, 10 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
@@ -84,6 +84,14 @@
   least two applications ship contracts, so the swap stays exercised rather than
   theoretical. Per-application AWS resources (its ECR repository, release
   workflow and secrets) are outside this position.
+  
+  Locally, the application dashboard may also run any other contracted
+  application on demand beside the selected one. Whenever it does, a launched
+  application is deployed from the same Git revision with the same platform
+  services, filled from its own contract, under an identity limited to application
+  workloads in \`applications\` and app-owned Grafana dashboard ConfigMaps in
+  \`observability\`, and stopping it removes that stack. The control API is isolated
+  from other pods. Launching adds no platform code that names an application.
   - Category: `maintainability` · Priority: `medium` · Check: `fleet_application_swappable` · Reason: `collector_cannot_prove_satisfaction`
 - `satisfied` `infra_fleet_public_maintainability/M-005` — An agent merges the pull requests it raises in this fleet without waiting for
   the owner or calling a paid model whenever evidence alone decides. The Advisor
