@@ -80,6 +80,17 @@ def validate(
             raise ValueError(f"Quality evidence job did not pass exactly once: {name}")
 
 
+def skip_reason(pr: dict[str, Any]) -> str | None:
+    """Why a report PR needs no statuses: it closed while Quality ran.
+
+    Publishing nothing is always safe, so a merged or declined report is a
+    no-op rather than a failure; validate() still gates every open PR.
+    """
+    if pr.get("state") != "closed":
+        return None
+    return "merged" if pr.get("merged") else "closed without merging"
+
+
 def status_payloads(run_url: str) -> list[dict[str, str]]:
     """Build the branch-protection contexts backed by the audited Quality run."""
     return [
@@ -151,6 +162,9 @@ def _self_test() -> int:
         except ValueError:
             continue
         raise AssertionError("status bridge accepted invalid evidence")
+    assert skip_reason(pr) is None
+    assert skip_reason({**pr, "state": "closed", "merged": True}) == "merged"
+    assert skip_reason({**pr, "state": "closed", "merged": False}) == "closed without merging"
     print("self-test passed")
     return 0
 
@@ -178,6 +192,9 @@ def main() -> int:
 
     try:
         pr = _gh_json([f"repos/{repository}/pulls/{number}"])
+        if isinstance(pr, dict) and (reason := skip_reason(pr)):
+            print(f"report PR #{number} was {reason} before its statuses; nothing to publish")
+            return 0
         files = _gh_json([f"repos/{repository}/pulls/{number}/files?per_page=100"])
         run = _gh_json([f"repos/{repository}/actions/runs/{run_id}"])
         jobs_document = _gh_json(
