@@ -19,7 +19,7 @@ issue-creation decision record. See the [workflow](WORKFLOW.md) and
 
 | Collector | Supported evidence | Limitations |
 |---|---|---|
-| GitHub Actions | Tracked workflow settings, including Trivy scanning configuration, per ECR-publishing job scan gates, and the closed autonomous-merge workflow shape (M-005) | Repository configuration only; the autonomy check cannot prove GitHub service availability or the presence of an external coding-agent runtime; exclusions and malformed or truncated input can leave coverage incomplete |
+| GitHub Actions | Tracked workflow settings and the local composite actions they call (one level deep), including Trivy scanning configuration, per ECR-publishing job scan gates, and the closed autonomous-merge workflow shape (M-005) | Repository configuration only; the autonomy check cannot prove GitHub service availability or the presence of an external coding-agent runtime; exclusions and malformed or truncated input can leave coverage incomplete |
 | Terraform IAM | Persistent-stack policies under `infrastructure/permanent/`; bounded JSON/HCL objects, local condition traversals and fixed-prefix resource ARN interpolation | Referenced policy documents and unknown decision fields remain partial within the persistent scope; no policy URL fetch or Terraform execution |
 | Terraform cost | CloudWatch log-group retention (resources and the pinned EKS module's control-plane log group), ECR lifecycle policies, AWS provider `default_tags` cost-allocation keys, EKS managed node-group bounds with statically enabled node-autoscaler presence, EKS public-endpoint exposure by root module (S-006), and scheduled release of staging capacity through an `aws_autoscaling_schedule` to zero or a scheduled workflow that destroys Terraform or runs `./fleet down --profile aws-staging` (C-001) | Literal values only; dynamic `count`/`for_each` enablement remains unverified. Module log groups use published defaults for trusted majors; implicit AWS-created log groups are invisible, so C-003 cannot be proven satisfied |
 | Dependency updates | Tracked dependency manifests (Dockerfiles, Python requirements, npm, Go, pinned Terraform, workflows) by directory, matched against `.github/dependabot.yml` | File names only; repository alert and security-update settings cannot be read, so S-010 is divergence-only |
@@ -30,13 +30,12 @@ issue-creation decision record. See the [workflow](WORKFLOW.md) and
 | Fleet lifecycle | The tracked `fleet` facade and fixed local and AWS strategy modules; closed lifecycle dispatch plus local pinned-tool, checkout-state, explicit-context, and next-command controls | Static shell structure only; it detects absent controls but cannot prove downloads, idempotence, runtime readiness, credential behavior, or teardown effects |
 
 The security, reliability, cost and maintainability catalogs contain
-twenty-two positions, all with registered checks. Unsupported positions and incomplete
-evaluation remain explicit report coverage; the cost catalog has three checks
-(log retention, cost tags and worker scaling are divergence-only), S-011's publication gate is
-divergence-only because only recognised ECR login forms count as publication, and the maintainability catalog has two
-divergence-only checks. They do
-not automatically create issues in either repository. The
-[coverage review](COVERAGE-REVIEW.md) preserves the retired generated backlog.
+twenty-two positions, all with registered checks. Only seven checks can prove a
+position satisfied: S-002, S-003, S-004, S-009, R-001, C-004 and M-005. The
+other fifteen are divergence-only: complete, clean evidence leaves them
+`declared_unverified` (`collector_cannot_prove_satisfaction`). Unverified
+positions and incomplete evaluation remain explicit report coverage and do not
+create issues in either repository.
 
 Untracked Terraform downloads, including `.terraform` module files, are not
 evidence. Workflow and IAM collectors apply policy exclusions and tracked-path
@@ -76,12 +75,19 @@ proposition to diverge; the nightly advisory workflow and every pull request (th
 run them as a separate, read-only job. A drill reports `caught`, `missed` (the check no longer sees the
 fleet), `stale` (the fleet no longer contains the drill's text) or
 `already divergent` (the position cannot regress). Coverage counts a check
-only as far as its drill proves it bites.
+only as far as its drill proves it bites. A drill whose `find` equals its
+`replace` is rejected when the file loads. A drill may list ordered `variants`;
+the first whose text the fleet still contains is applied, so one drill survives
+a fleet change that moves its text.
 
-The first run found S-001 blind to credentials obtained inside local
-composite actions such as `.github/actions/setup-aws-terraform`, which the
-Terraform apply workflows use. The workflow collector now follows tracked
-local composite actions one level deep.
+## Intent gate
+
+`infra-fleet-advisor gate` (run by `scripts/intent-gate.sh` and the fleet's
+pinned composite action) compares a fleet PR's base and merge result under one
+intent catalog. It fails (exit 6) when a position newly diverges or loses a
+decisive result to `declared_unverified`. A divergent position counts as
+resolved when it becomes `satisfied`, or, for a divergence-only check, when it
+becomes `declared_unverified` with `collector_cannot_prove_satisfaction`.
 
 ## Ratchet guard
 
@@ -110,7 +116,7 @@ that a private deployment matches that revision or that live infrastructure is
 healthy. Incomplete relevant collection is deferred during fleet publication;
 absence of evidence does not establish that the fleet is healthy.
 
-The advisor does not deploy, merge fleet fixes or inspect AWS and Kubernetes.
-The normal fix path is a maintainer-selected fleet agent. Optional
-[mechanical remediation](remediation.md) and [decision feedback](feedback.md)
-remain separate workflows.
+The advisor does not deploy or inspect AWS and Kubernetes, and holds no Fleet
+contents token. Registered [mechanical remediation](remediation.md) runs in the
+Fleet's own workflow; other issues wait for a coding agent. Optional
+[decision feedback](feedback.md) is a separate workflow.

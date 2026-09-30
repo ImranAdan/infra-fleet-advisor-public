@@ -89,11 +89,9 @@ completion. No report-delivery App or personal token is required.
 
 Repository parsers, subprocess-backed scanners, Git verification, model
 clients, and report serializers sit at explicit boundaries. Their outputs are
-converted into typed domain values before entering the core.
-
-The first implementation should add only the adapters needed by one useful
-end-to-end review. Do not introduce dynamic plugin discovery, an arbitrary
-command runner, a database, async workers, or multi-repository orchestration.
+converted into typed domain values before entering the core. There is no
+dynamic plugin discovery, arbitrary command runner, database, async worker, or
+multi-repository orchestration.
 
 ## Trust boundaries
 
@@ -369,19 +367,19 @@ replacement remains protected by an exact lease.
     to a coding agent. Opted-in PRs pass Fleet intent, CI and the exact-head merge
     gate, then a subsequent Advisor report evaluates the result.
 
-## Initial implementation shape
+## Gates
 
-When code is introduced, use a small Python 3.11+ package managed by `uv`:
-
-```text
-src/infra_fleet_advisor/
-├── config/
-├── core/
-├── provenance/
-├── runtime/
-└── scenarios/
-    └── fleet_repository_review/
-```
-
-Mirror behavior under `tests/`. Delay exact modules until the first vertical
-slice establishes concrete responsibilities.
+- **Intent gate** (`gate`, PDR 0007): compares the base and merge-result
+  reports of a Fleet PR; see [scope and coverage](status.md#intent-gate).
+- **Ratchet guard** (`ratchet`): reviews one Fleet commit with the base and the
+  proposed advisor and fails when proof, a check or a finding is lost.
+- **Drills** (`drill`): one literal Fleet mutation per check must make it diverge.
+- **Merge gate** (`.claude/skills/merge-gate/merge_ready.py`): classifies a PR
+  diff into the categories of `decision-policy.toml`. Evidence decides
+  dependency, decision-record, product-requirement, permission-removal and
+  non-gate workflow changes once every exact-head check, including the trusted
+  ratchet run, passes; the evidence decider makes no model call. Intent and
+  policy, added permissions, credentials, IAM, permanent infrastructure,
+  migrations, merge authority and any unlisted category park for the owner. No
+  category uses the Anthropic `judge` decider, which has no model backend
+  without `ANTHROPIC_API_KEY`.

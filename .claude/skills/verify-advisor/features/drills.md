@@ -10,6 +10,9 @@ that stops seeing the fleet goes red instead of inflating coverage.
 - `drill-stale` a drill whose text the fleet no longer contains is reported as
   stale, not passed.
 - `drill-per-check` every registered check has at least one drill.
+- `drill-variants` a drill listing `variants` applies the first whose text
+  the fleet still contains.
+- `drill-no-op` a drill whose `find` equals its `replace` is rejected on load.
 
 ## How to get to it (user POV)
 
@@ -33,6 +36,8 @@ Preconditions:
 ## Gotchas
 
 - `find` is literal text and every occurrence is replaced; a drill goes stale
-  when the fleet rewrites that text. Update the drill in the same change.
+  when the fleet rewrites that text. Before a fleet change moves the text, add
+  the new text as a second variant; prune the old one once the change is on
+  the fleet's `main`.
 - `already divergent` proves nothing about that check; the fleet already
   violates it.

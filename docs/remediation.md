@@ -41,5 +41,6 @@ Only `trivy_ignore_unfixed` is patchable today. `wildcard_iam_permissions` is
 deliberately excluded: scoping it requires knowing which API calls the pipeline
 makes, and a confident wrong answer is a security regression.
 
-No supported patch is an expected result when no active ratified concern has a
-registered patcher. See [PDR 0008](decisions/0008-autonomous-evidence-loop.md).
+No declared position currently registers `trivy_does_not_ignore_unfixed`, the
+check that raises that concern, so "no mechanically fixable findings" is the
+expected result today. See [PDR 0008](decisions/0008-autonomous-evidence-loop.md).
