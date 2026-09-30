@@ -183,6 +183,27 @@ def test_controller_objects_outside_the_app_namespace_are_not_app_bound(tmp_path
 
 
 @pytest.mark.parametrize(
+    "selector",
+    ("{}", "{matchLabels: {}}", "{matchExpressions: []}"),
+)
+def test_namespace_wide_network_policy_is_not_app_bound(tmp_path: Path, selector: str) -> None:
+    result = _fleet(
+        tmp_path,
+        {
+            "k8s/infrastructure/namespaces/applications.yaml": (
+                "kind: NetworkPolicy\n"
+                "metadata: {name: default-deny-applications, namespace: applications}\n"
+                f"spec: {{podSelector: {selector}, policyTypes: [Ingress]}}\n"
+            )
+        },
+    )
+
+    [evidence] = result.evidence
+    assert evidence.fact["swappable"] is True
+    assert evidence.fact["platform_objects_with_literal_bindings"] == 0
+
+
+@pytest.mark.parametrize(
     ("path", "manifest"),
     (
         (
