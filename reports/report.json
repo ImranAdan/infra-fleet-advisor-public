@@ -429,9 +429,9 @@
       "evidence_ids": [],
       "priority": "critical",
       "proposition_id": "S-007",
-      "reason": "collector_cannot_prove_satisfaction",
+      "reason": "complete_evidence_supports_intent",
       "statement": "Service-wide IAM action wildcards such as `eks:*` are not acceptable for a\nproduction or persistent environment.\n\nEvidence: [current IAM disposition](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/SECURITY-CONCERNS.md)\n\nCaveat: the persistent policy now enumerates actions and deliberately retains\nthe read-only `ec2:Describe*` prefix. Several IAM write actions still use\n`Resource = \"*\"`; that residual risk and live AWS validation are outside the\nregistered service-action-wildcard check.",
-      "status": "declared_unverified"
+      "status": "satisfied"
     },
     {
       "category": "security",
@@ -490,12 +490,12 @@
       "kubernetes_deployment_collector": "2.0.0",
       "kubernetes_security_collector": "2.0.0",
       "terraform_cost_collector": "1.4.0",
-      "terraform_iam_collector": "1.4.0"
+      "terraform_iam_collector": "1.5.0"
     },
     "intent_digest": "intent-md-v1:9a2cd76925fdc474067a3025da83cbdd44e89d169ba2f95e1d7b35a2e3fd5989",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.1",
-    "run_started_at": "2026-09-30T20:40:29.999146+00:00",
+    "run_started_at": "2026-09-30T20:53:39.294617+00:00",
     "source_commit_sha": "9cffa4da780168a32b00c14556a990643a6624f7",
     "source_label": "infra-fleet-public"
   },
