@@ -266,7 +266,8 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
         ),
         # Every profile is rendered, so a complete render proves S-003, S-004 and
         # S-009 for what Git applies (HelmRelease chart output aside). S-005 stays
-        # divergence-only: Gateway API listeners are not yet evaluated for TLS.
+        # divergence-only: Gateway listeners are checked for HTTPS, but an entry
+        # point a HelmRelease chart serves is not rendered, so no render proves them all.
         CHECK_APPLICATION_INGRESS_RESTRICTED: IntentCheckDefinition(
             concern_key=CONCERN_INGRESS_UNRESTRICTED,
             rule=ConcernRule(
