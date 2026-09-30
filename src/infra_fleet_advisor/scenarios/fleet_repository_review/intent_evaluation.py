@@ -399,10 +399,12 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
                 collector_id=APP_CONTRACT_COLLECTOR_ID,
                 required_facts={"swappable": False},
             ),
-            # Coupling is provable (a known name, or a literal reference on an
-            # app-bound object); its absence is not, since a script could name
-            # an application no contract declares.
-            can_prove_satisfaction=False,
+            # Every shipped application has a contract, so a whole-word search
+            # for each name is complete; app-bound objects and patches must use
+            # ${APP_NAME}. Anything unresolved, or a declared on-demand
+            # launcher whose run-time constraints Git cannot show, makes
+            # coverage partial, so clean complete evidence proves the position.
+            can_prove_satisfaction=True,
             requires_relevant_evidence=True,
         ),
         CHECK_FLEET_AUTONOMOUS_MERGE: IntentCheckDefinition(
