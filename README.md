@@ -98,6 +98,10 @@ profile lifecycle, local first use, AWS onboarding and teardown, and whether the
 platform names no application of its own. Accepted
 risks are checked as guardrails: the check proves the conditions that made the
 risk acceptable still hold.
+For the current optional local multi-application control plane, the Fleet's
+required live acceptance drives launch, Gateway access, stop/pruning and
+peer-pod API isolation; its rendered contract test pins the RBAC resource
+scope. The advisor's repository analysis does not attest those runtime claims.
 Positions without relevant, complete evidence are never assumed satisfied. Repository
 analysis does not establish live infrastructure health.
 
