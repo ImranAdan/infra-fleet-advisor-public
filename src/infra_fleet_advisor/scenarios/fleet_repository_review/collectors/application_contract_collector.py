@@ -106,6 +106,27 @@ def _values_at(value: object, path: tuple[str, ...]) -> list[object]:
     return _values_at(value[head], tuple(tail))
 
 
+def _namespace_wide_policy(document: dict[object, object]) -> bool:
+    """Whether a NetworkPolicy selector names every pod in its namespace."""
+    spec = document.get("spec")
+    if not isinstance(spec, dict):
+        return False
+    selector = spec.get("podSelector")
+    if not isinstance(selector, dict) or not set(selector) <= {
+        "matchLabels",
+        "matchExpressions",
+    }:
+        return False
+    labels = selector.get("matchLabels", {})
+    expressions = selector.get("matchExpressions", [])
+    return (
+        isinstance(labels, dict)
+        and not labels
+        and isinstance(expressions, list)
+        and not expressions
+    )
+
+
 def _literal_bound_object(text: str) -> bool | None:
     """True if an app-bound object has a literal binding."""
     try:
@@ -121,10 +142,8 @@ def _literal_bound_object(text: str) -> bool | None:
         # An empty selector covers every pod in the namespace. Its identity is
         # platform policy, not an application reference, so requiring its name
         # to vary with APP_NAME would create coupling rather than detect it.
-        if document["kind"] == "NetworkPolicy":
-            spec = document.get("spec")
-            if isinstance(spec, dict) and spec.get("podSelector") == {}:
-                continue
+        if document["kind"] == "NetworkPolicy" and _namespace_wide_policy(document):
+            continue
         for path in _APP_BOUND_FIELDS[document["kind"]]:
             values = _values_at(document, path)
             if values and any(
