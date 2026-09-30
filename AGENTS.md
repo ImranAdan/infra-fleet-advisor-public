@@ -40,8 +40,8 @@ agent. Issue creation grants no authority to deploy or close issues.
 
 Under PDR 0007 the fleet may run this repository's `intent-gate` composite
 action, pinned by SHA, on its pull requests. The gate reviews base and merge result
-read-only with the stub synthesizer and fails only on a newly divergent
-position. It must never gain write permissions, publish work, or call a model.
+read-only with the stub synthesizer and fails only when a position becomes
+divergent or loses a decisive result. It must never gain write permissions, publish work, or call a model.
 
 ## Scope and execution discipline
 
