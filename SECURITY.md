@@ -26,12 +26,13 @@ state at a verified Git commit, not a live AWS account or Kubernetes cluster.
 | Report delivery | Advisor-only contents and PR write; proposes a report PR |
 | Approved issue publication | Fleet-only `issues: write`; creates deduplicated issues or resolution notes |
 | Optional decision feedback | Fleet `issues: read`; proposes policy in the advisor |
-| Optional mechanical remediation | Separate fleet contents and PR write credential; proposes a narrow fix PR |
+| Optional mechanical remediation | Read-only Advisor planning plus a Fleet-owned `GITHUB_TOKEN` write job; proposes a narrow opted-in fix PR |
 
 Reviewing does not modify fleet code or runtime infrastructure. Publication
 uses a separate App token scoped to the fixed fleet repository and cannot
-close or reopen issues. No workflow merges a fleet fix or starts a fixing
-agent. See the [publication](docs/fleet-publication.md),
+close or reopen issues. The Advisor never merges a fleet fix or starts a fixing
+agent; Fleet's own autonomous worker may merge an opted-in proposal only after
+its exact-head intent, CI and merge gates pass. See the [publication](docs/fleet-publication.md),
 [feedback](docs/feedback.md) and [remediation](docs/remediation.md) guides for
 their separate configuration.
 

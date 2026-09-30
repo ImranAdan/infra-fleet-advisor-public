@@ -8,9 +8,11 @@ directories, the lifecycle scripts, policies and local platform files.
 
 This collector reads the contracts, searches the tracked platform files for any
 application name as a whole word, and requires the application references on
-platform Canary, HPA, NetworkPolicy, Ingress and HTTPRoute objects to come from
-`${APP_NAME}`. A new literal binding is therefore caught as well as a known
-name. Files are read as text; nothing is executed.
+platform Canary, HPA, application-selecting NetworkPolicy, Ingress and
+HTTPRoute objects to come from `${APP_NAME}`. A namespace-wide NetworkPolicy
+with an empty pod selector is a platform boundary rather than an application
+binding. A new literal binding is therefore caught as well as a known name.
+Files are read as text; nothing is executed.
 
 It can show coupling but cannot prove its absence: a script could name an
 application no contract declares. An unreadable, oversized or excluded contract
@@ -116,6 +118,13 @@ def _literal_bound_object(text: str) -> bool | None:
         metadata = document.get("metadata")
         if not isinstance(metadata, dict) or metadata.get("namespace") != _APP_NAMESPACE:
             continue
+        # An empty selector covers every pod in the namespace. Its identity is
+        # platform policy, not an application reference, so requiring its name
+        # to vary with APP_NAME would create coupling rather than detect it.
+        if document["kind"] == "NetworkPolicy":
+            spec = document.get("spec")
+            if isinstance(spec, dict) and spec.get("podSelector") == {}:
+                continue
         for path in _APP_BOUND_FIELDS[document["kind"]]:
             values = _values_at(document, path)
             if values and any(
