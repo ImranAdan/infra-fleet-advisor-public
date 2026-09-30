@@ -90,18 +90,15 @@ security, reliability, cost, and maintainability. All twenty-two have registered
 workflow credentials (including local composite actions), scan-gated ECR
 publication, Dependabot coverage, literal Terraform IAM policies, Kubernetes
 rollouts, container hardening, ingress restriction, bounded egress, HTTPS on
-public ingress, service-account token privilege, staging-only public EKS
+public Ingress and Gateway listeners, service-account token privilege, staging-only public EKS
 endpoints, the session-cookie CSRF control, scheduled release of idle staging
 capacity, staging log retention, ECR
 image lifecycle, cost-allocation tags, demand-driven worker scaling, the Fleet
-profile lifecycle, local first use, AWS onboarding and teardown, and whether the
-platform names no application of its own. Accepted
+profile lifecycle, local first use, AWS onboarding and teardown, whether the
+platform names no application of its own, and the Fleet's risk-averse
+autonomous merge worker. Accepted
 risks are checked as guardrails: the check proves the conditions that made the
 risk acceptable still hold.
-For the current optional local multi-application control plane, the Fleet's
-required live acceptance drives launch, Gateway access, stop/pruning and
-peer-pod API isolation; its rendered contract test pins the RBAC resource
-scope. The advisor's repository analysis does not attest those runtime claims.
 Positions without relevant, complete evidence are never assumed satisfied. Repository
 analysis does not establish live infrastructure health.
 

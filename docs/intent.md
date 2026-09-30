@@ -43,41 +43,10 @@ way to verify itself. Registered propositions produce exactly one of:
   reviewable advice; or
 - `declared_unverified`: coverage or a trusted check is missing.
 
-The maintainability intent records the Fleet's local and AWS onboarding
-contract. M-001 registers a static check that can prove the common lifecycle
-surface is missing or inconsistent without executing Fleet-provided code. A
-structurally complete surface remains `declared_unverified` because static shell
-inspection cannot prove idempotence or runtime behavior. M-002 registers a
-second static check for the pinned local tool installer, checkout-owned state,
-explicit Kubernetes context and printed next command. Complete controls remain
-`declared_unverified` because source inspection cannot prove downloads or a
-working cluster. M-003 registers `fleet_aws_onboarding`, a divergence-only check
-of the AWS setup and teardown controls; see [scope and coverage](status.md).
-M-004 registers `fleet_application_swappable`, a divergence-only check. It
-reads the Fleet's app contracts, searches every tracked platform file for an
-application name, and requires every Canary, HPA and NetworkPolicy in the
-applications namespace to take its name from `${APP_NAME}`. It diverges when
-the selected contract is missing, fewer than two applications ship contracts,
-or the platform names or literally binds an app. For the current optional
-control-plane implementation, the Fleet's live acceptance drives launch,
-Gateway access, stop/pruning and peer-pod API isolation; its rendered contract
-test pins the RBAC resource scope. This static collector does not prove those
-behaviors. It cannot prove the absence of coupling, because a script could name an
-application no contract declares; an unreadable or excluded contract leaves
-the result unknown unless readable evidence already shows coupling.
-
-The registered `deployment_rollout_capacity` check evaluates tracked `apps/v1`
-Deployments sourced from `k8s/applications/` after every Fleet profile is
-rendered. The collector still inventories Deployments elsewhere in the rendered
-sets, but generated platform controllers do not decide this owner-managed
-application proposition. For each active application Deployment the check
-deterministically resolves integer or percentage rollout fenceposts against the
-declared replica count. Capacity is preserved only when RollingUpdate has an
-effective `maxUnavailable` of zero, a positive effective `maxSurge`, and every
-application container has a readiness probe in every profile. A complete set of
-conforming profile evidence can prove the proposition satisfied; an incomplete
-profile or malformed, duplicate, missing, excluded, or truncated evidence leaves
-it explicitly unverified.
+A **divergence-only** check can find a conflict but never prove the position:
+with complete, clean evidence it reports `declared_unverified` with reason
+`collector_cannot_prove_satisfaction`. [Scope and coverage](status.md) lists
+which checks are divergence-only and what each collector reads.
 
 The catalog digest is part of report provenance and material signatures. Issue
 publication reloads the current catalog, requires the digest to match the merged
@@ -87,9 +56,8 @@ report, and names the source intent document and proposition in each issue.
 
 Unsupported positions remain in the report's intent evaluation and collector
 coverage sections. They do not create issues in either repository. Advisor
-development is selected deliberately rather than generated for every unknown.
-The earlier generated tickets are preserved in the
-[coverage review](COVERAGE-REVIEW.md).
+development is selected deliberately rather than generated for every unknown
+([PDR 0006](decisions/0006-report-approval-and-fleet-work.md)).
 
 The work queue lives in `infra-fleet-public`. Each eligible issue comes from a
 reviewed report PR and includes evidence, impact, a suggested change and the
