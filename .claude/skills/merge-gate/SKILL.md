@@ -35,10 +35,13 @@ merge. Remove the marker to hold the PR open.
 
 - **Checks:** every check run and status on the head commit completed green.
   One still running is not green.
-- **Advisor evidence:** the ratchet check must complete successfully on this
-  head under GitHub Actions, and its Actions run must come from the exact
-  workflow recorded in `decision-policy.toml`. A missing, skipped or same-name
-  check from another workflow does not count.
+- **Advisor evidence:** one configured `Advisor Gates` check must complete
+  successfully on this head under GitHub Actions. That job contains the drills,
+  ratchet, workflow lint and security scan, and its Actions run must come from
+  the exact workflow recorded in `decision-policy.toml`. The standard and
+  exact-head dispatched report variants are accepted only with their configured
+  event and branch provenance; a missing, skipped or same-name check from
+  another workflow does not count.
 - **Dependency evidence:** remote actions need a full commit SHA, container
   bases need a fixed tag or digest, requirements need exact pins, and changed
   manifests need their sibling lockfiles.

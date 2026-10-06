@@ -95,8 +95,9 @@ remain with the repository owner.
 
 The pull request template opts same-repository branches into the autonomous
 worker. Keep the marker to merge when the gate reaches `READY`; remove it to
-hold the PR. Generated report PRs opt in and are retried after Quality and
-hourly.
+hold the PR. Generated report PRs opt in. Quality, external review completion
+and the report workflow wake the worker; a six-hour schedule recovers missed
+events.
 
 This default path needs no model or API key. The Anthropic transport remains
 available only if a future policy category explicitly uses the `judge` decider.

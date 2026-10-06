@@ -12,20 +12,8 @@ from typing import Any
 REPORT_BRANCH = "advisory/latest"
 REPORT_AUTHOR = "github-actions[bot]"
 REPORT_FILES = {"reports/report.json", "reports/report.md"}
-EVIDENCE_JOBS = {
-    "Conventional commits",
-    "Lint, types, and unit tests",
-    "Check drills",
-    "Ratchet guard (dispatched)",
-    "Workflow lint",
-    "Trivy security scan",
-}
-REQUIRED_CONTEXTS = {
-    "Conventional commits",
-    "Lint, types, and unit tests",
-    "Workflow lint",
-    "Trivy security scan",
-}
+EVIDENCE_JOBS = {"Advisor Quality (dispatched)", "Advisor Gates (dispatched)"}
+REQUIRED_CONTEXTS = {"Advisor Quality", "Advisor Gates"}
 API_TIMEOUT_SECONDS = 30
 
 

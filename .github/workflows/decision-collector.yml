@@ -7,9 +7,10 @@ name: Decision collector
 on:
   issue_comment:
     types: [created, edited]
-  # A backstop for missed events and label changes.
+  # A low-frequency backstop for missed events and label changes. Owner
+  # comments are handled immediately by issue_comment.
   schedule:
-    - cron: '17 * * * *'
+    - cron: '37 3 * * *'
   workflow_dispatch:
 
 permissions:

@@ -64,8 +64,13 @@ def post_merge_command(pr: dict[str, Any], repository: str) -> list[str] | None:
     ]
 
 
-def ordered_candidates(candidates: list[dict[str, Any]], now: datetime) -> list[dict[str, Any]]:
-    """Return a bounded hourly window so a slow prefix cannot starve later PRs."""
+def ordered_candidates(
+    candidates: list[dict[str, Any]],
+    now: datetime,
+    priority_number: str = "",
+    priority_sha: str = "",
+) -> list[dict[str, Any]]:
+    """Return a bounded fair window, putting the event's PR first when known."""
     ordered = sorted(candidates, key=lambda item: int(item["number"]))
     if not ordered:
         return []
@@ -73,7 +78,18 @@ def ordered_candidates(candidates: list[dict[str, Any]], now: datetime) -> list[
     hour = int(now.timestamp() // 3600)
     start = (hour * window) % len(ordered)
     rotated = ordered[start:] + ordered[:start]
-    return rotated[:window]
+    priority = next(
+        (
+            item
+            for item in ordered
+            if (priority_number and str(item["number"]) == priority_number)
+            or (priority_sha and item.get("headRefOid") == priority_sha)
+        ),
+        None,
+    )
+    if priority is None:
+        return rotated[:window]
+    return [priority, *(item for item in rotated if item is not priority)][:window]
 
 
 def shared_timeout(remaining_seconds: float, remaining_operations: int, maximum: int) -> int:
@@ -95,6 +111,7 @@ def _self_test() -> int:
         "isDraft": False,
         "headRepositoryOwner": {"login": "owner"},
         "headRepository": {"name": "repo"},
+        "headRefOid": "a" * 40,
     }
     assert eligible(candidate, "owner/repo", now, 900)
     assert not eligible({**candidate, "isDraft": True}, "owner/repo", now, 900)
@@ -124,6 +141,11 @@ def _self_test() -> int:
     assert len(first_window) == MAX_CANDIDATES_PER_RUN
     assert {item["number"] for item in first_window} != {item["number"] for item in next_window}
     assert {item["number"] for item in first_window + next_window} == set(range(1, 26))
+    priority_window = ordered_candidates(candidates, now, "25", "")
+    assert priority_window[0]["number"] == 25
+    assert len(priority_window) == MAX_CANDIDATES_PER_RUN
+    sha_window = ordered_candidates(candidates, now, "", "a" * 40)
+    assert sha_window[0]["number"] == 1
     assert shared_timeout(480, 4, GATE_TIMEOUT_SECONDS) == 112
     assert shared_timeout(480, 1, GATE_TIMEOUT_SECONDS) == GATE_TIMEOUT_SECONDS
     assert shared_timeout(SHUTDOWN_RESERVE_SECONDS, 1, GATE_TIMEOUT_SECONDS) == 0
@@ -137,6 +159,7 @@ def _self_test() -> int:
                     "draft": False,
                     "head": {
                         "ref": "feature",
+                        "sha": "a" * 40,
                         "repo": {"name": "repo", "owner": {"login": "owner"}},
                     },
                 }
@@ -194,6 +217,7 @@ def _parse_pull_request_pages(raw: str) -> list[dict[str, Any]]:
                     "createdAt": item.get("created_at"),
                     "isDraft": item.get("draft", False),
                     "headRefName": head.get("ref"),
+                    "headRefOid": head.get("sha"),
                     "headRepository": {"name": repository.get("name")},
                     "headRepositoryOwner": {"login": owner.get("login")},
                 }
@@ -237,7 +261,12 @@ def main() -> int:
     eligible_candidates = [
         pr for pr in open_pull_requests if eligible(pr, repository, now, minimum_age)
     ]
-    candidates = ordered_candidates(eligible_candidates, now)
+    candidates = ordered_candidates(
+        eligible_candidates,
+        now,
+        os.environ.get("AUTONOMOUS_MERGE_PRIORITY_PR", ""),
+        os.environ.get("AUTONOMOUS_MERGE_PRIORITY_SHA", ""),
+    )
     deadline = time.monotonic() + WORKER_BUDGET_SECONDS
     unexpected = False
     if not candidates:
