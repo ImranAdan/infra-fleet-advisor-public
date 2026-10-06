@@ -27,19 +27,20 @@ is required. Bot-authored report-only changes are excluded from the ordinary
 and block branch protection. The advisory workflow explicitly dispatches
 `Quality` on `advisory/latest` and passes the PR number. The read-only Quality
 workflow resolves the base, title and exact head from GitHub, then runs the same
-commit, test, drill, ratchet, workflow and security jobs as an ordinary PR.
+commit, test, drill, ratchet, workflow and security steps as an ordinary PR.
 
 GitHub does not attach a `workflow_dispatch` check suite to a pull request for
 branch protection. After the dispatch passes, trusted default-branch code
 therefore revalidates the bot author, exact head, report-only file set, workflow
-identity and all six job results. It publishes the four required contexts as
-GitHub Actions commit statuses whose audit links point to that Quality run.
-The merge gate still reads the underlying dispatched jobs and accepts ratchet
-evidence only from `advisory/latest`.
+identity and the single complete Quality job. It publishes the `Advisor Quality`
+required context as a GitHub Actions commit status whose audit link points to
+that Quality run. The merge gate still reads the underlying dispatched job and
+accepts its combined ratchet evidence only from `advisory/latest`.
 
 The report workflow waits for the PR merge state to observe those statuses
-before dispatching the autonomous merge worker. The hourly worker schedule
-remains a recovery path. Do not remove required checks to make a report
+before dispatching the autonomous merge worker. Quality completion, external
+review completion and that explicit dispatch are the normal wakeups; the
+six-hour worker schedule remains a recovery path. Do not remove required checks to make a report
 mergeable. The daily publication recovery scans a bounded report history and
 selects the latest merge time, so later activity on an older PR cannot hide the
 current decision record.

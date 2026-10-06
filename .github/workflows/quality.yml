@@ -1,14 +1,10 @@
 name: Quality
 
-# The gate the advisory workflow does not provide: nothing verified this
-# repository's own tests, types, or dependencies before merge.
 on:
   pull_request:
     branches: [main]
-    # Report PRs are authored by github-actions[bot]. GitHub creates an
-    # action-required check suite for their pull_request event, which blocks
-    # branch protection even when the trusted exact-head dispatch succeeds.
-    # fleet-advisory.yml owns validation and wake-up for this report-only path.
+    # The advisory workflow dispatches trusted exact-head validation for its
+    # token-authored report PRs, which do not emit an ordinary PR workflow.
     paths-ignore:
       - reports/**
   push:
@@ -20,7 +16,6 @@ on:
         required: false
         type: string
 
-# Read-only. This workflow inspects; it never writes to the repository.
 permissions:
   contents: read
 
@@ -29,14 +24,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  conventional-commits:
-    name: Conventional commits
-    if: github.event_name == 'pull_request' || inputs.pr_number != ''
+  quality:
+    name: ${{ inputs.pr_number != '' && 'Advisor Quality (dispatched)' || 'Advisor Quality' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
-      # Actions are pinned to commit SHAs, not tags: a tag can be moved to
-      # point at different code after review.
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -54,6 +46,7 @@ jobs:
           enable-cache: true
 
       - name: Resolve pull request metadata
+        if: github.event_name == 'pull_request' || inputs.pr_number != ''
         id: pr
         env:
           GH_TOKEN: ${{ github.token }}
@@ -69,57 +62,19 @@ jobs:
       - name: Install locked dependencies
         run: make setup
 
-      - name: Validate pull request title
+      - name: Validate pull request title and commits
+        if: github.event_name == 'pull_request' || inputs.pr_number != ''
         env:
           PR_TITLE: ${{ steps.pr.outputs.title }}
-        run: |
-          printf '%s\n' "${PR_TITLE}" > "${RUNNER_TEMP}/pr-title.txt"
-          uv run --frozen gitlint --msg-filename "${RUNNER_TEMP}/pr-title.txt"
-
-      - name: Validate commit messages
-        env:
           BASE_SHA: ${{ steps.pr.outputs.base }}
           HEAD_SHA: ${{ steps.pr.outputs.head }}
-        run: uv run --frozen gitlint --commits "${BASE_SHA}..${HEAD_SHA}"
+        run: |
+          printf '%s\n' "$PR_TITLE" > "$RUNNER_TEMP/pr-title.txt"
+          uv run --frozen gitlint --msg-filename "$RUNNER_TEMP/pr-title.txt"
+          uv run --frozen gitlint --commits "${BASE_SHA}..${HEAD_SHA}"
 
-  code-quality:
-    name: Lint, types, and unit tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
-        with:
-          python-version: "3.11"
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          enable-cache: true
-
-      - name: Install locked dependencies
-        run: make setup
-
-      - name: Run quality suite
+      - name: Run lint, types and unit tests
         run: make check
-
-  check-drills:
-    name: Check drills
-    # A collector change can blind a check while every unit test still passes.
-    # Apply each drill to the public fleet so that shows up on the pull request,
-    # not in the next nightly run. Read-only: the fleet is cloned, never written.
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
 
       - name: Check out the fleet
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -128,106 +83,24 @@ jobs:
           path: target
           persist-credentials: false
 
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
-        with:
-          python-version: "3.11"
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          enable-cache: true
-
-      - name: Install locked dependencies
-        run: make setup
-
-      - name: Run the check drills
+      - name: Run check drills
         run: |
           uv run --frozen infra-fleet-advisor drill \
             --checkout target --drills drills/fleet-mutations.yaml \
             --policy policy.yaml --intent-dir intent \
             --output-dir "$RUNNER_TEMP/drills" --summary "$GITHUB_STEP_SUMMARY"
 
-  ratchet-guard:
-    name: ${{ inputs.pr_number != '' && 'Ratchet guard (dispatched)' || 'Ratchet guard' }}
-    # Review the same fleet commit with the base advisor and with this change.
-    # The fleet is held constant, so lost proof, lost checks or vanished
-    # findings are this change's doing. Read-only: the fleet is cloned, never written.
-    if: github.event_name == 'pull_request' || inputs.pr_number != ''
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Check out the fleet
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          repository: ImranAdan/infra-fleet-public
-          path: target
-          persist-credentials: false
-
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
-        with:
-          python-version: "3.11"
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          enable-cache: true
-
-      - name: Install locked dependencies
-        run: make setup
-
-      - name: Resolve pull request base
-        id: pr
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
-        run: |
-          base="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.base.sha')"
-          echo "base=$base" >> "$GITHUB_OUTPUT"
-
       - name: Compare the base advisor with this change
+        if: github.event_name == 'pull_request' || inputs.pr_number != ''
         env:
           BASE_SHA: ${{ steps.pr.outputs.base }}
         run: scripts/ratchet-guard.sh target "$BASE_SHA" "$RUNNER_TEMP/ratchet"
 
-  workflows:
-    name: Workflow lint
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-
-      # The advisory workflow's change-detection and push logic lives in shell
-      # inside YAML, where a mistake fails only at dispatch time. actionlint
-      # runs shellcheck over those blocks.
+      # The advisory workflow contains substantial shell. actionlint runs
+      # shellcheck over those blocks as well as validating Actions syntax.
       - name: Lint workflows
         run: docker run --rm -v "${PWD}:/repo" -w /repo rhysd/actionlint:1.7.7
 
-  security:
-    name: Trivy security scan
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-
-      # ignore-unfixed is deliberately false. This advisor reports
-      # `trivy_ignore_unfixed` as a medium-severity finding against the fleet;
-      # suppressing the same class of result here would mean shipping a tool
-      # that does not take its own advice. The trade-off is the one the report
-      # itself names: a vulnerability with no vendor fix can block this build.
       - name: Scan source and dependencies
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -236,12 +109,9 @@ jobs:
           scanners: vuln,secret,misconfig
           severity: CRITICAL,HIGH
           ignore-unfixed: false
-          # tests/fixtures/terraform holds intentionally insecure Terraform —
-          # wildcard IAM policies and an unencrypted bucket — because that is
-          # what the collectors are tested against. Scanning it reports the
-          # fixtures as real findings. Only the fixtures are skipped; test code
-          # is still scanned.
-          skip-dirs: tests/fixtures
+          # Fixtures are intentionally insecure, and target is the separately
+          # reviewed Fleet checkout used only by drills and the ratchet.
+          skip-dirs: tests/fixtures,target
           exit-code: "1"
           format: table
           timeout: 10m0s

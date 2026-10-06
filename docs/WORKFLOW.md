@@ -47,7 +47,8 @@ Every generated report contains `<!-- autonomous-merge -->`. After Quality and
 the ratchet pass, the trusted default-branch worker runs the merge gate against
 the exact head. `READY` merges and authorizes eligible issue creation. Remove
 the marker to hold the report, or close it to decline that material signature.
-The hourly run retries transient ordering between checks.
+Quality and the report workflow wake the worker directly; a six-hour run
+recovers missed events or transient ordering between checks.
 
 The report workflow uses `GITHUB_TOKEN` and explicitly dispatches read-only
 Quality on the report branch because token-created PRs do not emit ordinary

@@ -1,14 +1,18 @@
 name: Autonomous merge
 
-# Trusted default-branch code periodically evaluates opted-in, same-repository
+# Trusted default-branch code evaluates opted-in, same-repository
 # pull requests. The merge gate remains the only authority and binds a merge to
 # the exact head it evaluated. PARK, JUDGE and BLOCKED remain open.
 on:
   workflow_run:
     workflows: [Quality]
     types: [completed]
+  status:
+  pull_request_review:
+    types: [submitted]
   schedule:
-    - cron: "7 * * * *"
+    # Recovery only; Quality and external review normally wake the worker.
+    - cron: "7 */6 * * *"
   workflow_dispatch:
 
 permissions:
@@ -25,6 +29,10 @@ concurrency:
 
 jobs:
   merge:
+    # Quality publishes four bridge statuses for generated reports. Its
+    # workflow_run event already wakes this worker, so only the external status
+    # that can finish later needs another runner.
+    if: github.event_name != 'status' || github.event.context == 'CodeRabbit'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

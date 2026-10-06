@@ -12,7 +12,7 @@ them. The Quality workflow runs this on every advisor pull request.
 
 ## How to get to it (user POV)
 
-- The **Ratchet guard** job in the Quality workflow.
+- The **Compare the base advisor with this change** step in the Advisor Quality job.
 - `scripts/ratchet-guard.sh FLEET BASE_ADVISOR_SHA OUT` locally.
 
 ## Driving it with the CLI

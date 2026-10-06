@@ -258,18 +258,20 @@ owner, does not approve a merge.
 
 The default path is key-free. Reversible categories marked `evidence` in the
 decision policy can reach `READY` only after every head check passes and the
-successful `Ratchet guard` check is traced to the expected GitHub Actions
-workflow on that exact head. Added authority, credentials, IAM, permanent
+successful `Advisor Quality` check, including the ratchet, is traced to the
+expected GitHub Actions workflow on that exact head. Added authority, credentials, IAM, permanent
 infrastructure, migrations, declared intent and the merge system remain owner
 decisions. The optional Anthropic path is dormant unless a future policy
 category explicitly names `judge` as its decider. The ratchet and declared
 intent remain the first authority.
 
-The autonomous worker runs after Quality completes and once an hour as a retry.
-It considers only non-draft PRs whose head branch belongs to this repository
-and whose body contains the opt-in marker. `READY` merges; `PARK`, `JUDGE`,
-failed evidence and unresolved review stay open. Report PRs opt in by default;
-their merge is the machine-validated decision record for issue publication.
+The autonomous worker runs after Quality, when an external status or review
+completes, and on explicit report-workflow dispatch. A six-hour schedule is a
+recovery backstop. It considers only non-draft PRs whose head branch belongs to
+this repository and whose body contains the opt-in marker. `READY` merges;
+`PARK`, `JUDGE`, failed evidence and unresolved review stay open. Report PRs opt
+in by default; their merge is the machine-validated decision record for issue
+publication.
 
 When a verification lesson recurs, encode it as a check (a test, a drill, a
 doctor line) rather than another paragraph here.

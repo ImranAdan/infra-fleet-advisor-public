@@ -36,6 +36,23 @@ def test_report_only_prs_relay_dispatched_quality_into_required_statuses() -> No
     assert advisory["permissions"]["statuses"] == "write"
 
 
+def test_quality_is_one_complete_check() -> None:
+    """Consolidation must retain every evidence phase in the required job."""
+    workflow = yaml.safe_load(QUALITY_WORKFLOW.read_text(encoding="utf-8"))
+    assert set(workflow["jobs"]) == {"quality"}
+    job = workflow["jobs"]["quality"]
+    assert "Advisor Quality (dispatched)" in job["name"]
+    names = {step.get("name") for step in job["steps"]}
+    assert {
+        "Validate pull request title and commits",
+        "Run lint, types and unit tests",
+        "Run check drills",
+        "Compare the base advisor with this change",
+        "Lint workflows",
+        "Scan source and dependencies",
+    } <= names
+
+
 def test_report_delivery_waits_for_quality_then_wakes_autonomous_merge() -> None:
     [step] = [s for s in _advise_steps() if s.get("name") == PR_STEPS[-1]]
     script = step["run"]
