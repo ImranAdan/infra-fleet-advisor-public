@@ -11,6 +11,7 @@ Exit codes:
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -511,6 +512,16 @@ def latest_check_runs(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list(newest.values())
 
 
+def is_current_autonomous_worker(run: dict[str, Any], run_id: str) -> bool:
+    """Exclude only the trusted worker check that is presently running this gate."""
+    return bool(
+        run_id.isdigit()
+        and str(run.get("run_id", "")) == run_id
+        and run.get("workflow_path") == ".github/workflows/autonomous-merge.yml"
+        and run.get("status") != "completed"
+    )
+
+
 def _actions_run_id(repo: str, details_url: object) -> str | None:
     """Extract a run id only from this repository's GitHub Actions job URL."""
     if not isinstance(details_url, str):
@@ -722,7 +733,11 @@ def main(argv: list[str]) -> int:
             }
         run["run_id"] = run_id
         run["workflow_path"] = workflow_runs[run_id]["path"].split("@", 1)[0]
-    runs = latest_check_runs(raw_runs)
+    current_worker = os.environ.get("AUTONOMOUS_MERGE_RUN_ID", "")
+    runs = []
+    for run in latest_check_runs(raw_runs):
+        if not is_current_autonomous_worker(run, current_worker):
+            runs.append(run)
     latest: dict[str, str] = {}
     for status in gh_json_lines(
         "api",
@@ -1086,6 +1101,15 @@ def self_test() -> int:
         (3, "other-check-app"),
         (4, "github-actions"),
     ]
+    worker_run = {
+        **required_run,
+        "status": "in_progress",
+        "run_id": "99",
+        "workflow_path": ".github/workflows/autonomous-merge.yml",
+    }
+    assert is_current_autonomous_worker(worker_run, "99")
+    assert not is_current_autonomous_worker(worker_run, "98")
+    assert not is_current_autonomous_worker({**worker_run, "status": "completed"}, "99")
     assert required_check_failures([required_run], required, workflow_runs, sha) == []
     assert required_check_failures([], required, {}, sha) == [
         "required evidence check did not run: Advisor Gates or Advisor Gates (dispatched)"
