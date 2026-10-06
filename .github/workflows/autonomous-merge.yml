@@ -29,7 +29,7 @@ concurrency:
 
 jobs:
   merge:
-    # Quality publishes four bridge statuses for generated reports. Its
+    # Quality publishes a bridge status for generated reports. Its
     # workflow_run event already wakes this worker, so only the external status
     # that can finish later needs another runner.
     if: github.event_name != 'status' || github.event.context == 'CodeRabbit'
@@ -51,6 +51,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           AUTONOMOUS_MERGE_MIN_AGE_SECONDS: "0"
+          AUTONOMOUS_MERGE_PRIORITY_PR: ${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || '' }}
+          AUTONOMOUS_MERGE_PRIORITY_SHA: ${{ github.event_name == 'status' && github.event.sha || '' }}
           AUTONOMOUS_MERGE_POST_MERGE_WORKFLOW: fleet-issues.yml
           AUTONOMOUS_MERGE_POST_MERGE_HEAD: advisory/latest
         run: python3 .github/scripts/autonomous_merge.py
