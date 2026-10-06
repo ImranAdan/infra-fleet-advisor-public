@@ -258,7 +258,7 @@ owner, does not approve a merge.
 
 The default path is key-free. Reversible categories marked `evidence` in the
 decision policy can reach `READY` only after every head check passes and the
-successful `Advisor Quality` check, including the ratchet, is traced to the
+successful `Advisor Gates` check, including the ratchet, is traced to the
 expected GitHub Actions workflow on that exact head. Added authority, credentials, IAM, permanent
 infrastructure, migrations, declared intent and the merge system remain owner
 decisions. The optional Anthropic path is dormant unless a future policy

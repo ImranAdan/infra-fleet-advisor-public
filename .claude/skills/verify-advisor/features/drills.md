@@ -16,7 +16,7 @@ that stops seeing the fleet goes red instead of inflating coverage.
 
 ## How to get to it (user POV)
 
-- The **Run check drills** step in the Advisor Quality job and the nightly report.
+- The **Run check drills** step in the Advisor Gates job and the nightly report.
 - `uv run --frozen infra-fleet-advisor drill …` locally.
 
 ## Driving it with the CLI

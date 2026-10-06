@@ -27,7 +27,7 @@ jobs:
   quality:
     name: ${{ inputs.pr_number != '' && 'Advisor Quality (dispatched)' || 'Advisor Quality' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -76,12 +76,48 @@ jobs:
       - name: Run lint, types and unit tests
         run: make check
 
+  gates:
+    name: ${{ inputs.pr_number != '' && 'Advisor Gates (dispatched)' || 'Advisor Gates' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # This job has its own runner and checkout. PR-controlled tests in the
+      # Quality job cannot mutate the source used by these merge gates.
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
       - name: Check out the fleet
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: ImranAdan/infra-fleet-public
           path: target
           persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Install locked dependencies
+        run: make setup
+
+      - name: Resolve pull request base
+        if: github.event_name == 'pull_request' || inputs.pr_number != ''
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+        run: |
+          base="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.base.sha')"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
 
       - name: Run check drills
         run: |

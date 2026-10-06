@@ -32,10 +32,11 @@ commit, test, drill, ratchet, workflow and security steps as an ordinary PR.
 GitHub does not attach a `workflow_dispatch` check suite to a pull request for
 branch protection. After the dispatch passes, trusted default-branch code
 therefore revalidates the bot author, exact head, report-only file set, workflow
-identity and the single complete Quality job. It publishes the `Advisor Quality`
-required context as a GitHub Actions commit status whose audit link points to
-that Quality run. The merge gate still reads the underlying dispatched job and
-accepts its combined ratchet evidence only from `advisory/latest`.
+identity and both complete jobs. It publishes the `Advisor Quality` and
+`Advisor Gates` required contexts as GitHub Actions commit statuses whose audit
+links point to that Quality run. The merge gate still reads the underlying
+dispatched gate job and accepts its ratchet evidence only from
+`advisory/latest`.
 
 The report workflow waits for the PR merge state to observe those statuses
 before dispatching the autonomous merge worker. Quality completion, external

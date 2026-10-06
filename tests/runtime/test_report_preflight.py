@@ -36,21 +36,25 @@ def test_report_only_prs_relay_dispatched_quality_into_required_statuses() -> No
     assert advisory["permissions"]["statuses"] == "write"
 
 
-def test_quality_is_one_complete_check() -> None:
-    """Consolidation must retain every evidence phase in the required job."""
+def test_quality_is_two_isolated_complete_checks() -> None:
+    """Tests and merge gates must stay complete and on separate runners."""
     workflow = yaml.safe_load(QUALITY_WORKFLOW.read_text(encoding="utf-8"))
-    assert set(workflow["jobs"]) == {"quality"}
-    job = workflow["jobs"]["quality"]
-    assert "Advisor Quality (dispatched)" in job["name"]
-    names = {step.get("name") for step in job["steps"]}
-    assert {
-        "Validate pull request title and commits",
-        "Run lint, types and unit tests",
+    assert set(workflow["jobs"]) == {"quality", "gates"}
+    quality = workflow["jobs"]["quality"]
+    gates = workflow["jobs"]["gates"]
+    assert "Advisor Quality (dispatched)" in quality["name"]
+    assert "Advisor Gates (dispatched)" in gates["name"]
+    quality_names = {step.get("name") for step in quality["steps"]}
+    gate_names = {step.get("name") for step in gates["steps"]}
+    assert "Run lint, types and unit tests" in quality_names
+    gated_phases = {
         "Run check drills",
         "Compare the base advisor with this change",
         "Lint workflows",
         "Scan source and dependencies",
-    } <= names
+    }
+    assert gated_phases <= gate_names
+    assert gated_phases.isdisjoint(quality_names)
 
 
 def test_report_delivery_waits_for_quality_then_wakes_autonomous_merge() -> None:

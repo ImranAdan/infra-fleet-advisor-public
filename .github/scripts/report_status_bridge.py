@@ -12,8 +12,8 @@ from typing import Any
 REPORT_BRANCH = "advisory/latest"
 REPORT_AUTHOR = "github-actions[bot]"
 REPORT_FILES = {"reports/report.json", "reports/report.md"}
-EVIDENCE_JOBS = {"Advisor Quality (dispatched)"}
-REQUIRED_CONTEXTS = {"Advisor Quality"}
+EVIDENCE_JOBS = {"Advisor Quality (dispatched)", "Advisor Gates (dispatched)"}
+REQUIRED_CONTEXTS = {"Advisor Quality", "Advisor Gates"}
 API_TIMEOUT_SECONDS = 30
 
 
