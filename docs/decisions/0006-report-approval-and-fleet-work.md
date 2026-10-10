@@ -52,10 +52,13 @@ backlog instead of delivering this workflow. It is not the requested product.
    feedback uses its separate `FLEET_FEEDBACK_ENABLED=true` setting; enabling
    issue publication does not start feedback or an implementation agent.
 
-The merge trigger uses `pull_request_target: closed` with a merged condition,
-following GitHub's [merge event guidance](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#running-your-pull_request_target-workflow-when-a-pull-request-merges).
-Only default-branch code is checked out; no PR-head code is executed. PR prose
-is inert, and the fleet App token remains limited to issue writes.
+The merge trigger is a `push` of `reports/report.json` to `main`; the job then
+finds the latest merged report PR, as its schedule does, and the autonomous
+worker also dispatches it after merging a report. (It used
+`pull_request_target: closed` until 2026-10-10, before GitHub's 2026-11-02
+default block on public repositories.) Only default-branch code is checked out;
+no PR-head code is executed. PR prose is inert, and the fleet App token remains
+limited to issue writes.
 
 ## Consequences
 

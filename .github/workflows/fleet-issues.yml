@@ -3,8 +3,11 @@ name: Publish fleet advisory issues
 # The merged report PR is the decision record. Only trusted default-branch
 # code runs; PR text and report contents are bounded, revalidated data.
 on:
-  pull_request_target:
-    types: [closed]
+  # A merged report lands on main. push runs default-branch code with no
+  # pull-request context; the job then finds the latest merged report PR, as
+  # its schedule does. pull_request_target was dropped before GitHub's
+  # 2026-11-02 default block on public repositories.
+  push:
     branches: [main]
     paths: [reports/report.json]
   workflow_dispatch:
@@ -32,7 +35,7 @@ jobs:
     if: >-
       vars.FLEET_ISSUES_ENABLED == 'true' &&
       (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' ||
-      github.event.pull_request.merged == true)
+      github.event_name == 'push')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -60,7 +63,7 @@ jobs:
         id: approval
         env:
           GH_TOKEN: ${{ github.token }}
-          REPORT_PR: ${{ github.event.pull_request.number || inputs.report_pr }}
+          REPORT_PR: ${{ inputs.report_pr }}
         run: |
           if [ -z "$REPORT_PR" ]; then
             REPORT_PR="$(

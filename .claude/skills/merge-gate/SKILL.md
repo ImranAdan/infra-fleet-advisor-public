@@ -74,13 +74,15 @@ Encode a recurring judgment as a new rule in `merge_ready.py` with a case in
 its self-test (`python3 .claude/skills/merge-gate/merge_ready.py --self-test`), not as more prose here.
 
 An agent never adds `owner-approved` and never posts or imitates a
-`github-actions[bot]` judge comment. When the repository owner adds the label,
-the workflow records a trusted approval for that exact head SHA; the gate
-requires that record, the label, and a latest label event from the repository
-owner. Evidence-decided categories need no comment or model: all checks must be
+`github-actions[bot]` judge comment. The gate accepts the label only when its
+newest event is the repository owner adding it after every check run on the
+current head had started, so the approval binds to the reviewed head without a
+privileged workflow. Evidence-decided categories need no comment or model: all checks must be
 green and the required advisor check must have trusted exact-head provenance.
 Workflow-dispatch evidence is also bound to its registered generated head
 branch; a successful run from an ordinary feature branch is not evidence.
-The optional Anthropic path runs only if a future policy category explicitly
-uses the `judge` decider. Declared intent and the ratchet remain the first
+The optional Anthropic judge (`judge.py`) has no trigger: its
+`pull_request_target` workflow was removed before GitHub's 2026-11-02 default
+block. A future policy category that names the `judge` decider must first give
+it a `workflow_run` trigger that runs default-branch code. Declared intent and the ratchet remain the first
 authority, so neither evidence nor a judge approval can override them.
