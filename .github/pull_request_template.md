@@ -5,8 +5,6 @@
 
 ## What changed and why
 
-
-
 ## Verification
 
 <!-- The commands you ran and what they showed: exit codes, counts, the
@@ -14,6 +12,12 @@
      (.claude/skills/merge-gate) will not pass a pull request without this. -->
 
 - `command` → result
+
+## Scope
+
+<!-- Anything a human must decide: permissions, credentials, dependencies,
+     intent, policy, decision records, product requirements or permanent
+     infrastructure. Write "none" if there is nothing. -->
 
 ## Sources
 
@@ -23,9 +27,3 @@
      repository evidence. -->
 
 - none
-
-## Scope
-
-<!-- Anything a human must decide: permissions, credentials, dependencies,
-     intent, policy, decision records, product requirements or permanent
-     infrastructure. Write "none" if there is nothing. -->
