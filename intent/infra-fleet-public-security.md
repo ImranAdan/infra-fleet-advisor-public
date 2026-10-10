@@ -159,8 +159,9 @@ operational decision.
 
 Evidence: [Dependabot operating model](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/DEPENDABOT.md)
 
-Caveat: repository-level alert and security-update settings cannot be declared
-by the template, and this proposition defines no remediation SLA.
+Caveat: this check reads the committed Dependabot configuration only; the
+repository-level alert and security-update settings it relies on are checked
+separately by S-012. This proposition defines no remediation SLA.
 
 ### Evaluation
 
@@ -184,3 +185,22 @@ does not imply a deployment-time gate exists.
 
 - Check: `ecr_publication_scan_gated`
 - Priority: `high`
+
+## S-012 · Security alerts enabled
+
+### Intent
+
+Dependabot alerts and Dependabot security updates are enabled on the fleet
+repository, so a vulnerable pinned dependency raises an alert and a fix pull
+request without waiting for the monthly schedule.
+
+Evidence: [Repository settings snapshot (PDR 0009)](https://github.com/ImranAdan/infra-fleet-advisor-public/blob/main/docs/decisions/0009-repository-settings-evidence.md)
+
+Caveat: the settings are read from the GitHub API just before each nightly
+review. Without a settings token, or for a pre-merge intent gate run, the
+position stays unverified rather than satisfied.
+
+### Evaluation
+
+- Check: `repository_security_updates_enabled`
+- Priority: `medium`

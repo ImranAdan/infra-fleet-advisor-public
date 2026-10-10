@@ -188,26 +188,27 @@ def test_rejects_symlinked_intent_documents(tmp_path: Path) -> None:
 def test_production_markdown_is_the_authoritative_catalog() -> None:
     catalog = load_intent_catalog(PRODUCTION_INTENTS, TAXONOMY)
 
-    assert len(catalog.propositions) == 22
+    assert len(catalog.propositions) == 23
     assert {item.check_key for item in catalog.propositions if item.check_key is not None} == {
         "application_containers_hardened",
         "application_ingress_restricted",
         "aws_cost_allocation_tags",
         "dependency_updates_configured",
-        "fleet_application_swappable",
-        "fleet_autonomous_merge",
         "deployment_rollout_capacity",
         "ecr_lifecycle_bounded",
         "ecr_publication_scan_gated",
         "eks_public_endpoint_staging_only",
+        "fleet_application_swappable",
+        "fleet_autonomous_merge",
         "fleet_aws_onboarding",
         "fleet_local_first_use",
         "fleet_profiles_expose_lifecycle",
+        "github_actions_uses_oidc",
         "mounted_token_unprivileged",
         "permissive_egress_bounded",
-        "github_actions_uses_oidc",
         "persistent_iam_avoids_wildcards",
         "public_ingress_https",
+        "repository_security_updates_enabled",
         "session_cookie_csrf_compensated",
         "staging_capacity_released_on_schedule",
         "staging_log_retention_bounded",

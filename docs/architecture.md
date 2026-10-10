@@ -107,6 +107,14 @@ Collectors are explicitly registered in code. They have read-only access to the
 verified snapshot and return closed evidence types. Configuration cannot supply
 commands or import paths.
 
+One collector reads something other than the checkout. Under PDR 0009,
+`repository_settings_collector` reads a closed-schema settings snapshot that
+`settings-snapshot` fetched from the GitHub API before the review. It runs
+only when `review --repository-settings` is given. A snapshot with an unknown
+value, or one that is malformed or names another repository, leaves its
+coverage partial. Its one evidence record anchors on `.github/dependabot.yml`
+and is keyed by repository.
+
 Collectors also declare the identity components used to derive each evidence
 ID. Terraform IAM evidence uses its root-module directory and stable resource
 address without the `.tf` filename, so moving a resource between files in the

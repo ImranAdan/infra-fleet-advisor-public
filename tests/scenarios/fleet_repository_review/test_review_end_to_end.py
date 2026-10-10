@@ -111,7 +111,10 @@ def test_authoritative_markdown_drives_the_production_review(git_checkout) -> No
     )
 
     evaluations = {item.proposition_id: item for item in report.intent_evaluations}
-    assert len(evaluations) == 22
+    assert len(evaluations) == 23
+    # No settings snapshot was given, so S-012 is unknown, never satisfied.
+    assert evaluations["S-012"].status == "declared_unverified"
+    assert evaluations["S-012"].reason == "collector_not_run"
     # The complete workflow scan proves that this fixture has no autonomous worker.
     assert evaluations["M-005"].status == "divergent"
     assert evaluations["M-005"].reason == "evidence_conflicts_with_intent"

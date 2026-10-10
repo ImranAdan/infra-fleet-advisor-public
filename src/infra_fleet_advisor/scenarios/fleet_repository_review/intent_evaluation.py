@@ -28,6 +28,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
     CONCERN_INGRESS_UNRESTRICTED,
     CONCERN_LOG_RETENTION_UNBOUNDED,
     CONCERN_PLATFORM_NAMES_APPLICATION,
+    CONCERN_SECURITY_UPDATES_DISABLED,
     CONCERN_SERVICE_ACCOUNT_GRANTS_ACCESS,
     CONCERN_TEMPLATES,
     CONCERN_TRIVY_IGNORE_UNFIXED,
@@ -56,6 +57,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     EVIDENCE_KIND_INGRESS_HTTPS,
     EVIDENCE_KIND_INGRESS_RESTRICTION,
     EVIDENCE_KIND_LOG_RETENTION,
+    EVIDENCE_KIND_REPOSITORY_SECURITY_SETTINGS,
     EVIDENCE_KIND_SERVICE_ACCOUNT_PRIVILEGE,
     EVIDENCE_KIND_SESSION_COOKIE,
     EVIDENCE_KIND_TRIVY_GATE,
@@ -64,6 +66,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     GHA_COLLECTOR_ID,
     K8S_DEPLOYMENT_COLLECTOR_ID,
     K8S_SECURITY_COLLECTOR_ID,
+    REPOSITORY_SETTINGS_COLLECTOR_ID,
     TF_COST_COLLECTOR_ID,
     TF_IAM_COLLECTOR_ID,
 )
@@ -88,6 +91,7 @@ CHECK_SESSION_COOKIE_CSRF_COMPENSATED = "session_cookie_csrf_compensated"
 CHECK_STAGING_CAPACITY_RELEASED = "staging_capacity_released_on_schedule"
 CHECK_WORKER_GROUPS_DEMAND_SCALED = "worker_groups_demand_scaled"
 CHECK_AWS_COST_TAGS = "aws_cost_allocation_tags"
+CHECK_REPOSITORY_SECURITY_UPDATES_ENABLED = "repository_security_updates_enabled"
 CHECK_ECR_PUBLICATION_SCAN_GATED = "ecr_publication_scan_gated"
 CHECK_APPLICATION_SWAPPABLE = "fleet_application_swappable"
 CHECK_FLEET_AUTONOMOUS_MERGE = "fleet_autonomous_merge"
@@ -251,6 +255,19 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
                 collector_id=TF_COST_COLLECTOR_ID,
                 required_facts={"bounded_lifecycle": False},
             ),
+            can_prove_satisfaction=True,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_REPOSITORY_SECURITY_UPDATES_ENABLED: IntentCheckDefinition(
+            concern_key=CONCERN_SECURITY_UPDATES_DISABLED,
+            rule=ConcernRule(
+                category="security",
+                evidence_kind=EVIDENCE_KIND_REPOSITORY_SECURITY_SETTINGS,
+                collector_id=REPOSITORY_SETTINGS_COLLECTOR_ID,
+                required_facts={"enabled": False},
+            ),
+            # The snapshot names both settings outright, and the collector emits
+            # evidence only when both are known, so a clean result is a proof.
             can_prove_satisfaction=True,
             requires_relevant_evidence=True,
         ),

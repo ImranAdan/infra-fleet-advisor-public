@@ -23,6 +23,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
     application_contract_collector,
     dependency_update_collector,
     fleet_lifecycle_collector,
+    repository_settings_collector,
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
     github_actions_workflow_collector as gha_collector,
@@ -55,6 +56,8 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     K8S_DEPLOYMENT_COLLECTOR_VERSION,
     K8S_SECURITY_COLLECTOR_ID,
     K8S_SECURITY_COLLECTOR_VERSION,
+    REPOSITORY_SETTINGS_COLLECTOR_ID,
+    REPOSITORY_SETTINGS_COLLECTOR_VERSION,
     TF_COST_COLLECTOR_ID,
     TF_COST_COLLECTOR_VERSION,
     TF_IAM_COLLECTOR_ID,
@@ -96,6 +99,7 @@ def run_review(
     prior: PriorReport | None,
     run_started_at: str,
     intent_catalog: IntentCatalog | None = None,
+    repository_settings: Path | None = None,
 ) -> Report:
     """The one vertical scenario: select collectors, project evidence for
     synthesis, and run the bounded core pipeline. No recommendation
@@ -169,6 +173,13 @@ def run_review(
         excluded_paths=excluded_paths,
         tracked_paths=list_tracked_paths(checkout_root, "."),
     )
+    # Only a nightly review is handed a settings snapshot (PDR 0009); without
+    # one the collector does not run and S-012 reads collector_not_run.
+    settings_results = (
+        ()
+        if repository_settings is None
+        else (repository_settings_collector.collect(repository_settings, source.source_label),)
+    )
     all_evidence: tuple[Evidence, ...] = (
         gha_result.evidence
         + tf_result.evidence
@@ -179,6 +190,7 @@ def run_review(
         + dependency_result.evidence
         + app_config_result.evidence
         + app_contract_result.evidence
+        + tuple(e for result in settings_results for e in result.evidence)
     )
     evidence_by_id = {e.evidence_id: e for e in all_evidence}
     coverage: list[CollectorCoverage] = [
@@ -191,6 +203,7 @@ def run_review(
         dependency_result.coverage,
         app_config_result.coverage,
         app_contract_result.coverage,
+        *(result.coverage for result in settings_results),
     ]
 
     if intent_catalog is None:
@@ -250,6 +263,7 @@ def run_review(
             DEPENDENCY_UPDATE_COLLECTOR_ID: DEPENDENCY_UPDATE_COLLECTOR_VERSION,
             APP_CONFIG_COLLECTOR_ID: APP_CONFIG_COLLECTOR_VERSION,
             APP_CONTRACT_COLLECTOR_ID: APP_CONTRACT_COLLECTOR_VERSION,
+            REPOSITORY_SETTINGS_COLLECTOR_ID: REPOSITORY_SETTINGS_COLLECTOR_VERSION,
         },
         model_identifier=synthesis_response.model_identifier,
         run_started_at=run_started_at,
