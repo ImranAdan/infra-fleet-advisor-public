@@ -22,6 +22,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
     application_config_collector,
     application_contract_collector,
     dependency_update_collector,
+    documentation_link_collector,
     fleet_lifecycle_collector,
     repository_settings_collector,
 )
@@ -48,6 +49,8 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     APP_CONTRACT_COLLECTOR_VERSION,
     DEPENDENCY_UPDATE_COLLECTOR_ID,
     DEPENDENCY_UPDATE_COLLECTOR_VERSION,
+    DOCUMENTATION_LINK_COLLECTOR_ID,
+    DOCUMENTATION_LINK_COLLECTOR_VERSION,
     FLEET_LIFECYCLE_COLLECTOR_ID,
     FLEET_LIFECYCLE_COLLECTOR_VERSION,
     GHA_COLLECTOR_ID,
@@ -173,6 +176,12 @@ def run_review(
         excluded_paths=excluded_paths,
         tracked_paths=list_tracked_paths(checkout_root, "."),
     )
+    docs_result = documentation_link_collector.collect(
+        checkout_root,
+        limits,
+        excluded_paths=excluded_paths,
+        tracked_paths=list_tracked_paths(checkout_root, "."),
+    )
     # Only a nightly review is handed a settings snapshot (PDR 0009); without
     # one the collector does not run and S-012 reads collector_not_run.
     settings_results = (
@@ -190,6 +199,7 @@ def run_review(
         + dependency_result.evidence
         + app_config_result.evidence
         + app_contract_result.evidence
+        + docs_result.evidence
         + tuple(e for result in settings_results for e in result.evidence)
     )
     evidence_by_id = {e.evidence_id: e for e in all_evidence}
@@ -203,6 +213,7 @@ def run_review(
         dependency_result.coverage,
         app_config_result.coverage,
         app_contract_result.coverage,
+        docs_result.coverage,
         *(result.coverage for result in settings_results),
     ]
 
@@ -264,6 +275,7 @@ def run_review(
             APP_CONFIG_COLLECTOR_ID: APP_CONFIG_COLLECTOR_VERSION,
             APP_CONTRACT_COLLECTOR_ID: APP_CONTRACT_COLLECTOR_VERSION,
             REPOSITORY_SETTINGS_COLLECTOR_ID: REPOSITORY_SETTINGS_COLLECTOR_VERSION,
+            DOCUMENTATION_LINK_COLLECTOR_ID: DOCUMENTATION_LINK_COLLECTOR_VERSION,
         },
         model_identifier=synthesis_response.model_identifier,
         run_started_at=run_started_at,

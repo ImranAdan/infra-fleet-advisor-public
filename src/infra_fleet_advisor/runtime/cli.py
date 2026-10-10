@@ -59,6 +59,9 @@ from infra_fleet_advisor.runtime.report_writer import (
     write_report,
 )
 from infra_fleet_advisor.runtime.repository_settings import fetch_settings, write_snapshot
+from infra_fleet_advisor.scenarios.fleet_repository_review.collectors.repository_settings_collector import (  # noqa: E501
+    SETTING_KEYS,
+)
 from infra_fleet_advisor.scenarios.fleet_repository_review.remediation import (
     apply_patches,
     build_patches,
@@ -552,8 +555,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         write_snapshot(snapshot, args.output)
         print(
-            f"dependabot_alerts={snapshot['dependabot_alerts']} "
-            f"security_updates={snapshot['security_updates']} {snapshot['reason']}".rstrip()
+            " ".join(f"{key}={snapshot[key]}" for key in SETTING_KEYS)
+            + (f" ({snapshot['reason']})" if snapshot["reason"] else "")
         )
         return EXIT_OK
 

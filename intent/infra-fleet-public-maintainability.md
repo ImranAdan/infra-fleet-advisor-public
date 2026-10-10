@@ -133,3 +133,36 @@ that require the owner.
 
 - Check: `fleet_autonomous_merge`
 - Priority: `high`
+
+## M-006 · Agents work end to end
+
+### Intent
+
+Agents carry work from a finding to a merged pull request without pausing for
+the owner. Only the owner-only actions listed in the fleet's `AGENTS.md`
+(credentials, widened permissions, branch protection and Actions policy,
+deletion, and approval of merge-authority changes) reach the owner, and they
+arrive as a **Decision needed** issue while other work continues, never as a
+stalled session.
+
+Caveat: whether an agent paused is not visible in repository evidence, so this
+position has no check yet. It is enforced through the agent rules and the
+merge gate, and reviewed by the owner.
+
+## M-007 · Documentation stays current
+
+### Intent
+
+Every change that alters behaviour updates the documentation describing it in
+the same pull request. Docs never point at files, paths or commands that no
+longer exist.
+
+Caveat: the check proves the mechanical part, that every relative link in
+tracked Markdown resolves to a tracked file or directory. Whether prose still
+describes current behaviour remains a review responsibility.
+
+### Evaluation
+
+- Check: `documentation_links_resolve`
+- Priority: `medium`
+

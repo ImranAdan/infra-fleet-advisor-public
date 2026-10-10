@@ -15,9 +15,13 @@ repository-only boundary as current design to improve rather than a fixed law.
 
 ## Decision
 
-1. The advisor may make **one live read**: the fleet repository's
-   security-and-analysis settings from the GitHub REST API
-   (`automated-security-fixes`, `vulnerability-alerts`).
+1. The advisor may make **one live read**: the fleet repository's security
+   settings from the GitHub REST API. The snapshot (schema
+   `repository-settings/v2`) holds Dependabot alerts and security updates
+   (`vulnerability-alerts`, `automated-security-fixes`), secret scanning and
+   push protection (`security_and_analysis` on the repository), and
+   default-branch protection (pull requests required, no force-push or
+   deletion).
 2. The read runs **before** a review, never inside it.
    `infra-fleet-advisor settings-snapshot` writes a closed-schema JSON
    snapshot, and `review --repository-settings` reads that file through
@@ -31,24 +35,30 @@ repository-only boundary as current design to improve rather than a fixed law.
    `null` values and coverage is partial. Without a snapshot, as in the
    pre-merge intent gate, the collector does not run. Either way S-012 is
    `declared_unverified`, never `satisfied`.
-5. A new proposition, **S-012**, carries the settings with check
-   `repository_security_updates_enabled`. It can prove satisfaction because
-   the snapshot names both settings outright. S-010 keeps checking the
-   committed Dependabot configuration.
-6. Settings evidence anchors on `.github/dependabot.yml`, the configuration it
-   completes, so published issue links stay valid. The excerpt says the fact
-   came from the settings snapshot.
+5. Three propositions read the snapshot, each able to prove satisfaction
+   because the snapshot names its settings outright: **S-012** Dependabot
+   alerts and security updates (`repository_security_updates_enabled`),
+   **S-013** secret scanning and push protection
+   (`repository_secret_protection_enabled`), and **S-014** default-branch
+   protection (`default_branch_protected`). S-010 keeps checking the
+   committed Dependabot configuration. An unknown value costs every settings
+   proof, but a setting known to be off still diverges.
+6. Each settings record anchors on the fleet file that documents its control
+   (`.github/dependabot.yml`, `SECURITY.md`, `AGENTS.md`), so published issue
+   links stay valid. The excerpt says the fact came from the settings
+   snapshot.
 
 ## Consequences
 
-- Fleet-mutation drills cannot change a repository setting, so S-012 is exempt
+- Fleet-mutation drills cannot change a repository setting, so S-012 to S-014 are exempt
   from the one-drill-per-position rule. Its fixture tests prove both
   directions and the unknown cases.
 - The intent gate is unchanged: it passes no snapshot, so S-012 is
   `collector_not_run` on base and head alike and cannot fail a fleet PR.
-- Another settings position (secret scanning, branch protection) extends the
-  same snapshot schema with a new version, rather than adding new live reads
-  inside the review.
+- Settings positions extend the one snapshot with a new schema version
+  (v2 added S-013 and S-014 on 2026-10-10) rather than adding live reads
+  inside the review. Branch protection is owner-only to change, so S-014
+  divergence is reported for the owner, never corrected by an agent.
 
 ## Rejected alternatives
 

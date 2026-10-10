@@ -111,7 +111,7 @@ def test_authoritative_markdown_drives_the_production_review(git_checkout) -> No
     )
 
     evaluations = {item.proposition_id: item for item in report.intent_evaluations}
-    assert len(evaluations) == 23
+    assert len(evaluations) == 27
     # No settings snapshot was given, so S-012 is unknown, never satisfied.
     assert evaluations["S-012"].status == "declared_unverified"
     assert evaluations["S-012"].reason == "collector_not_run"
@@ -136,10 +136,14 @@ def test_authoritative_markdown_drives_the_production_review(git_checkout) -> No
     assert evaluations["M-003"].reason == "no_relevant_evidence"
     # The fixture has workflows but no Dependabot configuration.
     assert evaluations["S-010"].status == "divergent"
+    # Every relative link in the fixture's Markdown resolves.
+    assert evaluations["M-007"].status == "satisfied"
+    # M-006 declares no check: unverified, and reported as such.
+    assert evaluations["M-006"].reason == "check_not_declared"
     assert {
         item.status
         for key, item in evaluations.items()
-        if key not in {"S-001", "S-007", "S-010", "M-005"}
+        if key not in {"S-001", "S-007", "S-010", "M-005", "M-007"}
     } == {"declared_unverified"}
     assert {item.concern_key for item in report.recommendations} == {
         "ci_credentials_without_oidc",
@@ -491,7 +495,7 @@ def test_registered_collectors_contribute_to_one_report(git_checkout) -> None:
     concern_keys = {r.concern_key for r in report.recommendations}
     assert "trivy_ignore_unfixed" in concern_keys
     assert "wildcard_iam_permissions" in concern_keys
-    assert len(report.coverage) == 9
+    assert len(report.coverage) == 10
     assert all(c.status == "ok" for c in report.coverage)
     assert len(report.evidence) == 2
 
