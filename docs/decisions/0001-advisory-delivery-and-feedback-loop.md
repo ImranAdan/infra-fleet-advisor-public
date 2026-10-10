@@ -3,6 +3,7 @@
 - Status: accepted
 - Date: 2026-08-28
 - Supersedes: parts of `docs/product-requirements.md` (noted per decision)
+- Refined by: PDR 0006; manual-merge requirements superseded by PDR 0008
 
 ## Context
 
@@ -16,6 +17,9 @@ This record captures the decisions taken on how that loop closes, and the gaps
 found while working through it.
 
 ## The intended flow
+
+> Historical flow at the time of this decision. PDR 0008 now permits the
+> exact-head autonomous lane described in the current operating guides.
 
 ```
 advisor run → report → PR in this repo → human merges or closes

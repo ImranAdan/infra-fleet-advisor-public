@@ -74,9 +74,11 @@ Terraform or GitHub call succeeds.
 fleet per registered check. `infra-fleet-advisor drill` applies each in a
 throwaway worktree, runs the ordinary review and requires the named
 proposition to diverge, or, with `expect: declared_unverified`, to lose a proof
-it held on the fleet; the nightly advisory workflow and every pull request (the Quality workflow)
-run them as a separate, read-only job. A drill reports `caught`, `missed` (the check no longer sees the
-fleet), `stale` (the fleet no longer contains the drill's text) or
+it held on the fleet. The scheduled and manually dispatched advisory workflow
+runs drills independently on every review. Pull-request validation runs them
+in the isolated, read-only `Advisor Gates` job. A drill reports
+`caught`, `missed` (the check no longer sees the fleet), `stale` (the fleet no
+longer contains the drill's text) or
 `already divergent` (the position cannot regress). Coverage counts a check
 only as far as its drill proves it bites. A drill whose `find` equals its
 `replace` is rejected when the file loads. A drill may list ordered `variants`;

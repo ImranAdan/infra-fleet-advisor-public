@@ -10,7 +10,7 @@ explicit hold or an owner-only merge category.
 flowchart TD
     A[Run advisor against a verified fleet commit] --> P[Validate prospective issue plan]
     P --> B[Report PR in advisor]
-    B --> C{Quality + ratchet + merge gate}
+    B --> C{Advisor Quality + Advisor Gates + merge gate}
     C -->|Close or hold| D[No fleet issue creation]
     C -->|READY| E[Autonomous merge records the decision]
     E --> V[Separate publisher validates merged report]
@@ -43,12 +43,14 @@ lane.
 
 ## Automatic report decision
 
-Every generated report contains `<!-- autonomous-merge -->`. After Quality and
-the ratchet pass, the trusted default-branch worker runs the merge gate against
-the exact head. `READY` merges and authorizes eligible issue creation. Remove
-the marker to hold the report, or close it to decline that material signature.
-Quality and the report workflow wake the worker directly; a six-hour run
-recovers missed events or transient ordering between checks.
+Every generated report contains `<!-- autonomous-merge -->`. After
+`Advisor Quality` and the isolated `Advisor Gates` job pass, the trusted
+default-branch worker runs the merge gate against the exact head. The gates job
+contains the drills, ratchet, workflow lint and security scan. `READY` merges
+and authorizes eligible issue creation. Remove the marker to hold the report,
+or close it to decline that material signature. Quality and the report workflow
+wake the worker directly; a six-hour run recovers missed events or transient
+ordering between checks.
 
 The report workflow uses `GITHUB_TOKEN` and explicitly dispatches read-only
 Quality on the report branch because token-created PRs do not emit ordinary

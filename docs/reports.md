@@ -49,8 +49,10 @@ current decision record.
 ## Automatic merge, hold and decline
 
 Each workflow report includes the autonomous marker and a Verification section.
-The default-branch worker merges it only after Quality, the ratchet, every other
-head check and the merge gate pass. A report proposal changes only
+The default-branch worker merges it only after `Advisor Quality`, the isolated
+`Advisor Gates` job, every other head check and the merge gate pass. The gates
+job contains the drills, ratchet, workflow lint and security scan. A report
+proposal changes only
 `reports/report.json` and `reports/report.md`; implementation and documentation
 changes belong in separate PRs. Remove the marker to hold it for inspection.
 
