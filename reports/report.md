@@ -1,20 +1,20 @@
 # Infra Fleet Advisor report
 
-- Source: `infra-fleet-public` @ `9cffa4da780168a32b00c14556a990643a6624f7`
+- Source: `infra-fleet-public` @ `b8d96485fe70b2c376fbd50adcac4d176a64b27f`
 - Advisor version: `0.1.0` · Policy version: `1.1`
-- Model: `stub-synthesizer-v1` · Run started: `2026-09-30T20:53:39.294617+00:00`
+- Model: `stub-synthesizer-v1` · Run started: `2026-10-10T19:05:11.155381+00:00`
 - Intent catalog: `intent-md-v1:9a2cd76925fdc474067a3025da83cbdd44e89d169ba2f95e1d7b35a2e3fd5989`
 - Lifecycle: 0 new, 0 unchanged, 10 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
 
-- `github_actions_workflow_collector`: ok (19 evidence)
+- `github_actions_workflow_collector`: ok (20 evidence)
 - `terraform_iam_collector`: ok (0 evidence)
 - `terraform_cost_collector`: ok (7 evidence)
 - `kubernetes_deployment_collector`: ok (6 evidence)
 - `kubernetes_security_collector`: ok (6 evidence)
 - `fleet_lifecycle_collector`: ok (3 evidence)
-- `dependency_update_collector`: ok (9 evidence)
+- `dependency_update_collector`: ok (10 evidence)
 - `application_config_collector`: ok (1 evidence)
 - `application_contract_collector`: partial (1 evidence) — an on-demand application launcher is declared; its run-time constraints are outside repository evidence
 

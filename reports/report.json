@@ -3,7 +3,7 @@
     {
       "collector_id": "github_actions_workflow_collector",
       "error_summary": null,
-      "evidence_count": 19,
+      "evidence_count": 20,
       "status": "ok"
     },
     {
@@ -39,7 +39,7 @@
     {
       "collector_id": "dependency_update_collector",
       "error_summary": null,
-      "evidence_count": 9,
+      "evidence_count": 10,
       "status": "ok"
     },
     {
@@ -495,8 +495,8 @@
     "intent_digest": "intent-md-v1:9a2cd76925fdc474067a3025da83cbdd44e89d169ba2f95e1d7b35a2e3fd5989",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.1",
-    "run_started_at": "2026-09-30T20:53:39.294617+00:00",
-    "source_commit_sha": "9cffa4da780168a32b00c14556a990643a6624f7",
+    "run_started_at": "2026-10-10T19:05:11.155381+00:00",
+    "source_commit_sha": "b8d96485fe70b2c376fbd50adcac4d176a64b27f",
     "source_label": "infra-fleet-public"
   },
   "recommendations": [
