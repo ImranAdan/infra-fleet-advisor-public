@@ -15,6 +15,15 @@
 
 - `command` → result
 
+## Sources
+
+<!-- Links to the primary source for every claim about something outside this
+     repository: GitHub or vendor docs, changelogs, advisories, release notes.
+     Official sources first. Write "none" if the change rests only on
+     repository evidence. -->
+
+- none
+
 ## Scope
 
 <!-- Anything a human must decide: permissions, credentials, dependencies,

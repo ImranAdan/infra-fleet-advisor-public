@@ -15,6 +15,13 @@ labels: needs-decision
 |---|---|
 | <!-- a command, link or quote you checked --> | <!-- what it proves --> |
 
+## Sources
+
+<!-- Primary links behind the evidence and options (official docs, changelogs,
+     advisories), so the owner can decide without re-researching. -->
+
+- 
+
 ## Decision cards
 
 ### D1 · <!-- the question -->
