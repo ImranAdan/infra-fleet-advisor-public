@@ -78,7 +78,9 @@ Work only on the requested outcome and stop when that outcome is complete.
   - open, update, comment on, label and close issues and pull requests;
   - merge your own pull requests through the merge gate (see `CLAUDE.md`);
   - trigger, re-run or cancel workflows in this repository and the fleet,
-    including to verify your own work;
+    including to verify your own work, with their default inputs: a manual
+    run that selects a paid model (`synthesizer: anthropic`) is paid usage
+    and stays owner-only;
   - change a repository's security-and-analysis settings (Dependabot alerts,
     Dependabot security updates, secret scanning) when the change moves it
     toward declared intent.
