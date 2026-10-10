@@ -55,8 +55,14 @@
       "status": "partial"
     },
     {
+      "collector_id": "documentation_link_collector",
+      "error_summary": null,
+      "evidence_count": 54,
+      "status": "ok"
+    },
+    {
       "collector_id": "repository_settings_collector",
-      "error_summary": "repository settings unknown: no settings token was provided",
+      "error_summary": "repository settings unknown (dependabot_alerts, security_updates, secret_scanning, push_protection, default_branch_protected): no settings token was provided",
       "evidence_count": 0,
       "status": "partial"
     }
@@ -352,6 +358,28 @@
       "status": "satisfied"
     },
     {
+      "category": "maintainability",
+      "check_key": null,
+      "document_id": "infra_fleet_public_maintainability",
+      "evidence_ids": [],
+      "priority": null,
+      "proposition_id": "M-006",
+      "reason": "check_not_declared",
+      "statement": "Agents carry work from a finding to a merged pull request without pausing for\nthe owner. Only the owner-only actions listed in the fleet's `AGENTS.md`\n(credentials, widened permissions, branch protection and Actions policy,\ndeletion, and approval of merge-authority changes) reach the owner, and they\narrive as a **Decision needed** issue while other work continues, never as a\nstalled session.\n\nCaveat: whether an agent paused is not visible in repository evidence, so this\nposition has no check yet. It is enforced through the agent rules and the\nmerge gate, and reviewed by the owner.",
+      "status": "declared_unverified"
+    },
+    {
+      "category": "maintainability",
+      "check_key": "documentation_links_resolve",
+      "document_id": "infra_fleet_public_maintainability",
+      "evidence_ids": [],
+      "priority": "medium",
+      "proposition_id": "M-007",
+      "reason": "complete_evidence_supports_intent",
+      "statement": "Every change that alters behaviour updates the documentation describing it in\nthe same pull request. Docs never point at files, paths or commands that no\nlonger exist.\n\nCaveat: the check proves the mechanical part, that every relative link in\ntracked Markdown resolves to a tracked file or directory. Whether prose still\ndescribes current behaviour remains a review responsibility.",
+      "status": "satisfied"
+    },
+    {
       "category": "reliability",
       "check_key": "deployment_rollout_capacity",
       "document_id": "infra_fleet_public_reliability",
@@ -493,6 +521,28 @@
       "reason": "collector_incomplete",
       "statement": "Dependabot alerts and Dependabot security updates are enabled on the fleet\nrepository, so a vulnerable pinned dependency raises an alert and a fix pull\nrequest without waiting for the monthly schedule.\n\nEvidence: [Repository settings snapshot (PDR 0009)](https://github.com/ImranAdan/infra-fleet-advisor-public/blob/main/docs/decisions/0009-repository-settings-evidence.md)\n\nCaveat: the settings are read from the GitHub API just before each nightly\nreview. Without a settings token, or for a pre-merge intent gate run, the\nposition stays unverified rather than satisfied.",
       "status": "declared_unverified"
+    },
+    {
+      "category": "security",
+      "check_key": "repository_secret_protection_enabled",
+      "document_id": "infra_fleet_public_security",
+      "evidence_ids": [],
+      "priority": "high",
+      "proposition_id": "S-013",
+      "reason": "collector_incomplete",
+      "statement": "Secret scanning and secret push protection are enabled on the fleet\nrepository. It is public, so a committed credential must be blocked at push\ntime and reported if one ever lands, never discovered by chance.\n\nEvidence: [Repository settings snapshot (PDR 0009)](https://github.com/ImranAdan/infra-fleet-advisor-public/blob/main/docs/decisions/0009-repository-settings-evidence.md)\n\nCaveat: read from the settings snapshot taken before each nightly review;\nwithout it the position stays unverified, never satisfied.",
+      "status": "declared_unverified"
+    },
+    {
+      "category": "security",
+      "check_key": "default_branch_protected",
+      "document_id": "infra_fleet_public_security",
+      "evidence_ids": [],
+      "priority": "high",
+      "proposition_id": "S-014",
+      "reason": "collector_incomplete",
+      "statement": "The fleet's default branch accepts changes only through pull requests and\ncannot be force-pushed or deleted, so every change on it has passed the merge\ngate's checks and its history cannot be rewritten.\n\nEvidence: [Repository settings snapshot (PDR 0009)](https://github.com/ImranAdan/infra-fleet-advisor-public/blob/main/docs/decisions/0009-repository-settings-evidence.md)\n\nCaveat: protection settings are owner-only to change; a divergence is reported\nfor the owner, never corrected by an agent.",
+      "status": "declared_unverified"
     }
   ],
   "new_count": 0,
@@ -502,18 +552,19 @@
       "application_config_collector": "1.0.0",
       "application_contract_collector": "1.3.0",
       "dependency_update_collector": "1.0.0",
+      "documentation_link_collector": "1.0.0",
       "fleet_lifecycle_collector": "1.4.0",
       "github_actions_workflow_collector": "1.6.1",
       "kubernetes_deployment_collector": "2.0.0",
       "kubernetes_security_collector": "2.0.0",
-      "repository_settings_collector": "1.0.0",
+      "repository_settings_collector": "2.0.0",
       "terraform_cost_collector": "1.4.0",
       "terraform_iam_collector": "1.5.0"
     },
-    "intent_digest": "intent-md-v1:aa1c38e48742609381a0132b16c3ed5d0c1b4df11adb3345cc4b9bf03d8d90bd",
+    "intent_digest": "intent-md-v1:4125244ca6a5806032b0766b532b2f0a450e162c97890c2989c6ce9ca5f99043",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.1",
-    "run_started_at": "2026-10-10T20:45:54.300413+00:00",
+    "run_started_at": "2026-10-10T21:36:56.224364+00:00",
     "source_commit_sha": "ac1a86089368ebe3fd715554b723a4b269464ff8",
     "source_label": "infra-fleet-public"
   },
