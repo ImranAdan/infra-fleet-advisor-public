@@ -2,8 +2,8 @@
 
 - Source: `infra-fleet-public` @ `ac1a86089368ebe3fd715554b723a4b269464ff8`
 - Advisor version: `0.1.0` · Policy version: `1.1`
-- Model: `stub-synthesizer-v1` · Run started: `2026-10-10T20:45:54.300413+00:00`
-- Intent catalog: `intent-md-v1:aa1c38e48742609381a0132b16c3ed5d0c1b4df11adb3345cc4b9bf03d8d90bd`
+- Model: `stub-synthesizer-v1` · Run started: `2026-10-10T21:36:56.224364+00:00`
+- Intent catalog: `intent-md-v1:4125244ca6a5806032b0766b532b2f0a450e162c97890c2989c6ce9ca5f99043`
 - Lifecycle: 0 new, 0 unchanged, 10 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
@@ -17,11 +17,12 @@
 - `dependency_update_collector`: ok (10 evidence)
 - `application_config_collector`: ok (1 evidence)
 - `application_contract_collector`: partial (1 evidence) — an on-demand application launcher is declared; its run-time constraints are outside repository evidence
-- `repository_settings_collector`: partial (0 evidence) — repository settings unknown: no settings token was provided
+- `documentation_link_collector`: ok (54 evidence)
+- `repository_settings_collector`: partial (0 evidence) — repository settings unknown (dependabot_alerts, security_updates, secret_scanning, push_protection, default_branch_protected): no settings token was provided
 
 ## Intent evaluation
 
-**Coverage:** 23 of 23 positions have a check — 8 satisfied, 0 divergent, 15 checked but unproven; 0 declared without a check.
+**Coverage:** 26 of 27 positions have a check — 9 satisfied, 0 divergent, 17 checked but unproven; 1 declared without a check.
 
 - `declared_unverified` `infra_fleet_public_cost/C-001` — Staging application worker capacity scales to zero outside an owner-defined
   usage window. A delayed startup of up to 30 minutes is acceptable when it avoids
@@ -123,6 +124,25 @@
   continuously running. The decision policy remains the authority for categories
   that require the owner.
   - Category: `maintainability` · Priority: `high` · Check: `fleet_autonomous_merge` · Reason: `complete_evidence_supports_intent`
+- `declared_unverified` `infra_fleet_public_maintainability/M-006` — Agents carry work from a finding to a merged pull request without pausing for
+  the owner. Only the owner-only actions listed in the fleet's \`AGENTS.md\`
+  (credentials, widened permissions, branch protection and Actions policy,
+  deletion, and approval of merge-authority changes) reach the owner, and they
+  arrive as a \*\*Decision needed\*\* issue while other work continues, never as a
+  stalled session.
+  
+  Caveat: whether an agent paused is not visible in repository evidence, so this
+  position has no check yet. It is enforced through the agent rules and the
+  merge gate, and reviewed by the owner.
+  - Category: `maintainability` · Priority: `not_declared` · Check: `not_declared` · Reason: `check_not_declared`
+- `satisfied` `infra_fleet_public_maintainability/M-007` — Every change that alters behaviour updates the documentation describing it in
+  the same pull request. Docs never point at files, paths or commands that no
+  longer exist.
+  
+  Caveat: the check proves the mechanical part, that every relative link in
+  tracked Markdown resolves to a tracked file or directory. Whether prose still
+  describes current behaviour remains a review responsibility.
+  - Category: `maintainability` · Priority: `medium` · Check: `documentation_links_resolve` · Reason: `complete_evidence_supports_intent`
 - `satisfied` `infra_fleet_public_reliability/R-001` — Owner-managed application Deployments under \`k8s/applications/\` retain enough
   healthy capacity during rollout. Temporary capacity cost is acceptable when it
   prevents user-visible interruption.
@@ -215,6 +235,24 @@
   review. Without a settings token, or for a pre-merge intent gate run, the
   position stays unverified rather than satisfied.
   - Category: `security` · Priority: `medium` · Check: `repository_security_updates_enabled` · Reason: `collector_incomplete`
+- `declared_unverified` `infra_fleet_public_security/S-013` — Secret scanning and secret push protection are enabled on the fleet
+  repository. It is public, so a committed credential must be blocked at push
+  time and reported if one ever lands, never discovered by chance.
+  
+  Evidence: \[Repository settings snapshot (PDR 0009)\](https&#58;//github.com/ImranAdan/infra-fleet-advisor-public/blob/main/docs/decisions/0009-repository-settings-evidence.md)
+  
+  Caveat: read from the settings snapshot taken before each nightly review;
+  without it the position stays unverified, never satisfied.
+  - Category: `security` · Priority: `high` · Check: `repository_secret_protection_enabled` · Reason: `collector_incomplete`
+- `declared_unverified` `infra_fleet_public_security/S-014` — The fleet's default branch accepts changes only through pull requests and
+  cannot be force-pushed or deleted, so every change on it has passed the merge
+  gate's checks and its history cannot be rewritten.
+  
+  Evidence: \[Repository settings snapshot (PDR 0009)\](https&#58;//github.com/ImranAdan/infra-fleet-advisor-public/blob/main/docs/decisions/0009-repository-settings-evidence.md)
+  
+  Caveat: protection settings are owner-only to change; a divergence is reported
+  for the owner, never corrected by an agent.
+  - Category: `security` · Priority: `high` · Check: `default_branch_protected` · Reason: `collector_incomplete`
 
 ## Recommendations
 
