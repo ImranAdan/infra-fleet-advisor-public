@@ -112,8 +112,15 @@ One collector reads something other than the checkout. Under PDR 0009,
 `settings-snapshot` fetched from the GitHub API before the review. It runs
 only when `review --repository-settings` is given. A snapshot with an unknown
 value, or one that is malformed or names another repository, leaves its
-coverage partial. Its one evidence record anchors on `.github/dependabot.yml`
-and is keyed by repository.
+coverage partial. It emits one record per settings group (Dependabot, secret
+protection, default-branch protection), each anchored on the fleet file that
+documents the control and keyed by kind and repository.
+
+`documentation_link_collector` reads every tracked Markdown file and emits one
+record per file stating whether all its relative links resolve to tracked files
+or directories. Links in fenced code, absolute URLs and anchors are not file
+links. One record per file is what lets M-007 be proven rather than inferred
+from silence.
 
 Collectors also declare the identity components used to derive each evidence
 ID. Terraform IAM evidence uses its root-module directory and stable resource
