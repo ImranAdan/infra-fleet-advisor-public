@@ -67,29 +67,34 @@ Work only on the requested outcome and stop when that outcome is complete.
   refactors, speculative abstractions, or broader product work.
 - Do not expand an MVP, introduce a provider, select infrastructure, or turn a
   product idea into a technical architecture before that decision is needed.
-- Make small, reversible assumptions only when they do not change scope. Ask
-  the user before proceeding when ambiguity would materially change the
-  product, repository, deliverable, or external state.
-- Use existing local evidence first. Run checks proportionate to the change and
-  avoid unrelated diagnostics.
-- Never cause an effect outside this working tree that the user did not ask for
-  in this session. Authorization is per action, not per session, and it does not
-  generalize: approving a fix does not approve executing it, and approving one
-  run does not approve the next. This covers at least — triggering, re-running,
-  or cancelling a CI workflow; changing repository, org, or branch-protection
-  settings; creating, editing, merging, or closing a pull request or issue;
-  pushing to a shared branch; publishing a package; and calling any paid or
-  rate-limited API. When such an action is the obvious next step, propose it and
-  wait.
-- One standing exception exists, recorded in `CLAUDE.md`: a pull request you
-  raised may be resolved and merged without per-action approval, subject to the
-  conditions and stop conditions stated there. It is deliberately narrow — it
-  covers only your own pull requests, and extends to no other outward-facing
-  action. Every rule above still governs everything else.
-- Verifying your own work is not an exception. If the only way to confirm a
-  change is an outward-facing action, say so, state what it would do and what it
-  would cost, and let the user decide. An unverified change reported honestly as
-  unverified is better than a surprise side effect.
+- Make reversible assumptions and decide. Record the decision and the
+  alternative you rejected in the pull request; do not stop to ask. Docs,
+  decision records and earlier statements describe the current design, not a
+  fixed law: when a better design needs one changed, change it in the same pull
+  request and say why.
+- **Standing autonomy.** The owner runs this project with autonomous agents
+  and does not want work to wait for approval. Without asking first you may:
+  - push branches you created, and delete them once merged;
+  - open, update, comment on, label and close issues and pull requests;
+  - merge your own pull requests through the merge gate (see `CLAUDE.md`);
+  - trigger, re-run or cancel workflows in this repository and the fleet,
+    including to verify your own work;
+  - change a repository's security-and-analysis settings (Dependabot alerts,
+    Dependabot security updates, secret scanning) when the change moves it
+    toward declared intent.
+
+  State each outward action, and how to undo it, in the pull request or issue
+  it serves.
+- **Owner-only actions.** Never do these without the owner: add
+  `owner-approved` or post or imitate a merge-judge comment; create, read or
+  rotate a secret or credential; add or widen a permission held by a token,
+  GitHub App or workflow; change branch protection, rulesets, the Actions
+  policy or merge settings; delete a repository, release, tag or data;
+  force-push over work you did not author; spend on a paid API beyond the
+  usage CI already incurs. When one is the next step, open a **Decision
+  needed** issue labelled `needs-decision` and carry on with other work.
+- Verify your own work with whatever it needs. Report a check that could not
+  run as `inconclusive`, never as passed.
 - Preserve unrelated working-tree changes and commit only files belonging to
   the requested task.
 - Keep the final response limited to the outcome, verification performed, and
@@ -309,11 +314,8 @@ it; carry on with other work meanwhile. When a deadlock reveals a standing
 preference, propose it as declared intent, so the same question never
 reaches the owner twice.
 
-This is a standing exception the owner granted (September 2026) to the
-ask-first rule for issues in `CLAUDE.md`, and it covers exactly two actions:
-opening a **Decision needed** issue labelled `needs-decision`, and closing a
-`decided` one with a link to the work. Other comments, edits and issues still
-need approval.
+Opening a decision issue and closing a `decided` one with a link to the work
+are covered by the standing autonomy above.
 
 ## Picking up decisions
 
