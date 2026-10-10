@@ -18,7 +18,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.intent_evaluation imp
 ROOT = Path(__file__).parents[3]
 CATALOG = load_intent_catalog(ROOT / "intent", TAXONOMY)
 DECLARED = {p.check_key: p for p in CATALOG.propositions if p.check_key is not None}
-SNAPSHOT_POSITIONS = {"S-012"}
+SNAPSHOT_POSITIONS = {"S-012", "S-013", "S-014"}
 
 
 def test_every_registered_check_has_a_matching_concern_template() -> None:

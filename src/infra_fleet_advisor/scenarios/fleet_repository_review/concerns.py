@@ -25,6 +25,9 @@ CONCERN_LOG_RETENTION_UNBOUNDED = "staging_log_retention_unbounded"
 CONCERN_ECR_RETENTION_UNBOUNDED = "ecr_image_retention_unbounded"
 CONCERN_DEPENDENCY_UPDATES_MISSING = "dependency_updates_not_configured"
 CONCERN_SECURITY_UPDATES_DISABLED = "repository_security_updates_disabled"
+CONCERN_SECRET_PROTECTION_DISABLED = "repository_secret_protection_disabled"  # noqa: S105
+CONCERN_DEFAULT_BRANCH_UNPROTECTED = "default_branch_unprotected"
+CONCERN_DOCUMENTATION_LINKS_BROKEN = "documentation_links_broken"
 CONCERN_INGRESS_UNRESTRICTED = "application_ingress_unrestricted"
 CONCERN_EGRESS_ACCEPTANCE_EXCEEDED = "permissive_egress_beyond_applications"
 CONCERN_INGRESS_HTTP_ALLOWED = "public_ingress_allows_plain_http"
@@ -340,6 +343,77 @@ CONCERN_TEMPLATES: dict[str, ConcernTemplate] = {
         confidence=0.9,
         confidence_explanation=(
             "Joined from literal repository and lifecycle-policy resources in one root module."
+        ),
+    ),
+    CONCERN_SECRET_PROTECTION_DISABLED: ConcernTemplate(
+        category="security",
+        priority="high",
+        title="Secret scanning or push protection is switched off",
+        summary=(
+            "The fleet repository's security-and-analysis settings have secret scanning or secret "
+            "push protection disabled."
+        ),
+        impact=(
+            "A committed credential is neither blocked at push time nor reported afterwards in a "
+            "public repository."
+        ),
+        suggested_change=(
+            "Enable secret scanning and push protection in the repository's Code security settings."
+        ),
+        trade_offs=(
+            "Pushes that contain a detected secret are blocked until the secret is removed "
+            "or bypassed."
+        ),
+        confidence=0.95,
+        confidence_explanation=(
+            "Read from the repository settings snapshot taken before this review (PDR 0009), not "
+            "from repository files."
+        ),
+    ),
+    CONCERN_DEFAULT_BRANCH_UNPROTECTED: ConcernTemplate(
+        category="security",
+        priority="high",
+        title="The default branch is not protected",
+        summary=(
+            "The fleet's default branch does not require pull requests, or it allows force-pushes "
+            "or deletion."
+        ),
+        impact=(
+            "Changes can reach the default branch without passing the merge gate's checks, or its "
+            "history can be rewritten."
+        ),
+        suggested_change=(
+            "Protect the default branch: require pull requests, and disallow force-pushes and "
+            "deletion."
+        ),
+        trade_offs="Direct pushes to the default branch stop working, including emergency fixes.",
+        confidence=0.95,
+        confidence_explanation=(
+            "Read from the repository settings snapshot taken before this review (PDR 0009), not "
+            "from repository files."
+        ),
+    ),
+    CONCERN_DOCUMENTATION_LINKS_BROKEN: ConcernTemplate(
+        category="maintainability",
+        priority="medium",
+        title="Documentation links to files that no longer exist",
+        summary=(
+            "A tracked Markdown file has a relative link whose target is not a tracked file or "
+            "directory."
+        ),
+        impact=(
+            "Readers and agents following the docs reach a dead end; the docs describe a layout "
+            "the repository no longer has."
+        ),
+        suggested_change=(
+            "Point the link at the file that now holds the content, or remove the stale "
+            "reference, in the same change that moved it."
+        ),
+        trade_offs="None beyond the edit.",
+        confidence=0.9,
+        confidence_explanation=(
+            "Resolved every relative link in tracked Markdown against the verified commit's "
+            "tracked paths."
         ),
     ),
     CONCERN_SECURITY_UPDATES_DISABLED: ConcernTemplate(

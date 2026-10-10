@@ -188,13 +188,15 @@ def test_rejects_symlinked_intent_documents(tmp_path: Path) -> None:
 def test_production_markdown_is_the_authoritative_catalog() -> None:
     catalog = load_intent_catalog(PRODUCTION_INTENTS, TAXONOMY)
 
-    assert len(catalog.propositions) == 23
+    assert len(catalog.propositions) == 27
     assert {item.check_key for item in catalog.propositions if item.check_key is not None} == {
         "application_containers_hardened",
         "application_ingress_restricted",
         "aws_cost_allocation_tags",
+        "default_branch_protected",
         "dependency_updates_configured",
         "deployment_rollout_capacity",
+        "documentation_links_resolve",
         "ecr_lifecycle_bounded",
         "ecr_publication_scan_gated",
         "eks_public_endpoint_staging_only",
@@ -208,6 +210,7 @@ def test_production_markdown_is_the_authoritative_catalog() -> None:
         "permissive_egress_bounded",
         "persistent_iam_avoids_wildcards",
         "public_ingress_https",
+        "repository_secret_protection_enabled",
         "repository_security_updates_enabled",
         "session_cookie_csrf_compensated",
         "staging_capacity_released_on_schedule",
@@ -245,7 +248,7 @@ def test_production_markdown_is_the_authoritative_catalog() -> None:
         for item in catalog.propositions
         if item.document_id == "infra_fleet_public_maintainability"
     )
-    assert len(maintainability) == 5
+    assert len(maintainability) == 7
     assert all(item.category == "maintainability" for item in maintainability)
     assert maintainability[0].check_key == "fleet_profiles_expose_lifecycle"
     assert maintainability[1].check_key == "fleet_local_first_use"

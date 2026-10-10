@@ -116,3 +116,8 @@ drills:
     path: k8s/profiles/local/applications/kustomization.yaml
     find: "  - target:\n      kind: HorizontalPodAutoscaler\n    patch: |-\n      - op: replace\n        path: /spec/maxReplicas\n        value: 3"
     replace: "  - target:\n      kind: NetworkPolicy\n    patch: |-\n      - op: replace\n        path: /spec/ingress/1/from/0\n        value: {ipBlock: {cidr: 0.0.0.0/0}}"
+  # Docs must not point at files that do not exist: rename one link target.
+  - proposition: M-007
+    path: README.md
+    find: "[Local Kubernetes](docs/LOCAL-KUBERNETES.md)"
+    replace: "[Local Kubernetes](docs/LOCAL-K8S.md)"

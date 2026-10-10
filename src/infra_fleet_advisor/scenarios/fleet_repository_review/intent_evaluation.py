@@ -14,8 +14,10 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
     CONCERN_CONTAINER_HARDENING_INCOMPLETE,
     CONCERN_COST_TAGS_MISSING,
     CONCERN_CSRF_UNCOMPENSATED,
+    CONCERN_DEFAULT_BRANCH_UNPROTECTED,
     CONCERN_DEPENDENCY_UPDATES_MISSING,
     CONCERN_DEPLOYMENT_ROLLOUT_CAPACITY,
+    CONCERN_DOCUMENTATION_LINKS_BROKEN,
     CONCERN_ECR_PUBLICATION_UNGATED,
     CONCERN_ECR_RETENTION_UNBOUNDED,
     CONCERN_EGRESS_ACCEPTANCE_EXCEEDED,
@@ -28,6 +30,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
     CONCERN_INGRESS_UNRESTRICTED,
     CONCERN_LOG_RETENTION_UNBOUNDED,
     CONCERN_PLATFORM_NAMES_APPLICATION,
+    CONCERN_SECRET_PROTECTION_DISABLED,
     CONCERN_SECURITY_UPDATES_DISABLED,
     CONCERN_SERVICE_ACCOUNT_GRANTS_ACCESS,
     CONCERN_TEMPLATES,
@@ -40,13 +43,16 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     APP_CONFIG_COLLECTOR_ID,
     APP_CONTRACT_COLLECTOR_ID,
     DEPENDENCY_UPDATE_COLLECTOR_ID,
+    DOCUMENTATION_LINK_COLLECTOR_ID,
     EVIDENCE_KIND_APPLICATION_COUPLING,
     EVIDENCE_KIND_AUTONOMOUS_MERGE,
     EVIDENCE_KIND_CONTAINER_HARDENING,
     EVIDENCE_KIND_COST_TAGS,
     EVIDENCE_KIND_CREDENTIAL_METHOD,
+    EVIDENCE_KIND_DEFAULT_BRANCH_PROTECTION,
     EVIDENCE_KIND_DEPENDENCY_UPDATES,
     EVIDENCE_KIND_DEPLOYMENT_ROLLOUT_CAPACITY,
+    EVIDENCE_KIND_DOCUMENTATION_LINKS,
     EVIDENCE_KIND_ECR_LIFECYCLE,
     EVIDENCE_KIND_ECR_PUBLICATION_GATE,
     EVIDENCE_KIND_EGRESS_ACCEPTANCE,
@@ -57,6 +63,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     EVIDENCE_KIND_INGRESS_HTTPS,
     EVIDENCE_KIND_INGRESS_RESTRICTION,
     EVIDENCE_KIND_LOG_RETENTION,
+    EVIDENCE_KIND_REPOSITORY_SECRET_PROTECTION,
     EVIDENCE_KIND_REPOSITORY_SECURITY_SETTINGS,
     EVIDENCE_KIND_SERVICE_ACCOUNT_PRIVILEGE,
     EVIDENCE_KIND_SESSION_COOKIE,
@@ -92,6 +99,9 @@ CHECK_STAGING_CAPACITY_RELEASED = "staging_capacity_released_on_schedule"
 CHECK_WORKER_GROUPS_DEMAND_SCALED = "worker_groups_demand_scaled"
 CHECK_AWS_COST_TAGS = "aws_cost_allocation_tags"
 CHECK_REPOSITORY_SECURITY_UPDATES_ENABLED = "repository_security_updates_enabled"
+CHECK_SECRET_PROTECTION_ENABLED = "repository_secret_protection_enabled"  # noqa: S105
+CHECK_DEFAULT_BRANCH_PROTECTED = "default_branch_protected"
+CHECK_DOCUMENTATION_LINKS_RESOLVE = "documentation_links_resolve"
 CHECK_ECR_PUBLICATION_SCAN_GATED = "ecr_publication_scan_gated"
 CHECK_APPLICATION_SWAPPABLE = "fleet_application_swappable"
 CHECK_FLEET_AUTONOMOUS_MERGE = "fleet_autonomous_merge"
@@ -255,6 +265,44 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
                 collector_id=TF_COST_COLLECTOR_ID,
                 required_facts={"bounded_lifecycle": False},
             ),
+            can_prove_satisfaction=True,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_SECRET_PROTECTION_ENABLED: IntentCheckDefinition(
+            concern_key=CONCERN_SECRET_PROTECTION_DISABLED,
+            rule=ConcernRule(
+                category="security",
+                evidence_kind=EVIDENCE_KIND_REPOSITORY_SECRET_PROTECTION,
+                collector_id=REPOSITORY_SETTINGS_COLLECTOR_ID,
+                required_facts={"enabled": False},
+            ),
+            # The snapshot names both settings outright, as for S-012.
+            can_prove_satisfaction=True,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_DEFAULT_BRANCH_PROTECTED: IntentCheckDefinition(
+            concern_key=CONCERN_DEFAULT_BRANCH_UNPROTECTED,
+            rule=ConcernRule(
+                category="security",
+                evidence_kind=EVIDENCE_KIND_DEFAULT_BRANCH_PROTECTION,
+                collector_id=REPOSITORY_SETTINGS_COLLECTOR_ID,
+                required_facts={"enabled": False},
+            ),
+            # A 200 or 404 from the protection endpoint, after an admin-only
+            # call succeeded, is a definite answer.
+            can_prove_satisfaction=True,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_DOCUMENTATION_LINKS_RESOLVE: IntentCheckDefinition(
+            concern_key=CONCERN_DOCUMENTATION_LINKS_BROKEN,
+            rule=ConcernRule(
+                category="maintainability",
+                evidence_kind=EVIDENCE_KIND_DOCUMENTATION_LINKS,
+                collector_id=DOCUMENTATION_LINK_COLLECTOR_ID,
+                required_facts={"links_resolve": False},
+            ),
+            # Every tracked Markdown file yields a record, so complete coverage
+            # proves no broken link.
             can_prove_satisfaction=True,
             requires_relevant_evidence=True,
         ),

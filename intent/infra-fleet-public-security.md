@@ -204,3 +204,40 @@ position stays unverified rather than satisfied.
 
 - Check: `repository_security_updates_enabled`
 - Priority: `medium`
+
+## S-013 · Secret scanning and push protection
+
+### Intent
+
+Secret scanning and secret push protection are enabled on the fleet
+repository. It is public, so a committed credential must be blocked at push
+time and reported if one ever lands, never discovered by chance.
+
+Evidence: [Repository settings snapshot (PDR 0009)](https://github.com/ImranAdan/infra-fleet-advisor-public/blob/main/docs/decisions/0009-repository-settings-evidence.md)
+
+Caveat: read from the settings snapshot taken before each nightly review;
+without it the position stays unverified, never satisfied.
+
+### Evaluation
+
+- Check: `repository_secret_protection_enabled`
+- Priority: `high`
+
+## S-014 · Default branch protection
+
+### Intent
+
+The fleet's default branch accepts changes only through pull requests and
+cannot be force-pushed or deleted, so every change on it has passed the merge
+gate's checks and its history cannot be rewritten.
+
+Evidence: [Repository settings snapshot (PDR 0009)](https://github.com/ImranAdan/infra-fleet-advisor-public/blob/main/docs/decisions/0009-repository-settings-evidence.md)
+
+Caveat: protection settings are owner-only to change; a divergence is reported
+for the owner, never corrected by an agent.
+
+### Evaluation
+
+- Check: `default_branch_protected`
+- Priority: `high`
+
