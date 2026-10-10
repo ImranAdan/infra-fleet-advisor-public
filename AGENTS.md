@@ -234,6 +234,13 @@ through, **ran** (a test or script that fails loudly if you are wrong), or
 the fleet as it is, and its drill makes it diverge. A coverage gap is a
 result, not a pass. Say `inconclusive` when a drive could not run.
 
+**Sources.** A claim about anything outside this repository (GitHub or
+vendor behaviour, a changelog, an advisory, a release) names its source as a
+link: primary sources (official docs, changelogs, advisories) first, third-party
+write-ups only as support. Pull requests and **Decision needed** issues end
+with a `## Sources` list, so the owner can approve without re-researching.
+Repository facts are cited as `file:line` or command output, not links.
+
 **Tests.** A test calls the code the way its users do and asserts an observed
 result against a literal expected value. If it would still pass with the code
 under test stubbed out, rewrite or delete it. For a bug with a cheap test
