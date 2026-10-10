@@ -24,6 +24,7 @@ CONCERN_CONTAINER_HARDENING_INCOMPLETE = "container_hardening_incomplete"
 CONCERN_LOG_RETENTION_UNBOUNDED = "staging_log_retention_unbounded"
 CONCERN_ECR_RETENTION_UNBOUNDED = "ecr_image_retention_unbounded"
 CONCERN_DEPENDENCY_UPDATES_MISSING = "dependency_updates_not_configured"
+CONCERN_SECURITY_UPDATES_DISABLED = "repository_security_updates_disabled"
 CONCERN_INGRESS_UNRESTRICTED = "application_ingress_unrestricted"
 CONCERN_EGRESS_ACCEPTANCE_EXCEEDED = "permissive_egress_beyond_applications"
 CONCERN_INGRESS_HTTP_ALLOWED = "public_ingress_allows_plain_http"
@@ -339,6 +340,29 @@ CONCERN_TEMPLATES: dict[str, ConcernTemplate] = {
         confidence=0.9,
         confidence_explanation=(
             "Joined from literal repository and lifecycle-policy resources in one root module."
+        ),
+    ),
+    CONCERN_SECURITY_UPDATES_DISABLED: ConcernTemplate(
+        category="security",
+        priority="medium",
+        title="Dependabot alerts or security updates are switched off",
+        summary=(
+            "The fleet repository's security-and-analysis settings have Dependabot alerts or "
+            "Dependabot security-update pull requests disabled."
+        ),
+        impact=(
+            "Known vulnerabilities in pinned dependencies raise no alert and no fix pull "
+            "request, so they persist until a routine monthly update happens to replace them."
+        ),
+        suggested_change=(
+            "Enable Dependabot alerts and Dependabot security updates in the repository's "
+            "Code security settings."
+        ),
+        trade_offs="Security-update pull requests arrive outside the monthly schedule.",
+        confidence=0.95,
+        confidence_explanation=(
+            "Read from the repository settings snapshot taken before this review (PDR 0009), "
+            "not from repository files."
         ),
     ),
     CONCERN_DEPENDENCY_UPDATES_MISSING: ConcernTemplate(

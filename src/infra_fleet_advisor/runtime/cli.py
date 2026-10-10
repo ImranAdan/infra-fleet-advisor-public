@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import subprocess  # noqa: S404 - only for CalledProcessError
 import sys
 from collections.abc import Sequence
@@ -57,6 +58,7 @@ from infra_fleet_advisor.runtime.report_writer import (
     read_report_source_sha,
     write_report,
 )
+from infra_fleet_advisor.runtime.repository_settings import fetch_settings, write_snapshot
 from infra_fleet_advisor.scenarios.fleet_repository_review.remediation import (
     apply_patches,
     build_patches,
@@ -84,6 +86,18 @@ def _build_parser() -> argparse.ArgumentParser:
     review.add_argument("--prior-report", type=Path, default=None)
     review.add_argument("--source-label", default="infra-fleet-public")
     review.add_argument("--synthesizer", choices=SYNTHESIZERS, default=DEFAULT_SYNTHESIZER)
+    review.add_argument(
+        "--repository-settings",
+        type=Path,
+        default=None,
+        help="Snapshot from settings-snapshot (PDR 0009); omitted leaves S-012 unverified",
+    )
+    settings = sub.add_parser(
+        "settings-snapshot",
+        help="Fetch the fleet's security-and-analysis settings into a snapshot (PDR 0009)",
+    )
+    settings.add_argument("--repository", required=True, help="OWNER/NAME")
+    settings.add_argument("--output", required=True, type=Path)
 
     gate = sub.add_parser(
         "gate", help="Fail when a fleet change would newly diverge from declared intent"
@@ -531,6 +545,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"policy error: {exc}", file=sys.stderr)
             return EXIT_POLICY_ERROR
 
+    if args.command == "settings-snapshot":
+        # The token comes from the environment so it never reaches argv or logs.
+        snapshot = fetch_settings(
+            args.repository, os.environ.get("REPOSITORY_SETTINGS_TOKEN"), SystemClock().now_iso()
+        )
+        write_snapshot(snapshot, args.output)
+        print(
+            f"dependabot_alerts={snapshot['dependabot_alerts']} "
+            f"security_updates={snapshot['security_updates']} {snapshot['reason']}".rstrip()
+        )
+        return EXIT_OK
+
     if args.command == "report-signature":
         try:
             print(compute_report_signature(args.report))
@@ -568,6 +594,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         prior_report_path=args.prior_report,
         synthesizer_name=args.synthesizer,
         intent_dir=args.intent_dir,
+        repository_settings_path=args.repository_settings,
     )
     try:
         report = compose_and_run(inputs, SystemClock())

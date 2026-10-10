@@ -79,6 +79,18 @@ jobs:
           pip install "uv==0.9.14"
           uv sync --frozen --no-dev
 
+      # PDR 0009: the advisor's one live read, taken before the review so the
+      # review itself stays offline. The token needs Administration: read on
+      # the fleet only. Without it the snapshot records unknown values and
+      # S-012 stays unverified, never satisfied.
+      - name: Snapshot the fleet's security settings
+        env:
+          REPOSITORY_SETTINGS_TOKEN: ${{ secrets.FLEET_SETTINGS_READ_TOKEN }}
+        run: |
+          uv run infra-fleet-advisor settings-snapshot \
+            --repository "$TARGET_REPO" \
+            --output "$RUNNER_TEMP/repository-settings.json"
+
       # Fails the job on any synthesis or provenance error rather than writing
       # an empty report: a report with no findings is indistinguishable from
       # "everything was fixed", and would mark every open finding resolved.
@@ -97,6 +109,7 @@ jobs:
             --intent-dir intent \
             --output-dir "$RUNNER_TEMP/advisory" \
             --synthesizer "${{ inputs.synthesizer || 'stub' }}" \
+            --repository-settings "$RUNNER_TEMP/repository-settings.json" \
             "${prior[@]}"
 
       # Build the same bounded action shape the post-merge publisher will

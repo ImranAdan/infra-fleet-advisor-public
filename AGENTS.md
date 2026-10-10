@@ -7,6 +7,10 @@ Build an intent-driven, read-only advisor for
 positions into deterministic checks over a verified Git repository snapshot and
 delivers evidenced divergences through exact-head gated work.
 
+Under PDR 0009 one live input exists: the fleet's security-and-analysis
+settings, fetched read-only into a snapshot file *before* a review. The review
+itself stays offline and deterministic over the checkout and that snapshot.
+
 The MVP serves one repository and one maintainer. It does not modify the fleet,
 access AWS or Kubernetes, or claim universal optimality. Preserve that boundary
 unless an approved product requirement explicitly changes it.

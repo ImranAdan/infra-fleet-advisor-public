@@ -36,6 +36,7 @@ class RunInputs:
     prior_report_path: Path | None
     synthesizer_name: str = DEFAULT_SYNTHESIZER
     intent_dir: Path | None = None
+    repository_settings_path: Path | None = None
 
 
 def _select_synthesizer(name: str, timeout_seconds: float) -> Synthesizer:
@@ -78,4 +79,5 @@ def compose_and_run(
         prior=prior,
         run_started_at=clock.now_iso(),
         intent_catalog=intent_catalog,
+        repository_settings=inputs.repository_settings_path,
     )

@@ -20,7 +20,8 @@ Write down four things before editing code:
 
 Extend an existing collector when it already owns that source format. Add a
 collector only when the new source has a distinct parser or safety boundary.
-Collectors read repository data only; they do not import fleet applications,
+Collectors read repository data only (the one exception is the PDR 0009
+settings snapshot, read from a file like everything else); they do not import fleet applications,
 run fleet code, invoke infrastructure tools, use the network, or inspect live
 services.
 

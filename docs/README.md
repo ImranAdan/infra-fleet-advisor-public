@@ -51,3 +51,4 @@ These describe the product and implementation in more detail than the guides.
 | [0006](decisions/0006-report-approval-and-fleet-work.md) | Approved report PRs as the fleet issue-creation decision record |
 | [0007](decisions/0007-pre-merge-intent-gate.md) | Read-only intent gate on fleet pull requests |
 | [0008](decisions/0008-autonomous-evidence-loop.md) | Autonomous report, issue and reversible remediation loop |
+| [0009](decisions/0009-repository-settings-evidence.md) | Repository security settings as a pre-fetched snapshot (S-012) |
