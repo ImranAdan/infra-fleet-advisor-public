@@ -53,6 +53,12 @@
       "error_summary": "an on-demand application launcher is declared; its run-time constraints are outside repository evidence",
       "evidence_count": 1,
       "status": "partial"
+    },
+    {
+      "collector_id": "repository_settings_collector",
+      "error_summary": "repository settings unknown: no settings token was provided",
+      "evidence_count": 0,
+      "status": "partial"
     }
   ],
   "evidence": [
@@ -463,7 +469,7 @@
       "priority": "medium",
       "proposition_id": "S-010",
       "reason": "collector_cannot_prove_satisfaction",
-      "statement": "Repository owners enable dependency alerts and security-update pull requests;\nroutine version checks run monthly, while review and deployment remain an owned\noperational decision.\n\nEvidence: [Dependabot operating model](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/DEPENDABOT.md)\n\nCaveat: repository-level alert and security-update settings cannot be declared\nby the template, and this proposition defines no remediation SLA.",
+      "statement": "Repository owners enable dependency alerts and security-update pull requests;\nroutine version checks run monthly, while review and deployment remain an owned\noperational decision.\n\nEvidence: [Dependabot operating model](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/DEPENDABOT.md)\n\nCaveat: this check reads the committed Dependabot configuration only; the\nrepository-level alert and security-update settings it relies on are checked\nseparately by S-012. This proposition defines no remediation SLA.",
       "status": "declared_unverified"
     },
     {
@@ -475,6 +481,17 @@
       "proposition_id": "S-011",
       "reason": "collector_cannot_prove_satisfaction",
       "statement": "Trivy blocks ECR publication when an image has any fixed Critical or High vulnerability; a documented exception is required to permit one.\n\nEvidence: [Trivy publication gate](https://github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/.github/workflows/load-harness-ci.yml)\n\nCaveat: the workflow sets `ignore-unfixed: true`, so unfixed Critical/High\nfindings do not block, and the gate applies to ECR publication, not to\ndeployment. The proposition text above has been narrowed to match; a `Yes`\ndoes not imply a deployment-time gate exists.",
+      "status": "declared_unverified"
+    },
+    {
+      "category": "security",
+      "check_key": "repository_security_updates_enabled",
+      "document_id": "infra_fleet_public_security",
+      "evidence_ids": [],
+      "priority": "medium",
+      "proposition_id": "S-012",
+      "reason": "collector_incomplete",
+      "statement": "Dependabot alerts and Dependabot security updates are enabled on the fleet\nrepository, so a vulnerable pinned dependency raises an alert and a fix pull\nrequest without waiting for the monthly schedule.\n\nEvidence: [Repository settings snapshot (PDR 0009)](https://github.com/ImranAdan/infra-fleet-advisor-public/blob/main/docs/decisions/0009-repository-settings-evidence.md)\n\nCaveat: the settings are read from the GitHub API just before each nightly\nreview. Without a settings token, or for a pre-merge intent gate run, the\nposition stays unverified rather than satisfied.",
       "status": "declared_unverified"
     }
   ],
@@ -489,14 +506,15 @@
       "github_actions_workflow_collector": "1.6.1",
       "kubernetes_deployment_collector": "2.0.0",
       "kubernetes_security_collector": "2.0.0",
+      "repository_settings_collector": "1.0.0",
       "terraform_cost_collector": "1.4.0",
       "terraform_iam_collector": "1.5.0"
     },
-    "intent_digest": "intent-md-v1:9a2cd76925fdc474067a3025da83cbdd44e89d169ba2f95e1d7b35a2e3fd5989",
+    "intent_digest": "intent-md-v1:aa1c38e48742609381a0132b16c3ed5d0c1b4df11adb3345cc4b9bf03d8d90bd",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.1",
-    "run_started_at": "2026-10-10T19:05:11.155381+00:00",
-    "source_commit_sha": "b8d96485fe70b2c376fbd50adcac4d176a64b27f",
+    "run_started_at": "2026-10-10T20:45:54.300413+00:00",
+    "source_commit_sha": "ac1a86089368ebe3fd715554b723a4b269464ff8",
     "source_label": "infra-fleet-public"
   },
   "recommendations": [

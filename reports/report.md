@@ -1,9 +1,9 @@
 # Infra Fleet Advisor report
 
-- Source: `infra-fleet-public` @ `b8d96485fe70b2c376fbd50adcac4d176a64b27f`
+- Source: `infra-fleet-public` @ `ac1a86089368ebe3fd715554b723a4b269464ff8`
 - Advisor version: `0.1.0` · Policy version: `1.1`
-- Model: `stub-synthesizer-v1` · Run started: `2026-10-10T19:05:11.155381+00:00`
-- Intent catalog: `intent-md-v1:9a2cd76925fdc474067a3025da83cbdd44e89d169ba2f95e1d7b35a2e3fd5989`
+- Model: `stub-synthesizer-v1` · Run started: `2026-10-10T20:45:54.300413+00:00`
+- Intent catalog: `intent-md-v1:aa1c38e48742609381a0132b16c3ed5d0c1b4df11adb3345cc4b9bf03d8d90bd`
 - Lifecycle: 0 new, 0 unchanged, 10 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
@@ -17,10 +17,11 @@
 - `dependency_update_collector`: ok (10 evidence)
 - `application_config_collector`: ok (1 evidence)
 - `application_contract_collector`: partial (1 evidence) — an on-demand application launcher is declared; its run-time constraints are outside repository evidence
+- `repository_settings_collector`: partial (0 evidence) — repository settings unknown: no settings token was provided
 
 ## Intent evaluation
 
-**Coverage:** 22 of 22 positions have a check — 8 satisfied, 0 divergent, 14 checked but unproven; 0 declared without a check.
+**Coverage:** 23 of 23 positions have a check — 8 satisfied, 0 divergent, 15 checked but unproven; 0 declared without a check.
 
 - `declared_unverified` `infra_fleet_public_cost/C-001` — Staging application worker capacity scales to zero outside an owner-defined
   usage window. A delayed startup of up to 30 minutes is acceptable when it avoids
@@ -191,8 +192,9 @@
   
   Evidence: \[Dependabot operating model\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/DEPENDABOT.md)
   
-  Caveat: repository-level alert and security-update settings cannot be declared
-  by the template, and this proposition defines no remediation SLA.
+  Caveat: this check reads the committed Dependabot configuration only; the
+  repository-level alert and security-update settings it relies on are checked
+  separately by S-012. This proposition defines no remediation SLA.
   - Category: `security` · Priority: `medium` · Check: `dependency_updates_configured` · Reason: `collector_cannot_prove_satisfaction`
 - `declared_unverified` `infra_fleet_public_security/S-011` — Trivy blocks ECR publication when an image has any fixed Critical or High vulnerability; a documented exception is required to permit one.
   
@@ -203,6 +205,16 @@
   deployment. The proposition text above has been narrowed to match; a \`Yes\`
   does not imply a deployment-time gate exists.
   - Category: `security` · Priority: `high` · Check: `ecr_publication_scan_gated` · Reason: `collector_cannot_prove_satisfaction`
+- `declared_unverified` `infra_fleet_public_security/S-012` — Dependabot alerts and Dependabot security updates are enabled on the fleet
+  repository, so a vulnerable pinned dependency raises an alert and a fix pull
+  request without waiting for the monthly schedule.
+  
+  Evidence: \[Repository settings snapshot (PDR 0009)\](https&#58;//github.com/ImranAdan/infra-fleet-advisor-public/blob/main/docs/decisions/0009-repository-settings-evidence.md)
+  
+  Caveat: the settings are read from the GitHub API just before each nightly
+  review. Without a settings token, or for a pre-merge intent gate run, the
+  position stays unverified rather than satisfied.
+  - Category: `security` · Priority: `medium` · Check: `repository_security_updates_enabled` · Reason: `collector_incomplete`
 
 ## Recommendations
 
