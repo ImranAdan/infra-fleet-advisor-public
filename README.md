@@ -16,7 +16,7 @@ flowchart LR
     Intent["Owner intent<br/>22 declared positions"] --> Checks["Deterministic checks"]
     Checks -->|before merge| Gate["Intent gate<br/>on fleet pull requests"]
     Checks -->|after merge| Report["Changed report PR"]
-    Report --> ReportGate["Quality + ratchet + merge gate"]
+    Report --> ReportGate["Advisor Quality + Advisor Gates + merge gate"]
     ReportGate --> Issues["Fleet issues"]
     Issues --> Patch["Registered mechanical patch"]
     Patch --> FleetGate["Fleet intent gate + CI + merge gate"]
@@ -29,9 +29,11 @@ flowchart LR
   `./scripts/intent-gate.sh ../infra-fleet-public BASE_SHA HEAD_SHA /tmp/intent-gate`.
 - **After merge:** a nightly review opens or updates a report PR whenever the
   report changes. The report merges automatically only when its exact-head
-  Quality, ratchet and merge gates pass, then eligible findings become Fleet
-  issues. Registered mechanical findings can continue through a gated Fleet PR;
-  other issues wait for a coding agent. See the [end-to-end workflow](docs/WORKFLOW.md).
+  `Advisor Quality`, isolated `Advisor Gates`, and merge gate pass. The gates
+  job contains the drills, ratchet, workflow lint and security scan. Eligible
+  findings then become Fleet issues. Registered mechanical findings can
+  continue through a gated Fleet PR; other issues wait for a coding agent. See
+  the [end-to-end workflow](docs/WORKFLOW.md).
 - **On the advisor itself:** every check has a [drill](drills/fleet-mutations.yaml),
   a one-line violation of the real fleet that must make it fire. A check that
   stops seeing the fleet goes red instead of inflating coverage. The

@@ -88,10 +88,11 @@ the merge gate still apply to Fleet fix proposals.
 
 Repository agents use the local merge gate after CI and review are complete.
 The policy lets deterministic exact-head evidence decide reversible categories.
-It also requires a successful ratchet check whose Actions run comes from the
-declared workflow; a missing or same-name substitute fails closed. Changes to
-durable authority, access, migrations, declared intent and the merge system
-remain with the repository owner.
+It also requires a successful `Advisor Gates` check whose Actions run comes
+from the declared workflow and exact head. That isolated job contains the
+drills, ratchet, workflow lint and security scan; a missing or same-name
+substitute fails closed. Changes to durable authority, access, migrations,
+declared intent and the merge system remain with the repository owner.
 
 The pull request template opts same-repository branches into the autonomous
 worker. Keep the marker to merge when the gate reaches `READY`; remove it to
@@ -101,7 +102,8 @@ events.
 
 This default path needs no model or API key. The Anthropic transport remains
 available only if a future policy category explicitly uses the `judge` decider.
-The ratchet retains its veto over every approval path. See the
+`Advisor Gates`, including its ratchet, retains its veto over every approval
+path. See the
 [merge-gate guide](.claude/skills/merge-gate/SKILL.md) for verdicts and the
 exact-head merge command.
 

@@ -31,7 +31,7 @@ drills:
     find: 'directory: "/platform/local/git-server"'
     replace: 'directory: "/platform/local/elsewhere"'
   - proposition: S-011
-    path: .github/workflows/load-harness-ci.yml
+    path: .github/workflows/load-harness-publish.yml
     find: "exit-code: 1"
     replace: "exit-code: 0"
   - proposition: R-001

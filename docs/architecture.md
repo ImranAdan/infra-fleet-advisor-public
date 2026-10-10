@@ -316,9 +316,10 @@ idempotent note for human review, not automatic closure.
 
 The merged report-only PR is the fleet issue-creation decision record. Its
 autonomous marker grants no authority: the trusted default-branch worker merges
-only after Quality, ratchet and `merge_ready.py` report exact-head success. A
-bounded GitHub API record proves the PR merged into advisor main and changed
-only the report JSON and Markdown. Trusted default-branch code materializes
+only after `Advisor Quality`, the isolated `Advisor Gates` evidence job and
+`merge_ready.py` report exact-head success. A bounded GitHub API record proves
+the PR merged into advisor main and changed only the report JSON and Markdown.
+Trusted default-branch code materializes
 that merge's report and verifies it remains the current merged baseline before
 validating against current policy and intent. Every issue links to the PR and
 accepted report commit. Retries use the same PR and deduplicate per fingerprint.
