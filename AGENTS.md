@@ -260,10 +260,11 @@ its own pull request only by rerunning the gate with `--merge` after it reports
 trusted default-branch worker to run that exact command. Both paths bind the
 merge to the checked head SHA. Remove the marker to hold a PR open. An agent
 never adds the `owner-approved` label and never posts or imitates a merge-judge
-comment. The
-workflow binds an owner-applied label to the exact head SHA; a label without
-that trusted record, or whose latest label event was not made by the repository
-owner, does not approve a merge.
+comment. An owner approval is the repository owner adding `owner-approved`
+after every check run on the current head started: GitHub records both with
+server time, so a push after the approval starts new checks and unbinds it. No
+`pull_request_target` workflow is involved; GitHub blocks that trigger on
+public repositories by default from 2026-11-02.
 
 The default path is key-free. Reversible categories marked `evidence` in the
 decision policy can reach `READY` only after every head check passes and the
