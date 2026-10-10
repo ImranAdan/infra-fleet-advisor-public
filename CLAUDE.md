@@ -1,46 +1,15 @@
 # Claude Code guidance
 
-## No unrequested side effects
+## Autonomy
 
-Do not cause an effect outside the working tree unless the user asked for that
-specific action in this session. Authorization is per action and does not carry
-forward: approving a fix is not approval to execute it, and approving one run is
-not approval for the next.
+Work autonomously: the owner does not want work to wait for approval. The
+standing grant and the owner-only list are in `AGENTS.md` ("Standing
+autonomy" and "Owner-only actions"). Reading is always fine. Every outward
+action is stated, with how to undo it, in the pull request or issue it serves.
 
-Ask first before any of these:
+## Resolving and merging your own pull requests
 
-- triggering, re-running, or cancelling a GitHub Actions workflow
-  (`gh workflow run`, `gh run rerun`, `gh run cancel`);
-- changing repository, organization, or branch-protection settings
-  (`gh api -X PUT/PATCH/POST` against a settings endpoint);
-- creating, editing, merging, closing, or commenting on a pull request or issue;
-- pushing to a shared branch, force-pushing, or deleting a remote branch;
-- publishing a package, or calling any paid or rate-limited API.
-
-Reading is always fine: `gh run view`, `gh run list`, `gh pr view`, `gh api` GET,
-and any local command that only inspects state.
-
-**Verification is not an exemption.** If the only way to confirm a change works
-is one of the actions above, propose it — state what it would do, what it would
-create, and what it would cost — then wait. Reporting a change as unverified is
-better than a side effect the user did not expect. When such an action has
-already been proposed and declined or left unanswered, do not perform it as a
-"quick check" later in the same session.
-
-## Standing grant: raising a decision issue
-
-When a decision is not yours to make (see "When a decision is not yours" in
-`AGENTS.md`), you may open one issue from the **Decision needed** template,
-labelled `needs-decision`, without asking first, and close a `decided` one
-with a comment linking the pull request that carries out the decision. The
-owner asked for this so that work never stalls waiting on them. Nothing else
-is covered: other comments, edits and issues still follow the rule above, and
-you never post decision answers yourself.
-
-## Standing grant: resolving and merging your own pull requests
-
-This is the one standing exception to the per-action rule above. Within a pull
-request you raised, you may address review feedback, reply, resolve threads, and
+Within a pull request you raised, you may address review feedback, reply, resolve threads, and
 merge — without asking each time.
 
 It applies only while **every** condition holds:
@@ -75,9 +44,8 @@ dependencies follow the gate's policy: reversible categories may be decided by
 trusted exact-head evidence; durable authority, access and migrations park for
 the owner.
 
-The grant covers pull requests you raised. It never covers force-pushing over
-someone else's work, changing repository settings, or anything in another
-repository. Everything else in the rule above still applies.
+This covers pull requests you raised. Force-pushing over someone else's work
+and the other owner-only actions in `AGENTS.md` stay out of bounds.
 
 Say what was merged and why in the next response. Silent merging is a delegation
 of review, not of disclosure.
