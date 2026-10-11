@@ -552,21 +552,6 @@ def judge_decision(
     return None
 
 
-def owner_approval(comments: list[dict[str, str]], sha: str, trusted_author: str) -> bool:
-    """Return whether the trusted workflow recorded approval for this exact head."""
-    marker = f"<!-- merge-gate-owner-approved sha={sha} -->"
-    for comment in reversed(comments):
-        if comment.get("author") != trusted_author:
-            continue
-        lines = comment.get("body", "").splitlines()
-        if len(lines) >= 2 and lines[0] == marker:
-            if lines[1] == "OWNER-APPROVED: true":
-                return True
-            if lines[1] == "OWNER-APPROVED: false":
-                return False
-    return False
-
-
 def owner_label_approval(
     events: list[dict[str, str]], repository_owner: str, head_checks_started: str
 ) -> bool:
@@ -590,10 +575,28 @@ def owner_label_approval(
     return False
 
 
+def owner_comment_approval(
+    comments: list[dict[str, str]],
+    repository_owner: str,
+    sha: str,
+    head_checks_started: str,
+) -> bool:
+    """Accept only the owner's exact, current-head command after checks started."""
+    if not repository_owner or not head_checks_started:
+        return False
+    command = f"/approve {sha}"
+    return any(
+        comment.get("author", "").casefold() == repository_owner.casefold()
+        and comment.get("body", "").strip() == command
+        and comment.get("created_at", "") > head_checks_started
+        for comment in comments
+    )
+
+
 def decide(
     findings: list[Finding],
     rules: dict[str, dict[str, str]],
-    labels: set[str],
+    _labels: set[str],
     decision: tuple[str, frozenset[str]] | None,
     current_owner_approval: bool = False,
 ) -> tuple[str, list[str]]:
@@ -613,7 +616,7 @@ def decide(
     if decision and decision[0] == "REJECT" and judge_rules.intersection(decision[1]):
         rejected = ", ".join(sorted(judge_rules.intersection(decision[1])))
         return "BLOCKED", [f"independent judge rejected rule(s): {rejected}"]
-    if owner_categories and ("owner-approved" not in labels or not current_owner_approval):
+    if owner_categories and not current_owner_approval:
         return "PARK", [f"owner decision required for: {', '.join(owner_categories)}"]
     if judge_rules and (
         not decision or decision[0] != "APPROVE" or not judge_rules.issubset(decision[1])
@@ -818,7 +821,7 @@ def main(argv: list[str]) -> int:
         "--paginate",
         f"repos/{repo}/issues/{number}/comments?per_page=100",
         "--jq",
-        ".[]|{body,author:.user.login}",
+        ".[]|{body,author:.user.login,created_at}",
     )
     decision = judge_decision(comments, sha, judge["trusted_author"])
     labels = {label["name"] for label in pr["labels"]}
@@ -831,12 +834,15 @@ def main(argv: list[str]) -> int:
         "|{event,actor:.actor.login,label:.label.name,created_at}",
     )
     head_checks_started = max((str(run.get("started_at") or "") for run in runs), default="")
+    current_owner_approval = owner_label_approval(
+        owner_events, owner, head_checks_started
+    ) or owner_comment_approval(comments, owner, sha, head_checks_started)
     verdict, reasons = decide(
         findings,
         rules,
         labels,
         decision,
-        owner_label_approval(owner_events, owner, head_checks_started),
+        current_owner_approval,
     )
     for reason in reasons:
         print(f"{verdict}  {reason}")
@@ -1204,21 +1210,6 @@ def self_test() -> int:
     credential = [_finding("credential", "secret")]
     assert decide(credential, rules, set(), decision)[0] == "PARK"
     assert decide(credential, rules, {"owner-approved"}, decision)[0] == "PARK"
-    owner_marker = f"<!-- merge-gate-owner-approved sha={sha} -->\nOWNER-APPROVED: true"
-    owner_bot = [{"author": "github-actions[bot]", "body": owner_marker}]
-    owner_human = [{"author": "ImranAdan", "body": owner_marker}]
-    owner_old = [{"author": "github-actions[bot]", "body": owner_marker.replace(sha, "b" * 40)}]
-    assert owner_approval(owner_bot, sha, judge["trusted_author"])
-    assert not owner_approval(owner_human, sha, judge["trusted_author"])
-    assert not owner_approval(owner_old, sha, judge["trusted_author"])
-    owner_revoked = [
-        *owner_bot,
-        {
-            "author": "github-actions[bot]",
-            "body": f"<!-- merge-gate-owner-approved sha={sha} -->\nOWNER-APPROVED: false",
-        },
-    ]
-    assert not owner_approval(owner_revoked, sha, judge["trusted_author"])
     # The label binds to the head that was reviewed: it must postdate every
     # check run on that head. A later push starts new checks, so it unbinds.
     checks_started = "2026-10-10T20:00:00Z"
@@ -1257,7 +1248,24 @@ def self_test() -> int:
     assert not owner_label_approval(owner_event, "ImranAdan", "")
     undated = [{**owner_event[0], "created_at": ""}]
     assert not owner_label_approval(undated, "ImranAdan", checks_started)
-    assert decide(credential, rules, {"owner-approved"}, decision, True)[0] == "READY"
+    owner_command = [
+        {
+            "author": "ImranAdan",
+            "body": f"/approve {sha}",
+            "created_at": "2026-10-10T20:05:00Z",
+        }
+    ]
+    assert owner_comment_approval(owner_command, "ImranAdan", sha, checks_started)
+    assert not owner_comment_approval(owner_command, "another-owner", sha, checks_started)
+    assert not owner_comment_approval(owner_command, "ImranAdan", "b" * 40, checks_started)
+    assert not owner_comment_approval(owner_command, "ImranAdan", sha, "2026-10-10T20:07:00Z")
+    assert not owner_comment_approval(
+        [{**owner_command[0], "body": f"please /approve {sha}"}],
+        "ImranAdan",
+        sha,
+        checks_started,
+    )
+    assert decide(credential, rules, set(), decision, True)[0] == "READY"
     authority = [_finding("merge-authority", "gate")]
     authority_approve = ("APPROVE", frozenset({"merge-authority"}))
     assert decide(authority, rules, set(), authority_approve)[0] == "PARK"

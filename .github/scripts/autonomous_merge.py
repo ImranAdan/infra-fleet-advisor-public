@@ -15,6 +15,7 @@ from typing import Any
 
 MARKER = "<!-- autonomous-merge -->"
 GATE = Path(".claude/skills/merge-gate/merge_ready.py")
+DECISION_HANDOFF = Path(".claude/skills/merge-gate/judge.py")
 DEFERRED = {1, 10, 11}
 LIST_TIMEOUT_SECONDS = 60
 GATE_TIMEOUT_SECONDS = 120
@@ -61,6 +62,16 @@ def post_merge_command(pr: dict[str, Any], repository: str) -> list[str] | None:
         repository,
         "-f",
         f"report_pr={pr['number']}",
+    ]
+
+
+def decision_handoff_command(pr: dict[str, Any]) -> list[str]:
+    """Build the trusted PARK handoff for the candidate's exact head."""
+    return [
+        sys.executable,
+        str(DECISION_HANDOFF),
+        str(pr["number"]),
+        str(pr["headRefOid"]),
     ]
 
 
@@ -135,6 +146,12 @@ def _self_test() -> int:
         "report_pr=7",
     ]
     assert post_merge_command({**candidate, "headRefName": "feature"}, "owner/repo") is None
+    assert decision_handoff_command(candidate) == [
+        sys.executable,
+        str(DECISION_HANDOFF),
+        "7",
+        "a" * 40,
+    ]
     candidates = [{**candidate, "number": number} for number in range(1, 26)]
     first_window = ordered_candidates(candidates, now)
     next_window = ordered_candidates(candidates, now.replace(hour=13))
@@ -173,6 +190,41 @@ def _self_test() -> int:
             "headRefName": "feature",
         }
     ]
+    original_open = globals()["_open_pull_requests"]
+    original_run = subprocess.run
+    original_argv = sys.argv
+    saved_env = {
+        key: os.environ.get(key)
+        for key in ("GITHUB_REPOSITORY", "AUTONOMOUS_MERGE_MIN_AGE_SECONDS")
+    }
+    commands: list[list[str]] = []
+
+    def fake_run(command: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        if command[1] == str(GATE):
+            return subprocess.CompletedProcess(command, 10, "verdict: PARK\n", "")
+        if command[1] == str(DECISION_HANDOFF):
+            return subprocess.CompletedProcess(command, 0, "decision surfaced\n", "")
+        raise AssertionError(f"unexpected command: {command}")
+
+    try:
+        globals()["_open_pull_requests"] = lambda _repository: [candidate]
+        subprocess.run = fake_run  # type: ignore[assignment]
+        sys.argv = [original_argv[0]]
+        os.environ["GITHUB_REPOSITORY"] = "owner/repo"
+        os.environ["AUTONOMOUS_MERGE_MIN_AGE_SECONDS"] = "0"
+        assert main() == 0
+        assert commands[0][1] == str(GATE)
+        assert commands[1] == decision_handoff_command(candidate)
+    finally:
+        globals()["_open_pull_requests"] = original_open
+        subprocess.run = original_run  # type: ignore[assignment]
+        sys.argv = original_argv
+        for key, value in saved_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
     del os.environ["AUTONOMOUS_MERGE_POST_MERGE_WORKFLOW"]
     del os.environ["AUTONOMOUS_MERGE_POST_MERGE_HEAD"]
     print("self-test passed")
@@ -319,6 +371,44 @@ def main() -> int:
             if result.returncode not in DEFERRED | {0}:
                 state = "error"
                 unexpected = True
+        if result is not None and result.returncode == 10:
+            handoff_timeout = shared_timeout(
+                deadline - time.monotonic(),
+                len(candidates) - index,
+                HANDOFF_TIMEOUT_SECONDS,
+            )
+            if handoff_timeout == 0:
+                output = "\n".join(
+                    (
+                        output,
+                        "Decision handoff deferred because the shared budget is exhausted.",
+                    )
+                )
+                state = "deferred; decision handoff failed"
+                unexpected = True
+            else:
+                try:
+                    handoff = subprocess.run(  # noqa: S603 - fixed script and API-derived fields
+                        decision_handoff_command(pr),
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                        timeout=handoff_timeout,
+                    )
+                except subprocess.TimeoutExpired:
+                    message = f"Decision handoff timed out after {handoff_timeout} seconds."
+                    output = "\n".join((output, message))
+                    state = "deferred; decision handoff failed"
+                    unexpected = True
+                else:
+                    output = "\n".join(
+                        part
+                        for part in (output, handoff.stdout.strip(), handoff.stderr.strip())
+                        if part
+                    )
+                    if handoff.returncode != 0:
+                        state = "deferred; decision handoff failed"
+                        unexpected = True
         if result is not None and result.returncode == 0:
             command = post_merge_command(pr, repository)
             if command is not None:
