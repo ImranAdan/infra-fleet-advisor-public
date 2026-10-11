@@ -1,0 +1,27 @@
+name: Owner approval handoff
+
+# Issue comments run trusted default-branch workflow code. This job only wakes
+# the merge worker; merge_ready.py authenticates the owner, SHA and timing.
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+
+jobs:
+  wake:
+    if: >-
+      github.event.issue.pull_request &&
+      github.event.comment.user.login == github.repository_owner &&
+      startsWith(github.event.comment.body, '/approve ')
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Wake the trusted merge worker
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: >-
+          gh workflow run autonomous-merge.yml --repo "$GITHUB_REPOSITORY"
+          -f "priority_pr=$PR_NUMBER"

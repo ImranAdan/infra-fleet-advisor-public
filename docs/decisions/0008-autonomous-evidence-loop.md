@@ -22,9 +22,9 @@ advisor evidence, dependency safeguards, review-thread rules and scope decisions
 still apply. `READY` merges. `PARK`, `JUDGE` and `BLOCKED` remain open. Removing
 the marker holds a PR. The same trusted worker surfaces `PARK` with a
 head-bound `needs-decision` prompt and reruns when the owner replies
-`/approve <full-head-sha>`; the wake-up uses GitHub's default-branch
+`/approve <full-head-sha>`; a small handoff uses GitHub's default-branch
 [`issue_comment`](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#issue_comment)
-event rather than `pull_request_target`.
+event to dispatch the worker rather than using `pull_request_target`.
 
 Changed report PRs opt in automatically. Their merge remains the immutable
 decision record for Fleet issue publication, but the decision is now made by

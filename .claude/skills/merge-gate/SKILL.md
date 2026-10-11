@@ -77,9 +77,10 @@ An agent never adds `owner-approved` and never posts or imitates a
 `github-actions[bot]` judge comment. On `PARK`, the trusted default-branch
 worker applies `needs-decision` and posts one explanation bound to the current
 head. The owner replies `/approve <full-head-sha>`, which wakes that worker
-through GitHub's default-branch
+through a small handoff on GitHub's default-branch
 [`issue_comment`](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#issue_comment)
-event. The gate accepts that exact command only from the repository owner and
+event. The handoff only dispatches the worker; the gate accepts that exact
+command only from the repository owner and
 only after every check run on the head had started. For compatibility, an
 `owner-approved` label under the same timing rule is also accepted by the
 scheduled recovery run. Evidence-decided categories need no comment or model: all checks must be

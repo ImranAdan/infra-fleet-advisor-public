@@ -274,9 +274,10 @@ comment. An owner approval is the repository owner replying
 `owner-approved` under the same timing rule. GitHub records both with server
 time, and the command names the head, so a push unbinds either form. The trusted
 worker labels a PARKed PR `needs-decision`, posts one head-bound explanation,
-and wakes immediately for the comment form. It uses GitHub's default-branch
+and wakes immediately for the comment form. A small trusted approval handoff
+uses GitHub's default-branch
 [`issue_comment`](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#issue_comment)
-event; no `pull_request_target` workflow is involved. GitHub blocks that trigger on
+event to dispatch the worker; no `pull_request_target` workflow is involved. GitHub blocks that trigger on
 public repositories by default from 2026-11-02.
 
 The default path is key-free. Reversible categories marked `evidence` in the
