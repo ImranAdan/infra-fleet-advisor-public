@@ -269,10 +269,14 @@ its own pull request only by rerunning the gate with `--merge` after it reports
 trusted default-branch worker to run that exact command. Both paths bind the
 merge to the checked head SHA. Remove the marker to hold a PR open. An agent
 never adds the `owner-approved` label and never posts or imitates a merge-judge
-comment. An owner approval is the repository owner adding `owner-approved`
-after every check run on the current head started: GitHub records both with
-server time, so a push after the approval starts new checks and unbinds it. No
-`pull_request_target` workflow is involved; GitHub blocks that trigger on
+comment. An owner approval is the repository owner replying
+`/approve <full-head-sha>` after every check run on that head started, or adding
+`owner-approved` under the same timing rule. GitHub records both with server
+time, and the command names the head, so a push unbinds either form. The trusted
+worker labels a PARKed PR `needs-decision`, posts one head-bound explanation,
+and wakes immediately for the comment form. It uses GitHub's default-branch
+[`issue_comment`](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#issue_comment)
+event; no `pull_request_target` workflow is involved. GitHub blocks that trigger on
 public repositories by default from 2026-11-02.
 
 The default path is key-free. Reversible categories marked `evidence` in the
@@ -284,8 +288,9 @@ decisions. The optional Anthropic path is dormant unless a future policy
 category explicitly names `judge` as its decider. The ratchet and declared
 intent remain the first authority.
 
-The autonomous worker runs after Quality, when an external status or review
-completes, and on explicit report-workflow dispatch. A six-hour schedule is a
+The autonomous worker runs after Quality, when an external status completes,
+when the owner posts the head-bound approval command, and on explicit
+report-workflow dispatch. A six-hour schedule is a
 recovery backstop. It considers only non-draft PRs whose head branch belongs to
 this repository and whose body contains the opt-in marker. `READY` merges;
 `PARK`, `JUDGE`, failed evidence and unresolved review stay open. Report PRs opt

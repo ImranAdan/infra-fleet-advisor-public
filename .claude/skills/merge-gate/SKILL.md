@@ -74,15 +74,20 @@ Encode a recurring judgment as a new rule in `merge_ready.py` with a case in
 its self-test (`python3 .claude/skills/merge-gate/merge_ready.py --self-test`), not as more prose here.
 
 An agent never adds `owner-approved` and never posts or imitates a
-`github-actions[bot]` judge comment. The gate accepts the label only when its
-newest event is the repository owner adding it after every check run on the
-current head had started, so the approval binds to the reviewed head without a
-privileged workflow. Evidence-decided categories need no comment or model: all checks must be
+`github-actions[bot]` judge comment. On `PARK`, the trusted default-branch
+worker applies `needs-decision` and posts one explanation bound to the current
+head. The owner replies `/approve <full-head-sha>`, which wakes that worker
+through GitHub's default-branch
+[`issue_comment`](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#issue_comment)
+event. The gate accepts that exact command only from the repository owner and
+only after every check run on the head had started. For compatibility, an
+`owner-approved` label under the same timing rule is also accepted by the
+scheduled recovery run. Evidence-decided categories need no comment or model: all checks must be
 green and the required advisor check must have trusted exact-head provenance.
 Workflow-dispatch evidence is also bound to its registered generated head
 branch; a successful run from an ordinary feature branch is not evidence.
-The optional Anthropic judge (`judge.py`) has no trigger: its
+The optional Anthropic model path in `judge.py` has no trigger: its
 `pull_request_target` workflow was removed before GitHub's 2026-11-02 default
 block. A future policy category that names the `judge` decider must first give
-it a `workflow_run` trigger that runs default-branch code. Declared intent and the ratchet remain the first
+it a trusted default-branch trigger. Declared intent and the ratchet remain the first
 authority, so neither evidence nor a judge approval can override them.

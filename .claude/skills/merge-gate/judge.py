@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ask the independent merge judge about reversible decision categories."""
+"""Surface owner decisions and optionally judge reversible categories."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-from merge_ready import load_policy, owner_approval, scope_findings
+from merge_ready import load_policy, scope_findings
 
 MAX_DIFF_CHARS = 60_000
 MAX_PR_BODY_CHARS = 12_000
@@ -171,18 +171,6 @@ def _judge_decision_count(comments: list[dict[str, str]], trusted_author: str) -
     )
 
 
-def _post_owner_approval(repo: str, number: str, sha: str, approved: bool) -> None:
-    marker = f"<!-- merge-gate-owner-approved sha={sha} -->"
-    gh(
-        "api",
-        "--method",
-        "POST",
-        f"repos/{repo}/issues/{number}/comments",
-        "-f",
-        f"body={marker}\nOWNER-APPROVED: {str(approved).lower()}",
-    )
-
-
 def _park_owner_categories(
     repo: str,
     number: str,
@@ -190,57 +178,11 @@ def _park_owner_categories(
     categories: list[str],
     labels: set[str],
     comments: list[dict[str, str]],
-    event_action: str,
-    event_label: str,
-    event_actor: str,
-    repository_owner: str,
     trusted_author: str,
 ) -> None:
     """Label an owner stop and ask one SHA-bound question without duplicates."""
-    if event_action == "synchronize" and "owner-approved" in labels:
-        # Labels survive a push. Remove an approval made for the previous head
-        # before asking the owner about the new SHA.
-        gh(
-            "api",
-            "--method",
-            "DELETE",
-            f"repos/{repo}/issues/{number}/labels/owner-approved",
-        )
-        labels = labels - {"owner-approved"}
-
-    has_current_approval = owner_approval(comments, sha, trusted_author)
-    owner_labeled_current_head = (
-        event_action == "labeled"
-        and event_label == "owner-approved"
-        and bool(repository_owner)
-        and event_actor.casefold() == repository_owner.casefold()
-        and "owner-approved" in labels
-    )
-    if owner_labeled_current_head and not has_current_approval:
-        _post_owner_approval(repo, number, sha, True)
-        has_current_approval = True
-    elif (
-        event_label == "owner-approved"
-        and event_action in {"labeled", "unlabeled"}
-        and has_current_approval
-    ):
-        # Removing approval, or adding its label as anyone but the repository
-        # owner, revokes the durable record before the label can be reused.
-        _post_owner_approval(repo, number, sha, False)
-        has_current_approval = False
-
-    if "owner-approved" in labels and has_current_approval:
-        if "needs-decision" in labels:
-            gh(
-                "api",
-                "--method",
-                "DELETE",
-                f"repos/{repo}/issues/{number}/labels/needs-decision",
-            )
-        return
-
     if "owner-approved" in labels:
-        # A label without the trusted current-SHA record is not an approval.
+        # The gate called this handoff only after rejecting the current label.
         gh(
             "api",
             "--method",
@@ -268,7 +210,7 @@ def _park_owner_categories(
     names = ", ".join(f"`{category}`" for category in categories)
     question = (
         f"{marker}\nPARK: owner decision required for {names}. "
-        "After reviewing this head commit, add `owner-approved` to approve it "
+        f"After reviewing this head commit, reply `/approve {sha}` to approve it "
         "or comment with the change required."
     )
     gh(
@@ -442,14 +384,11 @@ def self_test() -> int:
             ["credential"],
             set(),
             [],
-            "opened",
-            "",
-            "owner",
-            "owner",
             "github-actions[bot]",
         )
         assert any("labels[]=needs-decision" in call for call in calls)
         assert any("merge-gate-owner" in item for call in calls for item in call)
+        assert any(f"/approve {sha}" in item for call in calls for item in call)
 
         calls.clear()
         _park_owner_categories(
@@ -459,10 +398,6 @@ def self_test() -> int:
             ["credential"],
             {"needs-decision"},
             [{"author": "github-actions[bot]", "body": f"<!-- merge-gate-owner sha={sha} -->"}],
-            "opened",
-            "",
-            "owner",
-            "owner",
             "github-actions[bot]",
         )
         assert not calls
@@ -475,76 +410,10 @@ def self_test() -> int:
             ["credential"],
             {"needs-decision", "owner-approved"},
             [],
-            "labeled",
-            "owner-approved",
-            "owner",
-            "owner",
-            "github-actions[bot]",
-        )
-        assert any("merge-gate-owner-approved" in item for call in calls for item in call)
-        assert any("DELETE" in call and "needs-decision" in call[-1] for call in calls)
-
-        calls.clear()
-        _park_owner_categories(
-            "owner/repo",
-            "7",
-            sha,
-            ["credential"],
-            {"owner-approved"},
-            [
-                {
-                    "author": "github-actions[bot]",
-                    "body": (f"<!-- merge-gate-owner-approved sha={sha} -->\nOWNER-APPROVED: true"),
-                }
-            ],
-            "labeled",
-            "owner-approved",
-            "contributor",
-            "owner",
-            "github-actions[bot]",
-        )
-        assert not any("OWNER-APPROVED: true" in item for call in calls for item in call)
-        assert any("OWNER-APPROVED: false" in item for call in calls for item in call)
-        assert any("DELETE" in call and "owner-approved" in call[-1] for call in calls)
-
-        calls.clear()
-        _park_owner_categories(
-            "owner/repo",
-            "7",
-            sha,
-            ["credential"],
-            set(),
-            [
-                {
-                    "author": "github-actions[bot]",
-                    "body": (f"<!-- merge-gate-owner-approved sha={sha} -->\nOWNER-APPROVED: true"),
-                }
-            ],
-            "unlabeled",
-            "owner-approved",
-            "owner",
-            "owner",
-            "github-actions[bot]",
-        )
-        assert any("OWNER-APPROVED: false" in item for call in calls for item in call)
-        assert any("labels[]=needs-decision" in call for call in calls)
-
-        calls.clear()
-        _park_owner_categories(
-            "owner/repo",
-            "7",
-            "b" * 40,
-            ["credential"],
-            {"owner-approved"},
-            [],
-            "synchronize",
-            "",
-            "owner",
-            "owner",
             "github-actions[bot]",
         )
         assert any("DELETE" in call and "owner-approved" in call[-1] for call in calls)
-        assert any("labels[]=needs-decision" in call for call in calls)
+        assert any("merge-gate-owner" in item for call in calls for item in call)
     finally:
         globals()["gh"] = original_gh
     print("self-test passed")
@@ -585,10 +454,6 @@ def main(argv: list[str]) -> int:
             owner_categories,
             labels,
             comments,
-            os.environ.get("EVENT_ACTION", ""),
-            os.environ.get("EVENT_LABEL", ""),
-            os.environ.get("EVENT_ACTOR", ""),
-            os.environ.get("REPOSITORY_OWNER", ""),
             judge["trusted_author"],
         )
     applicable = [
