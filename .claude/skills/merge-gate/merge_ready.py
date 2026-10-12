@@ -1071,7 +1071,10 @@ def self_test() -> int:
     assert _docker_base_is_pinned(f"FROM python@sha256:{'a' * 64}")
     assert not _docker_base_is_pinned("FROM python:latest")
     assert not _docker_base_is_pinned("FROM python")
-    staged = "FROM python:3.13-slim AS builder\nFROM builder AS test\nFROM base\nFROM python:3.13-slim AS base\n"
+    staged = (
+        "FROM python:3.13-slim AS builder\nFROM builder AS test\n"
+        "FROM base\nFROM python:3.13-slim AS base\n"
+    )
     assert _stage_references(staged) == {"FROM builder AS test"}
     stage_diff = "\n".join(_file("app/Dockerfile", "+FROM builder AS test", "+FROM base"))
     assert evidence_policy_failures(stage_diff, {"app/Dockerfile": _stage_references(staged)}) == [
