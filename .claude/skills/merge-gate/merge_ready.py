@@ -16,6 +16,7 @@ import re
 import subprocess
 import sys
 import tomllib
+import urllib.parse
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +31,7 @@ PATH_RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
         "merge-authority",
         re.compile(
             r"^(?:\.claude/skills/merge-gate/|"
-            r"\.github/workflows/(?:autonomous-merge|fleet-advisory|fleet-remediation|merge-judge|quality)\.ya?ml$|"
+            r"\.github/workflows/(?:autonomous-merge|owner-approval|fleet-advisory|fleet-remediation|merge-judge|quality)\.ya?ml$|"
             r"\.github/scripts/autonomous_merge\.py$|"
             r"\.github/actions/intent-gate/|scripts/(?:intent-gate|ratchet-guard)\.sh$|"
             r"src/infra_fleet_advisor/runtime/(?:cli|intent_gate|ratchet)\.py$|"
@@ -160,6 +161,50 @@ def _docker_base_is_pinned(text: str) -> bool:
     return bool(images and _container_ref_is_pinned(images[0]))
 
 
+def _stage_references(dockerfile: str) -> set[str]:
+    """FROM lines naming a stage declared earlier in the same Dockerfile.
+
+    Docker resolves such a name to that stage, not to a registry image, so
+    there is nothing to pin. A name declared only later is still an image.
+    """
+    stages: set[str] = set()
+    references: set[str] = set()
+    images: set[str] = set()
+    for line in dockerfile.splitlines():
+        text = line.strip()
+        parts = [part for part in text.split() if not part.startswith("--")]
+        if len(parts) < 2 or parts[0].upper() != "FROM":
+            continue
+        if parts[1].casefold() in stages:
+            references.add(text)
+        else:
+            images.add(text)
+        if len(parts) >= 4 and parts[2].upper() == "AS":
+            stages.add(parts[3].casefold())
+    # The diff gives line text, not position: excuse a line only if every
+    # occurrence of that text is a stage reference.
+    return references - images
+
+
+def _head_stage_references(repo: str, sha: str, diff: str) -> dict[str, set[str]]:
+    """_stage_references() of every changed Dockerfile at the checked head."""
+    references: dict[str, set[str]] = {}
+    for path in _changed_paths(diff):
+        if not DOCKERFILE.search(path):
+            continue
+        try:
+            content = gh(
+                "api",
+                f"repos/{repo}/contents/{urllib.parse.quote(path)}?ref={sha}",
+                "-H",
+                "Accept: application/vnd.github.raw",
+            )
+        except subprocess.CalledProcessError:
+            continue  # deleted or unreadable: no stage names, so nothing is excused
+        references[path] = _stage_references(content)
+    return references
+
+
 def _changed_paths(diff: str) -> set[str]:
     return {
         match.group(2)
@@ -168,8 +213,15 @@ def _changed_paths(diff: str) -> set[str]:
     }
 
 
-def evidence_policy_failures(diff: str) -> list[str]:
-    """Reject dependency changes whose policy conditions CI cannot infer."""
+def evidence_policy_failures(
+    diff: str, stage_references: dict[str, set[str]] | None = None
+) -> list[str]:
+    """Reject dependency changes whose policy conditions CI cannot infer.
+
+    stage_references maps a Dockerfile path to _stage_references() of its head
+    content, so `FROM <earlier stage>` is not mistaken for an unpinned image.
+    """
+    stage_references = stage_references or {}
     failures: list[str] = []
     path = ""
     for line in diff.splitlines():
@@ -192,6 +244,7 @@ def evidence_policy_failures(diff: str) -> list[str]:
             DOCKERFILE.search(path)
             and re.match(r"FROM\s", text, re.I)
             and not _docker_base_is_pinned(text)
+            and text not in stage_references.get(path, set())
         ):
             failures.append(
                 f"container base is not pinned to a fixed tag or digest: {path}: {text[:80]}"
@@ -552,21 +605,6 @@ def judge_decision(
     return None
 
 
-def owner_approval(comments: list[dict[str, str]], sha: str, trusted_author: str) -> bool:
-    """Return whether the trusted workflow recorded approval for this exact head."""
-    marker = f"<!-- merge-gate-owner-approved sha={sha} -->"
-    for comment in reversed(comments):
-        if comment.get("author") != trusted_author:
-            continue
-        lines = comment.get("body", "").splitlines()
-        if len(lines) >= 2 and lines[0] == marker:
-            if lines[1] == "OWNER-APPROVED: true":
-                return True
-            if lines[1] == "OWNER-APPROVED: false":
-                return False
-    return False
-
-
 def owner_label_approval(
     events: list[dict[str, str]], repository_owner: str, head_checks_started: str
 ) -> bool:
@@ -590,10 +628,28 @@ def owner_label_approval(
     return False
 
 
+def owner_comment_approval(
+    comments: list[dict[str, str]],
+    repository_owner: str,
+    sha: str,
+    head_checks_started: str,
+) -> bool:
+    """Accept only the owner's exact, current-head command after checks started."""
+    if not repository_owner or not head_checks_started:
+        return False
+    command = f"/approve {sha}"
+    return any(
+        comment.get("author", "").casefold() == repository_owner.casefold()
+        and comment.get("body", "").strip() == command
+        and comment.get("created_at", "") > head_checks_started
+        for comment in comments
+    )
+
+
 def decide(
     findings: list[Finding],
     rules: dict[str, dict[str, str]],
-    labels: set[str],
+    _labels: set[str],
     decision: tuple[str, frozenset[str]] | None,
     current_owner_approval: bool = False,
 ) -> tuple[str, list[str]]:
@@ -613,7 +669,7 @@ def decide(
     if decision and decision[0] == "REJECT" and judge_rules.intersection(decision[1]):
         rejected = ", ".join(sorted(judge_rules.intersection(decision[1])))
         return "BLOCKED", [f"independent judge rejected rule(s): {rejected}"]
-    if owner_categories and ("owner-approved" not in labels or not current_owner_approval):
+    if owner_categories and not current_owner_approval:
         return "PARK", [f"owner decision required for: {', '.join(owner_categories)}"]
     if judge_rules and (
         not decision or decision[0] != "APPROVE" or not judge_rules.issubset(decision[1])
@@ -807,7 +863,9 @@ def main(argv: list[str]) -> int:
         print("verdict: PARK")
         return 10
     evidence_failures = required_check_failures(runs, judge["required_checks"], workflow_runs, sha)
-    evidence_failures.extend(evidence_policy_failures(diff))
+    evidence_failures.extend(
+        evidence_policy_failures(diff, _head_stage_references(repo, sha, diff))
+    )
     if evidence_failures:
         for reason in evidence_failures:
             print(f"BLOCKED  {reason}")
@@ -818,7 +876,7 @@ def main(argv: list[str]) -> int:
         "--paginate",
         f"repos/{repo}/issues/{number}/comments?per_page=100",
         "--jq",
-        ".[]|{body,author:.user.login}",
+        ".[]|{body,author:.user.login,created_at}",
     )
     decision = judge_decision(comments, sha, judge["trusted_author"])
     labels = {label["name"] for label in pr["labels"]}
@@ -831,12 +889,15 @@ def main(argv: list[str]) -> int:
         "|{event,actor:.actor.login,label:.label.name,created_at}",
     )
     head_checks_started = max((str(run.get("started_at") or "") for run in runs), default="")
+    current_owner_approval = owner_label_approval(
+        owner_events, owner, head_checks_started
+    ) or owner_comment_approval(comments, owner, sha, head_checks_started)
     verdict, reasons = decide(
         findings,
         rules,
         labels,
         decision,
-        owner_label_approval(owner_events, owner, head_checks_started),
+        current_owner_approval,
     )
     for reason in reasons:
         print(f"{verdict}  {reason}")
@@ -989,6 +1050,7 @@ def self_test() -> int:
     )
     for merge_path in (
         ".github/workflows/autonomous-merge.yml",
+        ".github/workflows/owner-approval.yml",
         ".github/workflows/fleet-advisory.yml",
         ".github/workflows/quality.yml",
         ".github/workflows/fleet-remediation.yml",
@@ -1021,6 +1083,18 @@ def self_test() -> int:
     assert _docker_base_is_pinned(f"FROM python@sha256:{'a' * 64}")
     assert not _docker_base_is_pinned("FROM python:latest")
     assert not _docker_base_is_pinned("FROM python")
+    staged = (
+        "FROM python:3.13-slim AS builder\nFROM builder AS test\n"
+        "FROM base\nFROM python:3.13-slim AS base\n"
+    )
+    assert _stage_references(staged) == {"FROM builder AS test"}
+    # The same text before and after the declaration is an image the first time.
+    assert _stage_references("FROM build\nFROM alpine:3.20 AS build\nFROM build\n") == set()
+    stage_diff = "\n".join(_file("app/Dockerfile", "+FROM builder AS test", "+FROM base"))
+    assert evidence_policy_failures(stage_diff, {"app/Dockerfile": _stage_references(staged)}) == [
+        "container base is not pinned to a fixed tag or digest: app/Dockerfile: FROM base"
+    ]
+    assert len(evidence_policy_failures(stage_diff)) == 2
     dependency_failures = evidence_policy_failures(
         "\n".join(
             [
@@ -1204,21 +1278,6 @@ def self_test() -> int:
     credential = [_finding("credential", "secret")]
     assert decide(credential, rules, set(), decision)[0] == "PARK"
     assert decide(credential, rules, {"owner-approved"}, decision)[0] == "PARK"
-    owner_marker = f"<!-- merge-gate-owner-approved sha={sha} -->\nOWNER-APPROVED: true"
-    owner_bot = [{"author": "github-actions[bot]", "body": owner_marker}]
-    owner_human = [{"author": "ImranAdan", "body": owner_marker}]
-    owner_old = [{"author": "github-actions[bot]", "body": owner_marker.replace(sha, "b" * 40)}]
-    assert owner_approval(owner_bot, sha, judge["trusted_author"])
-    assert not owner_approval(owner_human, sha, judge["trusted_author"])
-    assert not owner_approval(owner_old, sha, judge["trusted_author"])
-    owner_revoked = [
-        *owner_bot,
-        {
-            "author": "github-actions[bot]",
-            "body": f"<!-- merge-gate-owner-approved sha={sha} -->\nOWNER-APPROVED: false",
-        },
-    ]
-    assert not owner_approval(owner_revoked, sha, judge["trusted_author"])
     # The label binds to the head that was reviewed: it must postdate every
     # check run on that head. A later push starts new checks, so it unbinds.
     checks_started = "2026-10-10T20:00:00Z"
@@ -1257,7 +1316,24 @@ def self_test() -> int:
     assert not owner_label_approval(owner_event, "ImranAdan", "")
     undated = [{**owner_event[0], "created_at": ""}]
     assert not owner_label_approval(undated, "ImranAdan", checks_started)
-    assert decide(credential, rules, {"owner-approved"}, decision, True)[0] == "READY"
+    owner_command = [
+        {
+            "author": "ImranAdan",
+            "body": f"/approve {sha}",
+            "created_at": "2026-10-10T20:05:00Z",
+        }
+    ]
+    assert owner_comment_approval(owner_command, "ImranAdan", sha, checks_started)
+    assert not owner_comment_approval(owner_command, "another-owner", sha, checks_started)
+    assert not owner_comment_approval(owner_command, "ImranAdan", "b" * 40, checks_started)
+    assert not owner_comment_approval(owner_command, "ImranAdan", sha, "2026-10-10T20:07:00Z")
+    assert not owner_comment_approval(
+        [{**owner_command[0], "body": f"please /approve {sha}"}],
+        "ImranAdan",
+        sha,
+        checks_started,
+    )
+    assert decide(credential, rules, set(), decision, True)[0] == "READY"
     authority = [_finding("merge-authority", "gate")]
     authority_approve = ("APPROVE", frozenset({"merge-authority"}))
     assert decide(authority, rules, set(), authority_approve)[0] == "PARK"

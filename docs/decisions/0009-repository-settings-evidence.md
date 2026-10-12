@@ -1,7 +1,7 @@
 # PDR 0009: Repository settings evidence
 
 - Status: accepted
-- Date: 2026-10-10
+- Date: 2026-10-10 (token source revised 2026-10-12)
 - Extends: PDR 0003 intent compilation and divergence delivery
 
 ## Owner decision
@@ -27,10 +27,13 @@ repository-only boundary as current design to improve rather than a fixed law.
    snapshot, and `review --repository-settings` reads that file through
    `repository_settings_collector`. The review stays offline and deterministic
    over its inputs; tests use fixture snapshots and recorded HTTP answers.
-3. The token is a separate secret, `FLEET_SETTINGS_READ_TOKEN`: a fine-grained
-   token on the fleet repository with **Administration: read** only. The
-   issues-only App of PDR 0001 is not widened. The token comes from the
-   environment, never argv or logs.
+3. The token is minted per run by the fleet App of PDR 0001, downscoped to
+   **Administration: read** on the fleet repository only
+   (`permission-administration: read`). It lasts one hour and holds no
+   issues permission; the issue-writing jobs keep minting `issues: write`
+   only. The App's installation must grant Administration: read for minting
+   to succeed (an owner action). The token comes from the environment, never
+   argv or logs.
 4. Unknown is never healthy. Without a token or permission the snapshot holds
    `null` values and coverage is partial. Without a snapshot, as in the
    pre-merge intent gate, the collector does not run. Either way S-012 is
@@ -65,7 +68,12 @@ repository-only boundary as current design to improve rather than a fixed law.
 - **Calling the API inside the review.** That makes reviews depend on the
   network and on the time of the run, and the intent gate would need a
   credential.
-- **Adding Administration: read to the issues App.** That widens a token that
-  has write access to fleet issues.
+- **A fine-grained personal access token** (`FLEET_SETTINGS_READ_TOKEN`, the
+  original 2026-10-10 choice). It is tied to the owner's account, lasts until
+  it expires and must be rotated by hand, whereas the App already exists and
+  mints one-hour tokens. The original objection to the App, that it "widens a
+  token that has write access to fleet issues", does not hold: each job mints
+  its own token with only the permissions it names, so no single token holds
+  both. What widens is the App's ceiling, by one read-only permission.
 - **Marking S-010 satisfied from the configuration alone.** The 2026-10-10
   finding shows that configuration and settings drift apart.
