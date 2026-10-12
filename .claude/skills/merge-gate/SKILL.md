@@ -43,7 +43,9 @@ merge. Remove the marker to hold the PR open.
   event and branch provenance; a missing, skipped or same-name check from
   another workflow does not count.
 - **Dependency evidence:** remote actions need a full commit SHA, container
-  bases need a fixed tag or digest, requirements need exact pins, and changed
+  bases need a fixed tag or digest (a `FROM` naming a stage declared earlier
+  in the same Dockerfile at the head commit is a stage, not an image),
+  requirements need exact pins, and changed
   manifests need their sibling lockfiles.
 - **Mergeable:** GitHub reports the branch `CLEAN`: no conflicts, not behind.
 - **Exact head:** `--merge` passes the checked SHA to GitHub's
