@@ -169,6 +169,7 @@ def _stage_references(dockerfile: str) -> set[str]:
     """
     stages: set[str] = set()
     references: set[str] = set()
+    images: set[str] = set()
     for line in dockerfile.splitlines():
         text = line.strip()
         parts = [part for part in text.split() if not part.startswith("--")]
@@ -176,9 +177,13 @@ def _stage_references(dockerfile: str) -> set[str]:
             continue
         if parts[1].casefold() in stages:
             references.add(text)
+        else:
+            images.add(text)
         if len(parts) >= 4 and parts[2].upper() == "AS":
             stages.add(parts[3].casefold())
-    return references
+    # The diff gives line text, not position: excuse a line only if every
+    # occurrence of that text is a stage reference.
+    return references - images
 
 
 def _head_stage_references(repo: str, sha: str, diff: str) -> dict[str, set[str]]:
