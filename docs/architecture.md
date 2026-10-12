@@ -116,6 +116,12 @@ coverage partial. It emits one record per settings group (Dependabot, secret
 protection, default-branch protection), each anchored on the fleet file that
 documents the control and keyed by kind and repository.
 
+`agent_rules_collector` reads the fleet's `AGENTS.md` and
+`.github/pull_request_template.md` and emits one record per file that exists,
+stating whether it still declares the Autonomy grant and Owner-only list, or
+the `<!-- autonomous-merge -->` opt-in. It backs M-006 and cannot prove it:
+declared rules do not show that agents followed them.
+
 `documentation_link_collector` reads every tracked Markdown file and emits one
 record per file stating whether all its relative links resolve to tracked files
 or directories. Links in fenced code, absolute URLs and anchors are not file

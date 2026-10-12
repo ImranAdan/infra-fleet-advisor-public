@@ -9,6 +9,7 @@ from infra_fleet_advisor.core.evidence import Evidence
 from infra_fleet_advisor.core.intent import IntentEvaluation, IntentEvaluationStatus
 from infra_fleet_advisor.core.report import CollectorCoverage
 from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
+    CONCERN_AGENT_AUTONOMY_RULES_MISSING,
     CONCERN_AUTONOMOUS_MERGE_INCOMPLETE,
     CONCERN_CI_CREDENTIALS_WITHOUT_OIDC,
     CONCERN_CONTAINER_HARDENING_INCOMPLETE,
@@ -40,10 +41,12 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
     candidate_from_template,
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
+    AGENT_RULES_COLLECTOR_ID,
     APP_CONFIG_COLLECTOR_ID,
     APP_CONTRACT_COLLECTOR_ID,
     DEPENDENCY_UPDATE_COLLECTOR_ID,
     DOCUMENTATION_LINK_COLLECTOR_ID,
+    EVIDENCE_KIND_AGENT_AUTONOMY_RULES,
     EVIDENCE_KIND_APPLICATION_COUPLING,
     EVIDENCE_KIND_AUTONOMOUS_MERGE,
     EVIDENCE_KIND_CONTAINER_HARDENING,
@@ -102,6 +105,7 @@ CHECK_REPOSITORY_SECURITY_UPDATES_ENABLED = "repository_security_updates_enabled
 CHECK_SECRET_PROTECTION_ENABLED = "repository_secret_protection_enabled"  # noqa: S105
 CHECK_DEFAULT_BRANCH_PROTECTED = "default_branch_protected"
 CHECK_DOCUMENTATION_LINKS_RESOLVE = "documentation_links_resolve"
+CHECK_FLEET_AGENT_AUTONOMY_DECLARED = "fleet_agent_autonomy_declared"
 CHECK_ECR_PUBLICATION_SCAN_GATED = "ecr_publication_scan_gated"
 CHECK_APPLICATION_SWAPPABLE = "fleet_application_swappable"
 CHECK_FLEET_AUTONOMOUS_MERGE = "fleet_autonomous_merge"
@@ -304,6 +308,18 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
             # Every tracked Markdown file yields a record, so complete coverage
             # proves no broken link.
             can_prove_satisfaction=True,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_FLEET_AGENT_AUTONOMY_DECLARED: IntentCheckDefinition(
+            concern_key=CONCERN_AGENT_AUTONOMY_RULES_MISSING,
+            rule=ConcernRule(
+                category="maintainability",
+                evidence_kind=EVIDENCE_KIND_AGENT_AUTONOMY_RULES,
+                collector_id=AGENT_RULES_COLLECTOR_ID,
+                required_facts={"rules_present": False},
+            ),
+            # The rules being declared does not show that agents followed them.
+            can_prove_satisfaction=False,
             requires_relevant_evidence=True,
         ),
         CHECK_REPOSITORY_SECURITY_UPDATES_ENABLED: IntentCheckDefinition(

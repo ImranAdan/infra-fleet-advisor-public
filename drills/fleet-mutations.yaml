@@ -121,3 +121,8 @@ drills:
     path: README.md
     find: "[Local Kubernetes](docs/LOCAL-KUBERNETES.md)"
     replace: "[Local Kubernetes](docs/LOCAL-K8S.md)"
+  # Agents need the opt-in marker for the trusted merge worker to act.
+  - proposition: M-006
+    path: .github/pull_request_template.md
+    find: "<!-- autonomous-merge -->"
+    replace: "<!-- held for review -->"

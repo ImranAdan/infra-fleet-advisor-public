@@ -145,9 +145,17 @@ deletion, and approval of merge-authority changes) reach the owner, and they
 arrive as a **Decision needed** issue while other work continues, never as a
 stalled session.
 
-Caveat: whether an agent paused is not visible in repository evidence, so this
-position has no check yet. It is enforced through the agent rules and the
-merge gate, and reviewed by the owner.
+Caveat: whether an agent paused is not visible in repository evidence, so the
+check cannot prove this position. It catches the regression that would make
+pausing the rule: the fleet's `AGENTS.md` losing its Autonomy grant or
+Owner-only list, or `.github/pull_request_template.md` losing the
+`<!-- autonomous-merge -->` opt-in. The rest is enforced through the agent
+rules and the merge gate, and reviewed by the owner.
+
+### Evaluation
+
+- Check: `fleet_agent_autonomy_declared`
+- Priority: `medium`
 
 ## M-007 · Documentation stays current
 
