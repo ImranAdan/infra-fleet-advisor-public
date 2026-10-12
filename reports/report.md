@@ -1,9 +1,9 @@
 # Infra Fleet Advisor report
 
-- Source: `infra-fleet-public` @ `ac1a86089368ebe3fd715554b723a4b269464ff8`
+- Source: `infra-fleet-public` @ `731007dffd0188776fa99d642e3342c6c0e72c46`
 - Advisor version: `0.1.0` · Policy version: `1.1`
-- Model: `stub-synthesizer-v1` · Run started: `2026-10-10T21:36:56.224364+00:00`
-- Intent catalog: `intent-md-v1:4125244ca6a5806032b0766b532b2f0a450e162c97890c2989c6ce9ca5f99043`
+- Model: `stub-synthesizer-v1` · Run started: `2026-10-12T20:07:52.570942+00:00`
+- Intent catalog: `intent-md-v1:80b122a04d3820affea2cec93ccd0002bb11c31b8ec9ae7923c9cc40d5375d98`
 - Lifecycle: 0 new, 0 unchanged, 10 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
@@ -18,11 +18,12 @@
 - `application_config_collector`: ok (1 evidence)
 - `application_contract_collector`: partial (1 evidence) — an on-demand application launcher is declared; its run-time constraints are outside repository evidence
 - `documentation_link_collector`: ok (54 evidence)
+- `agent_rules_collector`: ok (2 evidence)
 - `repository_settings_collector`: partial (0 evidence) — repository settings unknown (dependabot_alerts, security_updates, secret_scanning, push_protection, default_branch_protected): no settings token was provided
 
 ## Intent evaluation
 
-**Coverage:** 26 of 27 positions have a check — 9 satisfied, 0 divergent, 17 checked but unproven; 1 declared without a check.
+**Coverage:** 27 of 27 positions have a check — 9 satisfied, 0 divergent, 18 checked but unproven; 0 declared without a check.
 
 - `declared_unverified` `infra_fleet_public_cost/C-001` — Staging application worker capacity scales to zero outside an owner-defined
   usage window. A delayed startup of up to 30 minutes is acceptable when it avoids
@@ -131,10 +132,13 @@
   arrive as a \*\*Decision needed\*\* issue while other work continues, never as a
   stalled session.
   
-  Caveat: whether an agent paused is not visible in repository evidence, so this
-  position has no check yet. It is enforced through the agent rules and the
-  merge gate, and reviewed by the owner.
-  - Category: `maintainability` · Priority: `not_declared` · Check: `not_declared` · Reason: `check_not_declared`
+  Caveat: whether an agent paused is not visible in repository evidence, so the
+  check cannot prove this position. It catches the regression that would make
+  pausing the rule: the fleet's \`AGENTS.md\` losing its Autonomy grant or
+  Owner-only list, or \`.github/pull\_request\_template.md\` losing the
+  \`\<!-- autonomous-merge --\>\` opt-in. The rest is enforced through the agent
+  rules and the merge gate, and reviewed by the owner.
+  - Category: `maintainability` · Priority: `medium` · Check: `fleet_agent_autonomy_declared` · Reason: `collector_cannot_prove_satisfaction`
 - `satisfied` `infra_fleet_public_maintainability/M-007` — Every change that alters behaviour updates the documentation describing it in
   the same pull request. Docs never point at files, paths or commands that no
   longer exist.

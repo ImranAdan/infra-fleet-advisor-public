@@ -61,6 +61,12 @@
       "status": "ok"
     },
     {
+      "collector_id": "agent_rules_collector",
+      "error_summary": null,
+      "evidence_count": 2,
+      "status": "ok"
+    },
+    {
       "collector_id": "repository_settings_collector",
       "error_summary": "repository settings unknown (dependabot_alerts, security_updates, secret_scanning, push_protection, default_branch_protected): no settings token was provided",
       "evidence_count": 0,
@@ -359,13 +365,13 @@
     },
     {
       "category": "maintainability",
-      "check_key": null,
+      "check_key": "fleet_agent_autonomy_declared",
       "document_id": "infra_fleet_public_maintainability",
       "evidence_ids": [],
-      "priority": null,
+      "priority": "medium",
       "proposition_id": "M-006",
-      "reason": "check_not_declared",
-      "statement": "Agents carry work from a finding to a merged pull request without pausing for\nthe owner. Only the owner-only actions listed in the fleet's `AGENTS.md`\n(credentials, widened permissions, branch protection and Actions policy,\ndeletion, and approval of merge-authority changes) reach the owner, and they\narrive as a **Decision needed** issue while other work continues, never as a\nstalled session.\n\nCaveat: whether an agent paused is not visible in repository evidence, so this\nposition has no check yet. It is enforced through the agent rules and the\nmerge gate, and reviewed by the owner.",
+      "reason": "collector_cannot_prove_satisfaction",
+      "statement": "Agents carry work from a finding to a merged pull request without pausing for\nthe owner. Only the owner-only actions listed in the fleet's `AGENTS.md`\n(credentials, widened permissions, branch protection and Actions policy,\ndeletion, and approval of merge-authority changes) reach the owner, and they\narrive as a **Decision needed** issue while other work continues, never as a\nstalled session.\n\nCaveat: whether an agent paused is not visible in repository evidence, so the\ncheck cannot prove this position. It catches the regression that would make\npausing the rule: the fleet's `AGENTS.md` losing its Autonomy grant or\nOwner-only list, or `.github/pull_request_template.md` losing the\n`<!-- autonomous-merge -->` opt-in. The rest is enforced through the agent\nrules and the merge gate, and reviewed by the owner.",
       "status": "declared_unverified"
     },
     {
@@ -549,6 +555,7 @@
   "provenance": {
     "advisor_version": "0.1.0",
     "collector_versions": {
+      "agent_rules_collector": "1.0.0",
       "application_config_collector": "1.0.0",
       "application_contract_collector": "1.3.0",
       "dependency_update_collector": "1.0.0",
@@ -561,11 +568,11 @@
       "terraform_cost_collector": "1.4.0",
       "terraform_iam_collector": "1.5.0"
     },
-    "intent_digest": "intent-md-v1:4125244ca6a5806032b0766b532b2f0a450e162c97890c2989c6ce9ca5f99043",
+    "intent_digest": "intent-md-v1:80b122a04d3820affea2cec93ccd0002bb11c31b8ec9ae7923c9cc40d5375d98",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.1",
-    "run_started_at": "2026-10-10T21:36:56.224364+00:00",
-    "source_commit_sha": "ac1a86089368ebe3fd715554b723a4b269464ff8",
+    "run_started_at": "2026-10-12T20:07:52.570942+00:00",
+    "source_commit_sha": "731007dffd0188776fa99d642e3342c6c0e72c46",
     "source_label": "infra-fleet-public"
   },
   "recommendations": [
