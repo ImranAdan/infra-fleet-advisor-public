@@ -16,6 +16,7 @@ import re
 import subprocess
 import sys
 import tomllib
+import urllib.parse
 from pathlib import Path
 from typing import Any
 
@@ -160,6 +161,45 @@ def _docker_base_is_pinned(text: str) -> bool:
     return bool(images and _container_ref_is_pinned(images[0]))
 
 
+def _stage_references(dockerfile: str) -> set[str]:
+    """FROM lines naming a stage declared earlier in the same Dockerfile.
+
+    Docker resolves such a name to that stage, not to a registry image, so
+    there is nothing to pin. A name declared only later is still an image.
+    """
+    stages: set[str] = set()
+    references: set[str] = set()
+    for line in dockerfile.splitlines():
+        text = line.strip()
+        parts = [part for part in text.split() if not part.startswith("--")]
+        if len(parts) < 2 or parts[0].upper() != "FROM":
+            continue
+        if parts[1].casefold() in stages:
+            references.add(text)
+        if len(parts) >= 4 and parts[2].upper() == "AS":
+            stages.add(parts[3].casefold())
+    return references
+
+
+def _head_stage_references(repo: str, sha: str, diff: str) -> dict[str, set[str]]:
+    """_stage_references() of every changed Dockerfile at the checked head."""
+    references: dict[str, set[str]] = {}
+    for path in _changed_paths(diff):
+        if not DOCKERFILE.search(path):
+            continue
+        try:
+            content = gh(
+                "api",
+                f"repos/{repo}/contents/{urllib.parse.quote(path)}?ref={sha}",
+                "-H",
+                "Accept: application/vnd.github.raw",
+            )
+        except subprocess.CalledProcessError:
+            continue  # deleted or unreadable: no stage names, so nothing is excused
+        references[path] = _stage_references(content)
+    return references
+
+
 def _changed_paths(diff: str) -> set[str]:
     return {
         match.group(2)
@@ -168,8 +208,15 @@ def _changed_paths(diff: str) -> set[str]:
     }
 
 
-def evidence_policy_failures(diff: str) -> list[str]:
-    """Reject dependency changes whose policy conditions CI cannot infer."""
+def evidence_policy_failures(
+    diff: str, stage_references: dict[str, set[str]] | None = None
+) -> list[str]:
+    """Reject dependency changes whose policy conditions CI cannot infer.
+
+    stage_references maps a Dockerfile path to _stage_references() of its head
+    content, so `FROM <earlier stage>` is not mistaken for an unpinned image.
+    """
+    stage_references = stage_references or {}
     failures: list[str] = []
     path = ""
     for line in diff.splitlines():
@@ -192,6 +239,7 @@ def evidence_policy_failures(diff: str) -> list[str]:
             DOCKERFILE.search(path)
             and re.match(r"FROM\s", text, re.I)
             and not _docker_base_is_pinned(text)
+            and text not in stage_references.get(path, set())
         ):
             failures.append(
                 f"container base is not pinned to a fixed tag or digest: {path}: {text[:80]}"
@@ -807,7 +855,9 @@ def main(argv: list[str]) -> int:
         print("verdict: PARK")
         return 10
     evidence_failures = required_check_failures(runs, judge["required_checks"], workflow_runs, sha)
-    evidence_failures.extend(evidence_policy_failures(diff))
+    evidence_failures.extend(
+        evidence_policy_failures(diff, _head_stage_references(repo, sha, diff))
+    )
     if evidence_failures:
         for reason in evidence_failures:
             print(f"BLOCKED  {reason}")
