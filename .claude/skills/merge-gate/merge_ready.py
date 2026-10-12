@@ -1076,6 +1076,8 @@ def self_test() -> int:
         "FROM base\nFROM python:3.13-slim AS base\n"
     )
     assert _stage_references(staged) == {"FROM builder AS test"}
+    # The same text before and after the declaration is an image the first time.
+    assert _stage_references("FROM build\nFROM alpine:3.20 AS build\nFROM build\n") == set()
     stage_diff = "\n".join(_file("app/Dockerfile", "+FROM builder AS test", "+FROM base"))
     assert evidence_policy_failures(stage_diff, {"app/Dockerfile": _stage_references(staged)}) == [
         "container base is not pinned to a fixed tag or digest: app/Dockerfile: FROM base"
