@@ -30,7 +30,7 @@ PATH_RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
         "merge-authority",
         re.compile(
             r"^(?:\.claude/skills/merge-gate/|"
-            r"\.github/workflows/(?:autonomous-merge|fleet-advisory|fleet-remediation|merge-judge|quality)\.ya?ml$|"
+            r"\.github/workflows/(?:autonomous-merge|owner-approval|fleet-advisory|fleet-remediation|merge-judge|quality)\.ya?ml$|"
             r"\.github/scripts/autonomous_merge\.py$|"
             r"\.github/actions/intent-gate/|scripts/(?:intent-gate|ratchet-guard)\.sh$|"
             r"src/infra_fleet_advisor/runtime/(?:cli|intent_gate|ratchet)\.py$|"
@@ -995,6 +995,7 @@ def self_test() -> int:
     )
     for merge_path in (
         ".github/workflows/autonomous-merge.yml",
+        ".github/workflows/owner-approval.yml",
         ".github/workflows/fleet-advisory.yml",
         ".github/workflows/quality.yml",
         ".github/workflows/fleet-remediation.yml",

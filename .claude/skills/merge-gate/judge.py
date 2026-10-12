@@ -181,16 +181,6 @@ def _park_owner_categories(
     trusted_author: str,
 ) -> None:
     """Label an owner stop and ask one SHA-bound question without duplicates."""
-    if "owner-approved" in labels:
-        # The gate called this handoff only after rejecting the current label.
-        gh(
-            "api",
-            "--method",
-            "DELETE",
-            f"repos/{repo}/issues/{number}/labels/owner-approved",
-        )
-        labels = labels - {"owner-approved"}
-
     if "needs-decision" not in labels:
         gh(
             "api",
@@ -412,7 +402,7 @@ def self_test() -> int:
             [],
             "github-actions[bot]",
         )
-        assert any("DELETE" in call and "owner-approved" in call[-1] for call in calls)
+        assert not any("DELETE" in call and "owner-approved" in call[-1] for call in calls)
         assert any("merge-gate-owner" in item for call in calls for item in call)
     finally:
         globals()["gh"] = original_gh

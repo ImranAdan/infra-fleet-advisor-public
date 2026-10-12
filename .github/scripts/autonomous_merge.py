@@ -195,8 +195,13 @@ def _self_test() -> int:
     original_argv = sys.argv
     saved_env = {
         key: os.environ.get(key)
-        for key in ("GITHUB_REPOSITORY", "AUTONOMOUS_MERGE_MIN_AGE_SECONDS")
+        for key in (
+            "GITHUB_REPOSITORY",
+            "AUTONOMOUS_MERGE_MIN_AGE_SECONDS",
+            "GITHUB_STEP_SUMMARY",
+        )
     }
+    os.environ.pop("GITHUB_STEP_SUMMARY", None)
     commands: list[list[str]] = []
 
     def fake_run(command: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
