@@ -138,8 +138,9 @@ def test_authoritative_markdown_drives_the_production_review(git_checkout) -> No
     assert evaluations["S-010"].status == "divergent"
     # Every relative link in the fixture's Markdown resolves.
     assert evaluations["M-007"].status == "satisfied"
-    # M-006 declares no check: unverified, and reported as such.
-    assert evaluations["M-006"].reason == "check_not_declared"
+    # The fixture has no AGENTS.md or pull request template, so M-006 has no
+    # relevant evidence; the check never proves it anyway.
+    assert evaluations["M-006"].reason == "no_relevant_evidence"
     assert {
         item.status
         for key, item in evaluations.items()
@@ -495,7 +496,7 @@ def test_registered_collectors_contribute_to_one_report(git_checkout) -> None:
     concern_keys = {r.concern_key for r in report.recommendations}
     assert "trivy_ignore_unfixed" in concern_keys
     assert "wildcard_iam_permissions" in concern_keys
-    assert len(report.coverage) == 10
+    assert len(report.coverage) == 11
     assert all(c.status == "ok" for c in report.coverage)
     assert len(report.evidence) == 2
 

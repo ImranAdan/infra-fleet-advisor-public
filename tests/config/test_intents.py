@@ -201,6 +201,7 @@ def test_production_markdown_is_the_authoritative_catalog() -> None:
         "ecr_publication_scan_gated",
         "eks_public_endpoint_staging_only",
         "fleet_application_swappable",
+        "fleet_agent_autonomy_declared",
         "fleet_autonomous_merge",
         "fleet_aws_onboarding",
         "fleet_local_first_use",

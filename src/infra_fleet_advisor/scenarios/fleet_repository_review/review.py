@@ -19,6 +19,7 @@ from infra_fleet_advisor.core.report import (
 )
 from infra_fleet_advisor.provenance.source_verification import SourceProvenance, list_tracked_paths
 from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
+    agent_rules_collector,
     application_config_collector,
     application_contract_collector,
     dependency_update_collector,
@@ -43,6 +44,8 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import CONCERN_RULES
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
+    AGENT_RULES_COLLECTOR_ID,
+    AGENT_RULES_COLLECTOR_VERSION,
     APP_CONFIG_COLLECTOR_ID,
     APP_CONFIG_COLLECTOR_VERSION,
     APP_CONTRACT_COLLECTOR_ID,
@@ -182,6 +185,12 @@ def run_review(
         excluded_paths=excluded_paths,
         tracked_paths=list_tracked_paths(checkout_root, "."),
     )
+    agent_rules_result = agent_rules_collector.collect(
+        checkout_root,
+        limits,
+        excluded_paths=excluded_paths,
+        tracked_paths=list_tracked_paths(checkout_root, "."),
+    )
     # Only a nightly review is handed a settings snapshot (PDR 0009); without
     # one the collector does not run and S-012 reads collector_not_run.
     settings_results = (
@@ -200,6 +209,7 @@ def run_review(
         + app_config_result.evidence
         + app_contract_result.evidence
         + docs_result.evidence
+        + agent_rules_result.evidence
         + tuple(e for result in settings_results for e in result.evidence)
     )
     evidence_by_id = {e.evidence_id: e for e in all_evidence}
@@ -214,6 +224,7 @@ def run_review(
         app_config_result.coverage,
         app_contract_result.coverage,
         docs_result.coverage,
+        agent_rules_result.coverage,
         *(result.coverage for result in settings_results),
     ]
 
@@ -276,6 +287,7 @@ def run_review(
             APP_CONTRACT_COLLECTOR_ID: APP_CONTRACT_COLLECTOR_VERSION,
             REPOSITORY_SETTINGS_COLLECTOR_ID: REPOSITORY_SETTINGS_COLLECTOR_VERSION,
             DOCUMENTATION_LINK_COLLECTOR_ID: DOCUMENTATION_LINK_COLLECTOR_VERSION,
+            AGENT_RULES_COLLECTOR_ID: AGENT_RULES_COLLECTOR_VERSION,
         },
         model_identifier=synthesis_response.model_identifier,
         run_started_at=run_started_at,

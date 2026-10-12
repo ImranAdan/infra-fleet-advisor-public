@@ -28,6 +28,7 @@ CONCERN_SECURITY_UPDATES_DISABLED = "repository_security_updates_disabled"
 CONCERN_SECRET_PROTECTION_DISABLED = "repository_secret_protection_disabled"  # noqa: S105
 CONCERN_DEFAULT_BRANCH_UNPROTECTED = "default_branch_unprotected"
 CONCERN_DOCUMENTATION_LINKS_BROKEN = "documentation_links_broken"
+CONCERN_AGENT_AUTONOMY_RULES_MISSING = "agent_autonomy_rules_missing"
 CONCERN_INGRESS_UNRESTRICTED = "application_ingress_unrestricted"
 CONCERN_EGRESS_ACCEPTANCE_EXCEEDED = "permissive_egress_beyond_applications"
 CONCERN_INGRESS_HTTP_ALLOWED = "public_ingress_allows_plain_http"
@@ -414,6 +415,30 @@ CONCERN_TEMPLATES: dict[str, ConcernTemplate] = {
         confidence_explanation=(
             "Resolved every relative link in tracked Markdown against the verified commit's "
             "tracked paths."
+        ),
+    ),
+    CONCERN_AGENT_AUTONOMY_RULES_MISSING: ConcernTemplate(
+        category="maintainability",
+        priority="medium",
+        title="Agent autonomy rules are no longer declared",
+        summary=(
+            "AGENTS.md lost its Autonomy grant or Owner-only list, or the pull request template "
+            "lost the autonomous-merge opt-in marker."
+        ),
+        impact=(
+            "Agents fall back to asking the owner before every step, and new pull requests no "
+            "longer opt in to the trusted merge worker, so routine work stalls."
+        ),
+        suggested_change=(
+            "Restore the Autonomy section and Owner-only list in AGENTS.md and the "
+            "`<!-- autonomous-merge -->` marker in .github/pull_request_template.md, or record "
+            "the replacement rule in the same change."
+        ),
+        trade_offs="None beyond the edit.",
+        confidence=0.85,
+        confidence_explanation=(
+            "Matched literal headings and the marker in the verified commit; a reworded "
+            "heading reads as missing."
         ),
     ),
     CONCERN_SECURITY_UPDATES_DISABLED: ConcernTemplate(
