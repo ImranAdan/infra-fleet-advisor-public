@@ -68,6 +68,17 @@ insecure Terraform fixtures. Workflow or publication changes must preserve the
 Documentation-only changes should check links, commands and consistency with
 the implemented behavior.
 
+## Dependency updates
+
+Dependabot checks the locked Python environment and pinned GitHub Actions each
+Monday. It groups each ecosystem into one pull request and allows at most one
+open version-update PR per ecosystem, keeping review and CI load bounded.
+
+Treat generated updates like any other change: keep `uv.lock` aligned with
+`pyproject.toml`, retain immutable action SHA pins and let the normal quality,
+advisor-gate and exact-head merge checks decide the PR. A failing grouped
+update should be repaired or narrowed rather than merged around a gate.
+
 ## Propose a pull request
 
 - Use a Conventional Commit subject of at most 72 characters.
