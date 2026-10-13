@@ -32,6 +32,107 @@ def test_detects_evidence_gated_autonomous_merge(git_checkout) -> None:
     assert evidence.fact == {"evidence_autonomy_complete": True}
 
 
+def test_detects_app_token_evidence_gated_autonomous_merge(git_checkout) -> None:
+    repo, _sha = git_checkout("autonomous_merge_app_good.yml", "intent_gate_named.yml")
+    result = gha_collector.collect(repo, LIMITS)
+    evidence = next(item for item in result.evidence if item.kind == EVIDENCE_KIND_AUTONOMOUS_MERGE)
+    assert evidence.source_path == ".github/workflows/autonomous_merge_app_good.yml"
+    assert evidence.fact == {"evidence_autonomy_complete": True}
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        (
+            "actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1",
+            "actions/create-github-app-token@v3",
+        ),
+        ("permission-contents: write", "permission-contents: read"),
+        (
+            "          permission-contents: write\n",
+            "          permission-contents: write\n          permission-pull-requests: write\n",
+        ),
+        (
+            "repositories: ${{ github.event.repository.name }}",
+            "repositories: another-repository",
+        ),
+        ("client-id: ${{ secrets.APP_CLIENT_ID }}", 'client-id: ""'),
+        ("private-key: ${{ secrets.APP_PRIVATE_KEY }}", 'private-key: ""'),
+        ("private-key: ${{ secrets.APP_PRIVATE_KEY }}", "private-key: not-a-key"),
+        (
+            "private-key: ${{ secrets.APP_PRIVATE_KEY }}",
+            "private-key: ${{ github.token }}",
+        ),
+        (
+            "MERGE_GH_TOKEN: ${{ steps.merge-token.outputs.token }}",
+            "MERGE_GH_TOKEN: ${{ github.token }}",
+        ),
+        (
+            "          permission-contents: write\n",
+            "          permission-contents: write\n          skip-token-revoke: true\n",
+        ),
+        (
+            "          permission-contents: write\n",
+            "          permission-contents: write\n          skip-token-revoke: ${{ true }}\n",
+        ),
+        (
+            "          permission-contents: write\n",
+            "          permission-contents: write\n"
+            "          github-api-url: https://attacker.example\n",
+        ),
+        (
+            "      - id: merge-token\n",
+            "      - id: merge-token\n        if: false\n",
+        ),
+    ],
+)
+def test_app_merge_token_must_be_pinned_scoped_and_unconditional(git_checkout, old, new) -> None:
+    repo, _sha = git_checkout("autonomous_merge_app_good.yml", "intent_gate_named.yml")
+    workflow = repo / ".github" / "workflows" / "autonomous_merge_app_good.yml"
+    original = workflow.read_text(encoding="utf-8")
+    assert old in original
+    workflow.write_text(original.replace(old, new), encoding="utf-8")
+
+    result = gha_collector.collect(repo, LIMITS)
+    evidence = next(item for item in result.evidence if item.kind == EVIDENCE_KIND_AUTONOMOUS_MERGE)
+
+    assert evidence.fact == {"evidence_autonomy_complete": False}
+
+
+def test_app_merge_token_requires_read_only_workflow_contents(git_checkout) -> None:
+    repo, _sha = git_checkout("autonomous_merge_app_good.yml", "intent_gate_named.yml")
+    workflow = repo / ".github" / "workflows" / "autonomous_merge_app_good.yml"
+    original = workflow.read_text(encoding="utf-8")
+    workflow.write_text(
+        original.replace("  contents: read\n", "  contents: write\n"),
+        encoding="utf-8",
+    )
+
+    result = gha_collector.collect(repo, LIMITS)
+    evidence = next(item for item in result.evidence if item.kind == EVIDENCE_KIND_AUTONOMOUS_MERGE)
+
+    assert evidence.fact == {"evidence_autonomy_complete": False}
+
+
+def test_app_merge_token_must_be_minted_before_the_worker(git_checkout) -> None:
+    repo, _sha = git_checkout("autonomous_merge_app_good.yml", "intent_gate_named.yml")
+    workflow = repo / ".github" / "workflows" / "autonomous_merge_app_good.yml"
+    original = workflow.read_text(encoding="utf-8")
+    token_start = original.index("      - id: merge-token\n")
+    worker_start = original.index("      - run: python3 .github/scripts/autonomous_merge.py\n")
+    token_block = original[token_start:worker_start]
+    worker_block = original[worker_start:]
+    workflow.write_text(
+        original[:token_start] + worker_block + token_block,
+        encoding="utf-8",
+    )
+
+    result = gha_collector.collect(repo, LIMITS)
+    evidence = next(item for item in result.evidence if item.kind == EVIDENCE_KIND_AUTONOMOUS_MERGE)
+
+    assert evidence.fact == {"evidence_autonomy_complete": False}
+
+
 @pytest.mark.parametrize(
     ("old", "new"),
     [

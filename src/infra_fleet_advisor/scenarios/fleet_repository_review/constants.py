@@ -30,7 +30,7 @@ EVIDENCE_KIND_APPLICATION_COUPLING = "platform_application_coupling"
 EVIDENCE_KIND_AUTONOMOUS_MERGE = "gha_autonomous_merge"
 
 GHA_COLLECTOR_ID = "github_actions_workflow_collector"
-GHA_COLLECTOR_VERSION = "1.6.1"
+GHA_COLLECTOR_VERSION = "1.7.0"
 
 TF_IAM_COLLECTOR_ID = "terraform_iam_collector"
 TF_IAM_COLLECTOR_VERSION = "1.5.0"

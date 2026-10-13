@@ -35,6 +35,10 @@ _STATUS_OVERRIDE = re.compile(r"\b(?:always|failure|cancelled)\s*\(")
 _AUTONOMOUS_WORKER_COMMAND = "python3 .github/scripts/autonomous_merge.py"
 _AUTONOMOUS_TRIGGER_WORKFLOW = "Intent Gate"
 _DEFAULT_BRANCH_EXPRESSION = "${{ github.event.repository.default_branch }}"
+_REPOSITORY_NAME_EXPRESSION = "${{ github.event.repository.name }}"
+_APP_INSTALLATION_ACTION = "actions/create-github-app-token"
+_STEP_OUTPUT_TOKEN = re.compile(r"^\$\{\{ steps\.([A-Za-z0-9_-]+)\.outputs\.token \}\}$")
+_SECRET_BINDING = re.compile(r"^\$\{\{ secrets\.[A-Za-z_][A-Za-z0-9_]* \}\}$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,7 +96,7 @@ def _worker_permissions_are_bounded(permissions: Any) -> bool:
     required = {
         "actions": "read",
         "checks": "read",
-        "contents": "write",
+        "contents": "read",
         "issues": "read",
         "pull-requests": "write",
         "statuses": "read",
@@ -106,6 +110,68 @@ def _worker_permissions_are_bounded(permissions: Any) -> bool:
         or name in {"contents", "pull-requests"}
         for name, level in permissions.items()
     )
+
+
+def _uses_pinned_action(uses: Any, action: str) -> bool:
+    if not isinstance(uses, str):
+        return False
+    name, separator, revision = uses.rpartition("@")
+    return bool(
+        name == action and separator and re.fullmatch(r"[0-9a-f]{40}", revision) is not None
+    )
+
+
+def _is_secret_binding(value: Any) -> bool:
+    """Accept a direct Actions secret reference, never a literal or expression."""
+    return isinstance(value, str) and _SECRET_BINDING.fullmatch(value) is not None
+
+
+def _has_bounded_app_merge_token(
+    steps: list[Any], worker_index: int, worker_step: dict[str, Any]
+) -> bool:
+    """Prove that only a repository-scoped App token reaches the merge mutation."""
+    worker_env = worker_step.get("env")
+    if not isinstance(worker_env, dict):
+        return False
+    token = worker_env.get("MERGE_GH_TOKEN")
+    match = _STEP_OUTPUT_TOKEN.fullmatch(token) if isinstance(token, str) else None
+    if match is None:
+        return False
+    token_step_id = match.group(1)
+    for step in steps[:worker_index]:
+        if not isinstance(step, dict) or step.get("id") != token_step_id:
+            continue
+        raw_with = step.get("with")
+        if not isinstance(raw_with, dict):
+            return False
+        expected_inputs = {
+            "client-id",
+            "private-key",
+            "owner",
+            "repositories",
+            "permission-contents",
+        }
+        if set(raw_with) != expected_inputs:
+            return False
+        permissions = {
+            key: value
+            for key, value in raw_with.items()
+            if isinstance(key, str) and key.startswith("permission-")
+        }
+        return bool(
+            _uses_pinned_action(step.get("uses"), _APP_INSTALLATION_ACTION)
+            and _runs_unconditionally(step)
+            and not _is_truthy_yaml_value(step.get("continue-on-error"))
+            and _is_secret_binding(raw_with.get("client-id"))
+            and _is_secret_binding(raw_with.get("private-key"))
+            and raw_with.get("owner") == "${{ github.repository_owner }}"
+            and raw_with.get("repositories") == _REPOSITORY_NAME_EXPRESSION
+            and permissions
+            == {
+                "permission-contents": "write",
+            }
+        )
+    return False
 
 
 def _checks_out_trusted_merge_code(step: dict[str, Any]) -> bool:
@@ -397,19 +463,34 @@ def _autonomous_merge_evidence(
             )
             permissions_complete = _worker_permissions_are_bounded(effective_permissions)
             trusted_checkout_seen = False
-            for step in job.get("steps") or []:
+            steps = job.get("steps") or []
+            if not isinstance(steps, list):
+                continue
+            for step_index, step in enumerate(steps):
                 if not isinstance(step, dict) or not isinstance(step.get("run"), str):
                     if isinstance(step, dict) and _checks_out_trusted_merge_code(step):
                         trusted_checkout_seen = True
                     continue
                 if step["run"].strip() != _AUTONOMOUS_WORKER_COMMAND:
                     continue
+                worker_env = step.get("env")
+                uses_separate_merge_token = isinstance(worker_env, dict) and (
+                    "MERGE_GH_TOKEN" in worker_env
+                )
+                merge_authority_is_bounded = (
+                    _has_bounded_app_merge_token(steps, step_index, step)
+                    and isinstance(effective_permissions, dict)
+                    and str(effective_permissions.get("contents", "")).strip().lower() == "read"
+                    if uses_separate_merge_token
+                    else _grants_repository_permission(effective_permissions, "contents", "write")
+                )
                 runnable_worker = (
                     _runs_unconditionally(job)
                     and _runs_unconditionally(step)
                     and not _is_truthy_yaml_value(step.get("continue-on-error"))
                     and permissions_complete
                     and trusted_checkout_seen
+                    and merge_authority_is_bounded
                 )
                 if runnable_worker:
                     break
