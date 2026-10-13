@@ -10,9 +10,11 @@ updates:
       time: "06:00"
       timezone: "Europe/London"
     commit-message:
-      prefix: "deps"
+      prefix: "chore(deps)"
     groups:
-      python-dependencies:
+      # Keep the identifier short because Dependabot includes it in PR titles,
+      # which this repository limits to 72 characters.
+      python:
         patterns:
           - "*"
     open-pull-requests-limit: 1
@@ -29,7 +31,8 @@ updates:
     commit-message:
       prefix: "ci"
     groups:
-      github-actions:
+      # Keep the identifier short enough for generated single-update titles.
+      actions:
         patterns:
           - "*"
     open-pull-requests-limit: 1
