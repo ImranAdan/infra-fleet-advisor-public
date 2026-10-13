@@ -277,11 +277,8 @@ worker labels a PARKed PR `needs-decision`, posts one head-bound explanation,
 and wakes immediately for the comment form. A small trusted approval handoff
 uses GitHub's default-branch
 [`issue_comment`](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#issue_comment)
-event to dispatch the worker; no `pull_request_target` workflow is involved.
-GitHub's [2026-11-02 default
-policy](https://docs.github.com/en/actions/reference/security/securely-using-pull_request_target#default-policy-for-pull_request_target)
-blocks `pull_request_target` in affected public repositories; it does not block
-this `issue_comment` handoff.
+event to dispatch the worker; no `pull_request_target` workflow is involved. GitHub blocks that trigger on
+public repositories by default from 2026-11-02.
 
 The default path is key-free. Reversible categories marked `evidence` in the
 decision policy can reach `READY` only after every head check passes and the
