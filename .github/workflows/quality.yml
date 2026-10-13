@@ -57,7 +57,6 @@ jobs:
             echo "title=$(jq -r '.title' <<< "$metadata")"
             echo "base=$(jq -r '.base.sha' <<< "$metadata")"
             echo "head=$(jq -r '.head.sha' <<< "$metadata")"
-            echo "author=$(jq -r '.user.login' <<< "$metadata")"
           } >> "$GITHUB_OUTPUT"
 
       - name: Install locked dependencies
@@ -69,20 +68,10 @@ jobs:
           PR_TITLE: ${{ steps.pr.outputs.title }}
           BASE_SHA: ${{ steps.pr.outputs.base }}
           HEAD_SHA: ${{ steps.pr.outputs.head }}
-          PR_AUTHOR: ${{ steps.pr.outputs.author }}
         run: |
           printf '%s\n' "$PR_TITLE" > "$RUNNER_TEMP/pr-title.txt"
           uv run --frozen gitlint --msg-filename "$RUNNER_TEMP/pr-title.txt"
-          if [ "$PR_AUTHOR" = "dependabot[bot]" ]; then
-            # Dependabot generates immutable comparison URLs and package lists
-            # that exceed the prose limit. Keep every subject rule while
-            # exempting only its generated commit bodies from line wrapping.
-            uv run --frozen gitlint \
-              --ignore body-is-missing,body-max-line-length \
-              --commits "${BASE_SHA}..${HEAD_SHA}"
-          else
-            uv run --frozen gitlint --commits "${BASE_SHA}..${HEAD_SHA}"
-          fi
+          uv run --frozen gitlint --commits "${BASE_SHA}..${HEAD_SHA}"
 
       - name: Run lint, types and unit tests
         run: make check
