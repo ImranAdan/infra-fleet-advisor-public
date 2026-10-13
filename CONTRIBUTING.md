@@ -72,7 +72,9 @@ the implemented behavior.
 
 Dependabot checks the locked Python environment and pinned GitHub Actions each
 Monday. It groups each ecosystem into one pull request and allows at most one
-open version-update PR per ecosystem, keeping review and CI load bounded.
+open version-update PR per ecosystem, keeping review and CI load bounded. Its
+commit prefixes and compact group names are chosen to satisfy this repository's
+Conventional Commit and 72-character title checks.
 
 Treat generated updates like any other change: keep `uv.lock` aligned with
 `pyproject.toml`, retain immutable action SHA pins and let the normal quality,
