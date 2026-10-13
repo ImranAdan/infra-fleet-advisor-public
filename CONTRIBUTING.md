@@ -80,6 +80,10 @@ Treat generated updates like any other change: keep `uv.lock` aligned with
 `pyproject.toml`, retain immutable action SHA pins and let the normal quality,
 advisor-gate and exact-head merge checks decide the PR. A failing grouped
 update should be repaired or narrowed rather than merged around a gate.
+Quality applies every title and commit-subject rule to Dependabot updates.
+Commit-body line length is not enforced for any contributor: package lists,
+immutable URLs and useful review context should not be rewrapped merely to
+satisfy an aesthetic CI rule.
 
 ## Propose a pull request
 
