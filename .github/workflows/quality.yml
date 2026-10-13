@@ -77,7 +77,8 @@ jobs:
             # Dependabot generates immutable comparison URLs and package lists
             # that exceed the prose limit. Keep every subject rule while
             # exempting only its generated commit bodies from line wrapping.
-            uv run --frozen gitlint --ignore body-max-line-length \
+            uv run --frozen gitlint \
+              --ignore body-is-missing,body-max-line-length \
               --commits "${BASE_SHA}..${HEAD_SHA}"
           else
             uv run --frozen gitlint --commits "${BASE_SHA}..${HEAD_SHA}"
