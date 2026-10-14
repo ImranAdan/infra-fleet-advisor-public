@@ -416,7 +416,7 @@ def scope_findings(diff: str) -> list[Finding]:
         )
         is_rbac_key = (
             bool(YAML.search(path))
-            and bool(rbac_match)
+            and rbac_match is not None
             and (
                 rbac_match.group(1) != "resources"
                 or bool(RBAC_FILE.search(path))
@@ -695,6 +695,7 @@ def has_verification(body: str) -> bool:
 
 
 DEPENDABOT_AUTHORS = {"app/dependabot", "dependabot[bot]"}
+DEPENDABOT_SIGNATURE_SIGNERS = {"web-flow"}
 LOCKFILE = re.compile(r"(?:^|/)(?:package-lock\.json|uv\.lock|go\.sum)$")
 # A version-only diff must retain the dependency identity on each changed line.
 VERSION_LINES = (
@@ -711,10 +712,51 @@ VERSION_LINES = (
 
 
 def _version_key(text: str) -> str | None:
+    if parsed := _from_reference(text):
+        return parsed[0]
     for pattern in VERSION_LINES:
         if match := pattern.match(text.strip()):
             return match.group("key")
     return None
+
+
+def _from_reference(text: str) -> tuple[str, str | None] | None:
+    """Return a Docker base-image identity and tag without confusing registry ports."""
+    match = re.fullmatch(
+        r"FROM\s+(?:--platform=\S+\s+)?(?P<reference>\S+)(?:\s+AS\s+\S+)?",
+        text.strip(),
+        re.I,
+    )
+    if not match:
+        return None
+    reference = match.group("reference").split("@", 1)[0]
+    slash = reference.rfind("/")
+    colon = reference.rfind(":")
+    if colon > slash:
+        return reference[:colon], reference[colon + 1 :]
+    return reference, None
+
+
+def _version_major(text: str) -> int | None:
+    """Extract a visible major version from one supported dependency line."""
+    if parsed := _from_reference(text):
+        value = parsed[1]
+    else:
+        stripped = text.strip()
+        patterns = (
+            r"^.*\buses:\s*\S+@[0-9a-fA-F]{40}\s+#\s*v?(\d+)(?:\D|$)",
+            r"^[A-Za-z0-9_.-]+(?:\[[A-Za-z0-9_,.-]*\])?==v?(\d+)(?:\D|$)",
+            r'^"[@A-Za-z0-9_./-]+":\s*"[\^~]?v?(\d+)(?:\D|$)',
+            r'^version\s*=\s*"v?(\d+)(?:\D|$)',
+        )
+        value = next(
+            (match.group(1) for pattern in patterns if (match := re.match(pattern, stripped))),
+            None,
+        )
+    if value is None:
+        return None
+    match = re.match(r"v?(\d+)(?:\D|$)", value, re.I)
+    return int(match.group(1)) if match else None
 
 
 def _remote_action_pin(text: str) -> tuple[str, str] | None:
@@ -795,15 +837,34 @@ def dependabot_bump_failures(
     if not commits:
         failures.append("no commits")
     for commit in commits:
-        if commit.get("author") != "dependabot[bot]" or not commit.get("verified"):
-            failures.append("a commit is not a verified Dependabot commit")
-        if "update-type: version-update:semver-major" in (commit.get("message") or ""):
+        if (
+            commit.get("author") != "dependabot[bot]"
+            or not commit.get("verified")
+            or commit.get("signature_state") != "VALID"
+            or commit.get("signer") not in DEPENDABOT_SIGNATURE_SIGNERS
+        ):
+            failures.append("a commit is not GitHub-signed for Dependabot")
+        update_types = re.findall(r"(?m)^\s*update-type:\s*(\S+)\s*$", commit.get("message") or "")
+        if not update_types:
+            failures.append("a commit has no Dependabot update type")
+        if any(update_type == "version-update:semver-major" for update_type in update_types):
             failures.append("a major version update")
+        if any(
+            update_type
+            not in {
+                "version-update:semver-major",
+                "version-update:semver-minor",
+                "version-update:semver-patch",
+            }
+            for update_type in update_types
+        ):
+            failures.append("a commit has an unsupported Dependabot update type")
 
     path = ""
     workflow_paths: set[str] = set()
     removed: dict[str, list[str]] = {}
     added: dict[str, list[str]] = {}
+    recognized_changes = 0
     for line in diff.splitlines():
         if header := re.match(r"^diff --git a/(.*) b/(.*)$", line):
             path = header.group(2)
@@ -814,9 +875,14 @@ def dependabot_bump_failures(
             continue
         if re.match(r"^(?:new|deleted) file mode ", line):
             failures.append(f"adds or deletes a file: {path}")
+        if line.startswith(("old mode ", "new mode ")):
+            failures.append(f"changes file mode: {path}")
+        if line.startswith("GIT binary patch") or re.match(r"^Binary files .* differ$", line):
+            failures.append(f"changes binary content: {path}")
         if line.startswith(("+++", "---")) or not line.startswith(("+", "-")):
             continue
         if LOCKFILE.search(path):
+            recognized_changes += 1
             continue
         (added if line.startswith("+") else removed).setdefault(path, []).append(line[1:])
 
@@ -832,6 +898,15 @@ def dependabot_bump_failures(
             key = _version_key(old)
             if key is None or key != _version_key(new):
                 failures.append(f"changes more than a version in {changed}: {new.strip()[:80]}")
+                continue
+            recognized_changes += 1
+            old_major, new_major = _version_major(old), _version_major(new)
+            if old_major is not None and new_major is not None and old_major != new_major:
+                failures.append(f"changes major version in {changed}: {old_major} to {new_major}")
+            elif (old_major is None) != (new_major is None):
+                failures.append(f"cannot compare major versions in {changed}")
+    if not recognized_changes:
+        failures.append("contains no recognized dependency version change")
     return list(dict.fromkeys(failures))
 
 
@@ -911,6 +986,44 @@ def review_threads(owner: str, name: str, number: str) -> list[dict[str, Any]]:
         f"query={query}",
         "--jq",
         ".data.repository.pullRequest.reviewThreads.nodes[]",
+    )
+
+
+def pull_request_commits(owner: str, name: str, number: str) -> list[dict[str, Any]]:
+    """Read commit authors and signature signers from GitHub's typed commit data."""
+    query = """
+    query($owner: String!, $name: String!, $number: Int!, $endCursor: String) {
+      repository(owner: $owner, name: $name) {
+        pullRequest(number: $number) {
+          commits(first: 100, after: $endCursor) {
+            pageInfo { hasNextPage endCursor }
+            nodes {
+              commit {
+                author { user { login } }
+                message
+                signature { isValid state signer { login } }
+              }
+            }
+          }
+        }
+      }
+    }"""
+    return gh_json_lines(
+        "api",
+        "graphql",
+        "--paginate",
+        "-F",
+        f"owner={owner}",
+        "-F",
+        f"name={name}",
+        "-F",
+        f"number={number}",
+        "-f",
+        f"query={query}",
+        "--jq",
+        ".data.repository.pullRequest.commits.nodes[].commit"
+        "|{author:.author.user.login,verified:.signature.isValid,"
+        "signature_state:.signature.state,signer:.signature.signer.login,message}",
     )
 
 
@@ -1015,14 +1128,7 @@ def main(argv: list[str]) -> int:
     findings = scope_findings(diff)
     bump_failures = ["not Dependabot"]
     if author in DEPENDABOT_AUTHORS:
-        commits = gh_json_lines(
-            "api",
-            "--paginate",
-            f"repos/{repo}/pulls/{number}/commits?per_page=100",
-            "--jq",
-            ".[]|{author:.author.login,verified:.commit.verification.verified,"
-            "message:.commit.message}",
-        )
+        commits = pull_request_commits(owner, name, number)
         bump_failures = dependabot_bump_failures(author, pr["headRefName"], commits, diff)
         for reason in bump_failures:
             print(f"NOTE  not a Dependabot version-only bump: {reason}")
@@ -1528,7 +1634,7 @@ def self_test() -> int:
     assert not has_verification("## Verification\n\n- `command` → result\n")
     assert not has_verification("Verified locally: `make check` → 594 passed.")
 
-    bot_commit = {
+    bot_commit: dict[str, Any] = {
         "author": "dependabot[bot]",
         "verified": True,
         "signature_state": "VALID",
