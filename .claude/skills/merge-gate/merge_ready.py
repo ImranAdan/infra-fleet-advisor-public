@@ -1610,6 +1610,12 @@ def self_test() -> int:
     }
     for case, args in unsafe_bumps.items():
         assert dependabot_bump_failures(*args), case
+    major_failures = dependabot_bump_failures(*unsafe_bumps["major"])
+    assert _evidence_requirement_failure(
+        "app/dependabot",
+        major_failures,
+        "<!-- autonomous-merge -->\n## Verification\n- `make check` → passed",
+    ) == "Dependabot PR is outside the version-only boundary: a major version update"
 
     calls: list[tuple[str, ...]] = []
     original_gh = globals()["gh"]
