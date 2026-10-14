@@ -694,6 +694,163 @@ def has_verification(body: str) -> bool:
     )
 
 
+DEPENDABOT_AUTHORS = {"app/dependabot", "dependabot[bot]"}
+LOCKFILE = re.compile(r"(?:^|/)(?:package-lock\.json|uv\.lock|go\.sum)$")
+# A version-only diff must retain the dependency identity on each changed line.
+VERSION_LINES = (
+    re.compile(
+        r"^FROM\s+(?:--platform=\S+\s+)?(?P<key>[^\s:@]+)(?::\S+?)?"
+        r"(?:@sha256:[0-9a-f]{64})?(?:\s+AS\s+\S+)?$",
+        re.I,
+    ),
+    re.compile(r"^(?:-\s*)?uses:\s*(?P<key>[^\s@]+)@[0-9a-f]{40}(?:\s+#\s*\S+)?$"),
+    re.compile(r"^(?P<key>[A-Za-z0-9_.-]+(?:\[[A-Za-z0-9_,.-]*\])?)==\d[^\s;#]*$"),
+    re.compile(r'^"(?P<key>[@A-Za-z0-9_./-]+)":\s*"[\^~]?\d[\w.+-]*",?$'),
+    re.compile(r'^(?P<key>version)\s*=\s*"[^"]+"$'),
+)
+
+
+def _version_key(text: str) -> str | None:
+    for pattern in VERSION_LINES:
+        if match := pattern.match(text.strip()):
+            return match.group("key")
+    return None
+
+
+def _remote_action_pin(text: str) -> tuple[str, str] | None:
+    """Parse one immutable remote-action reference as its action and commit."""
+    match = re.fullmatch(r"(?:-\s*)?uses:\s+(\S+)(?:\s+#.*)?", text.strip())
+    if not match:
+        return None
+    target = match.group(1).strip("'\"")
+    if target.startswith(("./", "/", "$/", "docker://")):
+        return None
+    action, separator, revision = target.rpartition("@")
+    if not separator or not action or not re.fullmatch(r"[0-9a-fA-F]{40}", revision):
+        return None
+    return action, revision.casefold()
+
+
+def _pin_only_workflows(diff: str) -> set[str]:
+    """Find workflows whose changed blocks only replace same-action SHA pins.
+
+    Each contiguous block must remove and add the same action identities in the
+    same order. Context splits blocks, so moving an action to another step or
+    job fails closed even when the old and new action names happen to match.
+    """
+    paths: set[str] = set()
+    path = ""
+    blocks: list[list[tuple[str, str]]] = []
+    block: list[tuple[str, str]] = []
+
+    def finish_block() -> None:
+        nonlocal block
+        if block:
+            blocks.append(block)
+            block = []
+
+    def finish_file() -> None:
+        finish_block()
+        if not path or not WORKFLOW.search(path):
+            return
+        for changed in blocks:
+            removed: list[str] = []
+            added: list[str] = []
+            for prefix, text in changed:
+                parsed = _remote_action_pin(text)
+                if parsed is None:
+                    return
+                (added if prefix == "+" else removed).append(parsed[0])
+            if not removed or not added or removed != added:
+                return
+        if blocks:
+            paths.add(path)
+
+    for line in diff.splitlines():
+        header = re.match(r"^diff --git a/(.*) b/(.*)$", line)
+        if header:
+            finish_file()
+            path = header.group(2)
+            blocks = []
+            continue
+        if line.startswith(("+++", "---")):
+            continue
+        if line.startswith(("+", "-")):
+            block.append((line[0], line[1:].strip()))
+        else:
+            finish_block()
+    finish_file()
+    return paths
+
+
+def dependabot_bump_failures(
+    author: str, branch: str, commits: list[dict[str, Any]], diff: str
+) -> list[str]:
+    """Explain why a PR is not a verified, non-major version-only bump."""
+    failures: list[str] = []
+    if author not in DEPENDABOT_AUTHORS:
+        failures.append(f"author {author} is not Dependabot")
+    if not branch.startswith("dependabot/"):
+        failures.append(f"branch {branch} is not a Dependabot branch")
+    if not commits:
+        failures.append("no commits")
+    for commit in commits:
+        if commit.get("author") != "dependabot[bot]" or not commit.get("verified"):
+            failures.append("a commit is not a verified Dependabot commit")
+        if "update-type: version-update:semver-major" in (commit.get("message") or ""):
+            failures.append("a major version update")
+
+    path = ""
+    workflow_paths: set[str] = set()
+    removed: dict[str, list[str]] = {}
+    added: dict[str, list[str]] = {}
+    for line in diff.splitlines():
+        if header := re.match(r"^diff --git a/(.*) b/(.*)$", line):
+            path = header.group(2)
+            if header.group(1) != path:
+                failures.append(f"renames a file: {path}")
+            if WORKFLOW.search(path):
+                workflow_paths.add(path)
+            continue
+        if re.match(r"^(?:new|deleted) file mode ", line):
+            failures.append(f"adds or deletes a file: {path}")
+        if line.startswith(("+++", "---")) or not line.startswith(("+", "-")):
+            continue
+        if LOCKFILE.search(path):
+            continue
+        (added if line.startswith("+") else removed).setdefault(path, []).append(line[1:])
+
+    pin_only_workflows = _pin_only_workflows(diff)
+    for changed in sorted(workflow_paths - pin_only_workflows):
+        failures.append(f"changes more than same-step action pins in {changed}")
+    for changed in sorted(set(removed) | set(added)):
+        before, after = removed.get(changed, []), added.get(changed, [])
+        if len(before) != len(after):
+            failures.append(f"changes more than versions in {changed}")
+            continue
+        for old, new in zip(before, after, strict=True):
+            key = _version_key(old)
+            if key is None or key != _version_key(new):
+                failures.append(f"changes more than a version in {changed}: {new.strip()[:80]}")
+    return list(dict.fromkeys(failures))
+
+
+def dependabot_scope(findings: list[Finding], diff: str) -> list[Finding]:
+    """Remove only authority created by proven action-pin replacements."""
+    pin_only_workflows = _pin_only_workflows(diff)
+    scoped: list[Finding] = []
+    for category, description in findings:
+        if category == "merge-authority" and any(
+            description == f"merge authority changed: {path}" for path in pin_only_workflows
+        ):
+            continue
+        if category == "permanent-infrastructure" and LOCKFILE.search(description):
+            scoped.append(_finding("dependency-manifest", description))
+        else:
+            scoped.append((category, description))
+    return scoped
+
+
 def gh(*args: str) -> str:
     result = subprocess.run(["gh", *args], check=True, capture_output=True, text=True)  # noqa: S603, S607
     return result.stdout
@@ -767,7 +924,7 @@ def main(argv: list[str]) -> int:
             "-R",
             repo,
             "--json",
-            "state,isDraft,mergeStateStatus,body,headRefOid,author,labels",
+            "state,isDraft,mergeStateStatus,body,headRefOid,headRefName,author,labels",
         )
     )
     blocked: list[str] = []
@@ -842,11 +999,27 @@ def main(argv: list[str]) -> int:
         blocked.append(f"{unresolved} review thread(s) unresolved")
     if silent:
         blocked.append(f"{silent} thread(s) resolved without a reply from {author}")
-    if not has_verification(pr["body"] or ""):
-        blocked.append("no '## Verification' section with commands and results")
 
     diff = gh("pr", "diff", number, "-R", repo)
     findings = scope_findings(diff)
+    bump_failures = ["not Dependabot"]
+    if author in DEPENDABOT_AUTHORS:
+        commits = gh_json_lines(
+            "api",
+            "--paginate",
+            f"repos/{repo}/pulls/{number}/commits?per_page=100",
+            "--jq",
+            ".[]|{author:.author.login,verified:.commit.verification.verified,"
+            "message:.commit.message}",
+        )
+        bump_failures = dependabot_bump_failures(author, pr["headRefName"], commits, diff)
+        for reason in bump_failures:
+            print(f"NOTE  not a Dependabot version-only bump: {reason}")
+    if not bump_failures:
+        print("NOTE  Dependabot version-only bump: exact-head checks are its verification")
+        findings = dependabot_scope(findings, diff)
+    elif not has_verification(pr["body"] or ""):
+        blocked.append("no '## Verification' section with commands and results")
     print(f"{repo}#{number} at {sha[:12]}: {len(runs)} check runs, {len(threads)} threads")
     for category, description in findings:
         print(f"DECISION {category}: {description}")
@@ -1377,7 +1550,10 @@ def self_test() -> int:
             '+sdist = { hash = "sha256:new" }',
         )
     )
-    assert dependabot_bump_failures("dependabot[bot]", "dependabot/uv/python", [bot_commit], lock_bump) == []
+    assert (
+        dependabot_bump_failures("dependabot[bot]", "dependabot/uv/python", [bot_commit], lock_bump)
+        == []
+    )
 
     moved_action = "\n".join(
         _file(

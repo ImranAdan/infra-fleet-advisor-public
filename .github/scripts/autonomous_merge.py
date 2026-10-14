@@ -26,7 +26,12 @@ MAX_CANDIDATES_PER_RUN = 20
 
 
 def eligible(pr: dict[str, Any], repository: str, now: datetime, minimum_age: int) -> bool:
-    """Accept only mature, non-draft PRs from a branch in this repository."""
+    """Accept mature same-repository opt-ins and Dependabot candidates.
+
+    Dependabot does not write the repository's opt-in marker. The selector may
+    still pass its own branches to the gate; the gate independently proves the
+    author, signatures and version-only diff before it can return READY.
+    """
     owner, name = repository.split("/", 1)
     head_owner = (pr.get("headRepositoryOwner") or {}).get("login")
     head_name = (pr.get("headRepository") or {}).get("name")
@@ -42,7 +47,13 @@ def eligible(pr: dict[str, Any], repository: str, now: datetime, minimum_age: in
         not pr.get("isDraft", False)
         and head_owner == owner
         and head_name == name
-        and MARKER in body
+        and (
+            MARKER in body
+            or (
+                pr.get("author") == "dependabot[bot]"
+                and str(pr.get("headRefName") or "").startswith("dependabot/")
+            )
+        )
         and age >= minimum_age
     )
 
@@ -284,6 +295,7 @@ def _parse_pull_request_pages(raw: str) -> list[dict[str, Any]]:
             normalized.append(
                 {
                     "number": item["number"],
+                    "author": (item.get("user") or {}).get("login"),
                     "body": item.get("body"),
                     "createdAt": item.get("created_at"),
                     "isDraft": item.get("draft", False),

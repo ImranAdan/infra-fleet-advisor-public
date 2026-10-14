@@ -267,9 +267,14 @@ and what they showed (see `.github/pull_request_template.md`). An agent merges
 its own pull request only by rerunning the gate with `--merge` after it reports
 `READY`, or by leaving the template's `<!-- autonomous-merge -->` marker for the
 trusted default-branch worker to run that exact command. Both paths bind the
-merge to the checked head SHA. Remove the marker to hold a PR open. An agent
-never adds the `owner-approved` label and never posts or imitates a merge-judge
-comment. An owner approval is the repository owner replying
+merge to the checked head SHA. A Dependabot PR needs neither hand-written
+verification nor the marker only when the gate proves that it comes from the
+Dependabot App, every commit has a valid GitHub signature, it is non-major, and
+every changed line is a same-dependency version or immutable action-pin
+replacement. Action moves, dependency swaps and arbitrary edits fail closed.
+Remove the marker to hold an agent PR open. An agent never adds the
+`owner-approved` label and never posts or imitates a merge-judge comment. An
+owner approval is the repository owner replying
 `/approve <full-head-sha>` after every check run on that head started, or adding
 `owner-approved` under the same timing rule. GitHub records both with server
 time, and the command names the head, so a push unbinds either form. The trusted
@@ -293,10 +298,11 @@ The autonomous worker runs after Quality, when an external status completes,
 when the owner posts the head-bound approval command, and on explicit
 report-workflow dispatch. A six-hour schedule is a
 recovery backstop. It considers only non-draft PRs whose head branch belongs to
-this repository and whose body contains the opt-in marker. `READY` merges;
-`PARK`, `JUDGE`, failed evidence and unresolved review stay open. Report PRs opt
-in by default; their merge is the machine-validated decision record for issue
-publication.
+this repository and either contain the opt-in marker or come from a Dependabot
+branch. The selector grants no authority: the gate independently proves the
+closed Dependabot boundary. `READY` merges; `PARK`, `JUDGE`, failed evidence and
+unresolved review stay open. Report PRs opt in by default; their merge is the
+machine-validated decision record for issue publication.
 
 When a verification lesson recurs, encode it as a check (a test, a drill, a
 doctor line) rather than another paragraph here.

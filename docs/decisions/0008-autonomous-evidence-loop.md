@@ -26,6 +26,16 @@ head-bound `needs-decision` prompt and reruns when the owner replies
 [`issue_comment`](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#issue_comment)
 event to dispatch the worker rather than using `pull_request_target`.
 
+Dependabot PRs cannot inherit the agent-authored marker or verification record,
+so the worker also considers same-repository `dependabot/**` branches. This is
+a candidate-selection exception only. The gate proves the Dependabot App
+identity, a valid GitHub signature and bot author on every commit, a non-major
+update, and a diff limited to same-dependency version changes, lockfiles or
+same-step immutable action SHA replacements. File additions, deletions,
+renames, dependency swaps, action moves and arbitrary edits fail the closed
+classification. Exact-head Quality, Advisor Gates and review evidence remain
+mandatory.
+
 Changed report PRs opt in automatically. Their merge remains the immutable
 decision record for Fleet issue publication, but the decision is now made by
 declared intent plus deterministic exact-head evidence. Closing a report PR
@@ -77,6 +87,11 @@ registered remediation PR and evidence-approved merge can progress on their own.
 The owner is involved only for owner-only scope, a deadlock, or an explicit
 hold. General code generation still needs a coding-agent runtime; GitHub Actions
 alone can execute only registered deterministic patchers.
+
+Routine non-major dependency maintenance also proceeds without a hand-written
+marker or verification section. The first change to this classification remains
+merge authority and therefore requires the normal owner bootstrap; later bumps
+cannot expand that authority through their own diff.
 
 The Fleet's autonomous lane depends on the repository-scoped App credentials.
 Missing or invalid credentials fail the worker before it evaluates a merge; no

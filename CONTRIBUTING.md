@@ -76,10 +76,13 @@ open version-update PR per ecosystem, keeping review and CI load bounded. Its
 commit prefixes and compact group names are chosen to satisfy this repository's
 Conventional Commit and 72-character title checks.
 
-Treat generated updates like any other change: keep `uv.lock` aligned with
-`pyproject.toml`, retain immutable action SHA pins and let the normal quality,
-advisor-gate and exact-head merge checks decide the PR. A failing grouped
-update should be repaired or narrowed rather than merged around a gate.
+The autonomous worker considers a generated update without an opt-in marker or
+hand-written Verification section. The merge gate accepts that narrow path only
+when GitHub identifies the Dependabot App, every commit is verified and bot
+authored, the update is non-major, and the diff changes only dependency
+versions, lockfiles or same-step immutable action SHA pins. It still requires
+the normal Quality, Advisor Gates, review and exact-head merge checks. A failing
+grouped update should be repaired or narrowed rather than merged around a gate.
 Quality applies every title and commit-subject rule to Dependabot updates.
 Commit-body line length is not enforced for any contributor: package lists,
 immutable URLs and useful review context should not be rewrapped merely to
@@ -113,9 +116,10 @@ declared intent and the merge system remain with the repository owner.
 
 The pull request template opts same-repository branches into the autonomous
 worker. Keep the marker to merge when the gate reaches `READY`; remove it to
-hold the PR. Generated report PRs opt in. Quality, external review completion
-and the report workflow wake the worker; a six-hour schedule recovers missed
-events.
+hold the PR. Generated report PRs opt in. Verified Dependabot branches are
+considered without the marker, but the gate's closed version-only proof remains
+mandatory. Quality, external review completion and the report workflow wake the
+worker; a six-hour schedule recovers missed events.
 
 This default path needs no model or API key. The Anthropic transport remains
 available only if a future policy category explicitly uses the `judge` decider.
