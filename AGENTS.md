@@ -349,6 +349,27 @@ holds the record, `<!-- decisions {"D1": "A", ...} -->`. Act on it, then close
 the issue with a comment linking the pull request that carries it out. Never
 post `D1:`-style answers yourself: only the owner's count.
 
+## Shared resource locks
+
+Use two records for any shared mutable resource. Fleet issue
+[`#175`](https://github.com/ImranAdan/infra-fleet-public/issues/175) is the
+global record across terminals, sessions and machines. A `.lock` file under the
+Fleet repository's shared Git directory is the atomic local mutex. Both must
+name the same owner before work starts; missing, stale or conflicting state
+fails closed.
+
+For the local cluster, resolve the Fleet checkout even when working from this
+Advisor repository, then use
+`<fleet-git-common-dir>/fleet/locks/cluster.lock`, where the common directory is
+reported by `git -C <fleet-checkout> rev-parse --path-format=absolute
+--git-common-dir`. Create the parent directory, acquire the file with shell
+`noclobber`, and record `owner`, UTC `since`, `purpose` and the #175 URL. Post
+`LOCKED cluster` with the same details on #175, re-read the issue for an earlier
+unreleased contender, and only then drive the cluster. On completion, post
+`released cluster` and remove the file only after confirming it still names
+you. Never create an Advisor-local cluster lock: it would not coordinate with
+Fleet worktrees.
+
 ## Review feedback
 
 Treat every review finding, automated or human, as a claim to verify against the
