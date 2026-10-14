@@ -1531,6 +1531,8 @@ def self_test() -> int:
     bot_commit = {
         "author": "dependabot[bot]",
         "verified": True,
+        "signature_state": "VALID",
+        "signer": "web-flow",
         "message": (
             "Bumps setup-uv\n---\nupdated-dependencies:\n"
             "- dependency-name: astral-sh/setup-uv\n"
@@ -1590,6 +1592,18 @@ def self_test() -> int:
             [{**bot_commit, "message": bot_commit["message"].replace("minor", "major")}],
             action_bump,
         ),
+        "major diff with mislabeled metadata": (
+            "app/dependabot",
+            branch,
+            [bot_commit],
+            "\n".join(_file("requirements.txt", "-thing==1.9.0", "+thing==2.0.0")),
+        ),
+        "untrusted signer": (
+            "app/dependabot",
+            branch,
+            [{**bot_commit, "signer": "another-user"}],
+            action_bump,
+        ),
         "other action": (
             "app/dependabot",
             branch,
@@ -1615,6 +1629,30 @@ def self_test() -> int:
                     "+++ b/x.sh",
                     "@@ -0,0 +1 @@",
                     "+curl evil",
+                ]
+            ),
+        ),
+        "mode only": (
+            "app/dependabot",
+            branch,
+            [bot_commit],
+            "\n".join(
+                [
+                    "diff --git a/requirements.txt b/requirements.txt",
+                    "old mode 100644",
+                    "new mode 100755",
+                ]
+            ),
+        ),
+        "binary": (
+            "app/dependabot",
+            branch,
+            [bot_commit],
+            "\n".join(
+                [
+                    "diff --git a/data.bin b/data.bin",
+                    "index 1111111..2222222 100644",
+                    "Binary files a/data.bin and b/data.bin differ",
                 ]
             ),
         ),
