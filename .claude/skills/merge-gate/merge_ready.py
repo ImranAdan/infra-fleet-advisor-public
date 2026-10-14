@@ -1344,6 +1344,97 @@ def self_test() -> int:
     assert not has_verification("## Verification\n\n- `command` → result\n")
     assert not has_verification("Verified locally: `make check` → 594 passed.")
 
+    bot_commit = {
+        "author": "dependabot[bot]",
+        "verified": True,
+        "message": (
+            "Bumps setup-uv\n---\nupdated-dependencies:\n"
+            "- dependency-name: astral-sh/setup-uv\n"
+            "  update-type: version-update:semver-minor\n"
+        ),
+    }
+    old_pin = "a" * 40
+    new_pin = "b" * 40
+    action_bump = "\n".join(
+        _file(
+            ".github/workflows/quality.yml",
+            f"-        uses: astral-sh/setup-uv@{old_pin} # v10.0.1",
+            f"+        uses: astral-sh/setup-uv@{new_pin} # v10.3.0",
+        )
+    )
+    branch = "dependabot/github_actions/actions-a055b02c66"
+    assert dependabot_bump_failures("app/dependabot", branch, [bot_commit], action_bump) == []
+    scoped_bump = dependabot_scope(scope_findings(action_bump), action_bump)
+    assert not any(category == "merge-authority" for category, _ in scoped_bump), scoped_bump
+    assert decide(scoped_bump, rules, set(), None)[0] == "READY"
+
+    lock_bump = "\n".join(
+        _file(
+            "uv.lock",
+            '-version = "2.3.1"',
+            '+version = "2.4.0"',
+            '-sdist = { hash = "sha256:old" }',
+            '+sdist = { hash = "sha256:new" }',
+        )
+    )
+    assert dependabot_bump_failures("dependabot[bot]", "dependabot/uv/python", [bot_commit], lock_bump) == []
+
+    moved_action = "\n".join(
+        _file(
+            ".github/workflows/quality.yml",
+            f"-        uses: astral-sh/setup-uv@{old_pin} # v10.0.1",
+            "         - name: Run checks",
+            f"+        uses: astral-sh/setup-uv@{new_pin} # v10.3.0",
+        )
+    )
+    unsafe_bumps = {
+        "human author": ("ImranAdan", branch, [bot_commit], action_bump),
+        "human branch": ("app/dependabot", "feature/x", [bot_commit], action_bump),
+        "no commits": ("app/dependabot", branch, [], action_bump),
+        "unsigned": (
+            "app/dependabot",
+            branch,
+            [{**bot_commit, "verified": False}],
+            action_bump,
+        ),
+        "major": (
+            "app/dependabot",
+            branch,
+            [{**bot_commit, "message": bot_commit["message"].replace("minor", "major")}],
+            action_bump,
+        ),
+        "other action": (
+            "app/dependabot",
+            branch,
+            [bot_commit],
+            "\n".join(
+                _file(
+                    ".github/workflows/quality.yml",
+                    f"-        uses: astral-sh/setup-uv@{old_pin}",
+                    f"+        uses: evil/setup-uv@{new_pin}",
+                )
+            ),
+        ),
+        "moved action": ("app/dependabot", branch, [bot_commit], moved_action),
+        "new file": (
+            "app/dependabot",
+            branch,
+            [bot_commit],
+            "\n".join(
+                [
+                    "diff --git a/x.sh b/x.sh",
+                    "new file mode 100755",
+                    "--- /dev/null",
+                    "+++ b/x.sh",
+                    "@@ -0,0 +1 @@",
+                    "+curl evil",
+                ]
+            ),
+        ),
+    }
+    for case, args in unsafe_bumps.items():
+        assert dependabot_bump_failures(*args), case
+
     calls: list[tuple[str, ...]] = []
     original_gh = globals()["gh"]
 
