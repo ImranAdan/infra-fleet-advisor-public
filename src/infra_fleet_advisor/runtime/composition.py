@@ -21,7 +21,9 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.synthesis import (
 
 MAX_WORKFLOW_FILES = 50
 MAX_WORKFLOW_FILE_BYTES = 256 * 1024
-MAX_MANIFEST_FILES = 100
+# The fleet had 103 Kubernetes YAML files when 100 first truncated a review
+# (adding the NATS broker); keep several times the current count in hand.
+MAX_MANIFEST_FILES = 400
 MAX_MANIFEST_FILE_BYTES = 1024 * 1024
 SYNTHESIZERS = ("anthropic", "stub")
 DEFAULT_SYNTHESIZER = "stub"
