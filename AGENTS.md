@@ -269,9 +269,11 @@ its own pull request only by rerunning the gate with `--merge` after it reports
 trusted default-branch worker to run that exact command. Both paths bind the
 merge to the checked head SHA. A Dependabot PR needs neither hand-written
 verification nor the marker only when the gate proves that it comes from the
-Dependabot App, every commit has a valid GitHub signature, it is non-major, and
-every changed line is a same-dependency version or immutable action-pin
-replacement. Action moves, dependency swaps and arbitrary edits fail closed.
+Dependabot App, every commit is bot-authored and signed by GitHub's `web-flow`
+signer, its signed metadata declares a patch or minor update, and every changed
+line is a same-dependency version or immutable action-pin replacement. Visible
+major-version jumps, action moves, dependency swaps, binary or mode changes and
+arbitrary edits fail closed.
 Editable marker or Verification prose cannot opt a rejected bot PR back in;
 recreate an intentionally reviewed major update on an agent-authored branch.
 Remove the marker to hold an agent PR open. An agent never adds the

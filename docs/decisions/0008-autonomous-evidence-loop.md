@@ -29,14 +29,15 @@ event to dispatch the worker rather than using `pull_request_target`.
 Dependabot PRs cannot inherit the agent-authored marker or verification record,
 so the worker also considers same-repository `dependabot/**` branches. This is
 a candidate-selection exception only. The gate proves the Dependabot App
-identity, a valid GitHub signature and bot author on every commit, a non-major
-update, and a diff limited to same-dependency version changes, lockfiles or
-same-step immutable action SHA replacements. File additions, deletions,
-renames, dependency swaps, action moves and arbitrary edits fail the closed
-classification. Editable PR-body metadata cannot opt a rejected bot PR into the
-ordinary agent path; an intentionally reviewed major update moves to an
-agent-authored branch. Exact-head Quality, Advisor Gates and review evidence
-remain mandatory.
+identity, the bot author and GitHub's `web-flow` signature on every commit,
+signed patch-or-minor update metadata, and a diff limited to same-dependency
+version changes, lockfiles or same-step immutable action SHA replacements. It
+also compares visible major versions. File additions, deletions, renames,
+binary or mode changes, dependency swaps, action moves and arbitrary edits fail
+the closed classification. Editable PR-body metadata cannot opt a rejected bot
+PR into the ordinary agent path; an intentionally reviewed major update moves
+to an agent-authored branch. Exact-head Quality, Advisor Gates and review
+evidence remain mandatory.
 
 Changed report PRs opt in automatically. Their merge remains the immutable
 decision record for Fleet issue publication, but the decision is now made by

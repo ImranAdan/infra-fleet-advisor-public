@@ -23,7 +23,9 @@ Same-repository PRs containing `<!-- autonomous-merge -->` may leave this step
 to `.github/workflows/autonomous-merge.yml`. The trusted default-branch worker
 runs the same command; it cannot convert `PARK`, `JUDGE` or `BLOCKED` into a
 merge. Verified Dependabot branches are also candidates without the marker;
-the gate must still prove their signed, non-major, version-only shape. Remove
+the gate must still prove their bot author and GitHub `web-flow` signature,
+signed patch-or-minor metadata, and version-only shape. It rejects visible
+major jumps and unsupported diff records. Remove
 the marker to hold an agent-authored PR open.
 
 | Verdict | Exit | Meaning | What to do |

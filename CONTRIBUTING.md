@@ -78,9 +78,11 @@ Conventional Commit and 72-character title checks.
 
 The autonomous worker considers a generated update without an opt-in marker or
 hand-written Verification section. The merge gate accepts that narrow path only
-when GitHub identifies the Dependabot App, every commit is verified and bot
-authored, the update is non-major, and the diff changes only dependency
-versions, lockfiles or same-step immutable action SHA pins. It still requires
+when GitHub identifies the Dependabot App, every commit is bot-authored and
+signed by GitHub's `web-flow` signer, signed metadata declares a patch or minor
+update, and the diff changes only dependency versions, lockfiles or same-step
+immutable action SHA pins. Visible major-version jumps and unsupported diff
+records fail closed. It still requires
 the normal Quality, Advisor Gates, review and exact-head merge checks. A failing
 grouped update should be repaired or narrowed rather than merged around a gate.
 PR-body metadata cannot opt a rejected bot update into the ordinary agent path;
