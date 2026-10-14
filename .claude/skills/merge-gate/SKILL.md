@@ -62,7 +62,10 @@ the marker to hold an agent-authored PR open.
 - **Dependabot:** only a same-repository `dependabot/**` PR whose commits are
   all GitHub-verified and authored by `dependabot[bot]` can enter the narrow
   path. Major updates, new or deleted files, renames, dependency swaps,
-  arbitrary lines and action moves across steps fail that classification.
+  arbitrary lines and action moves across steps fail that classification. A
+  marker or Verification section cannot turn a rejected bot PR into an
+  ordinary candidate; recreate an intentionally reviewed update on an agent
+  branch.
 - **Scope:** changes the policy assigns to evidence or the owner, found in the diff: a workflow
   permission or `write` scope, a new `secrets.` reference, a remote action, a
   base image, a chart or dependency version, a dependency manifest, IAM,

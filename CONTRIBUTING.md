@@ -83,6 +83,8 @@ authored, the update is non-major, and the diff changes only dependency
 versions, lockfiles or same-step immutable action SHA pins. It still requires
 the normal Quality, Advisor Gates, review and exact-head merge checks. A failing
 grouped update should be repaired or narrowed rather than merged around a gate.
+PR-body metadata cannot opt a rejected bot update into the ordinary agent path;
+recreate an intentionally reviewed major update on an agent branch.
 Quality applies every title and commit-subject rule to Dependabot updates.
 Commit-body line length is not enforced for any contributor: package lists,
 immutable URLs and useful review context should not be rewrapped merely to

@@ -33,8 +33,10 @@ identity, a valid GitHub signature and bot author on every commit, a non-major
 update, and a diff limited to same-dependency version changes, lockfiles or
 same-step immutable action SHA replacements. File additions, deletions,
 renames, dependency swaps, action moves and arbitrary edits fail the closed
-classification. Exact-head Quality, Advisor Gates and review evidence remain
-mandatory.
+classification. Editable PR-body metadata cannot opt a rejected bot PR into the
+ordinary agent path; an intentionally reviewed major update moves to an
+agent-authored branch. Exact-head Quality, Advisor Gates and review evidence
+remain mandatory.
 
 Changed report PRs opt in automatically. Their merge remains the immutable
 decision record for Fleet issue publication, but the decision is now made by

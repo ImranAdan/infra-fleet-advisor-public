@@ -272,6 +272,8 @@ verification nor the marker only when the gate proves that it comes from the
 Dependabot App, every commit has a valid GitHub signature, it is non-major, and
 every changed line is a same-dependency version or immutable action-pin
 replacement. Action moves, dependency swaps and arbitrary edits fail closed.
+Editable marker or Verification prose cannot opt a rejected bot PR back in;
+recreate an intentionally reviewed major update on an agent-authored branch.
 Remove the marker to hold an agent PR open. An agent never adds the
 `owner-approved` label and never posts or imitates a merge-judge comment. An
 owner approval is the repository owner replying

@@ -851,6 +851,17 @@ def dependabot_scope(findings: list[Finding], diff: str) -> list[Finding]:
     return scoped
 
 
+def _evidence_requirement_failure(author: str, bump_failures: list[str], body: str) -> str | None:
+    """Return the PR-evidence failure without trusting editable bot metadata."""
+    if author in DEPENDABOT_AUTHORS:
+        if bump_failures:
+            return f"Dependabot PR is outside the version-only boundary: {'; '.join(bump_failures)}"
+        return None
+    if not has_verification(body):
+        return "no '## Verification' section with commands and results"
+    return None
+
+
 def gh(*args: str) -> str:
     result = subprocess.run(["gh", *args], check=True, capture_output=True, text=True)  # noqa: S603, S607
     return result.stdout
@@ -1018,8 +1029,8 @@ def main(argv: list[str]) -> int:
     if not bump_failures:
         print("NOTE  Dependabot version-only bump: exact-head checks are its verification")
         findings = dependabot_scope(findings, diff)
-    elif not has_verification(pr["body"] or ""):
-        blocked.append("no '## Verification' section with commands and results")
+    if evidence_failure := _evidence_requirement_failure(author, bump_failures, pr["body"] or ""):
+        blocked.append(evidence_failure)
     print(f"{repo}#{number} at {sha[:12]}: {len(runs)} check runs, {len(threads)} threads")
     for category, description in findings:
         print(f"DECISION {category}: {description}")
@@ -1611,11 +1622,14 @@ def self_test() -> int:
     for case, args in unsafe_bumps.items():
         assert dependabot_bump_failures(*args), case
     major_failures = dependabot_bump_failures(*unsafe_bumps["major"])
-    assert _evidence_requirement_failure(
-        "app/dependabot",
-        major_failures,
-        "<!-- autonomous-merge -->\n## Verification\n- `make check` → passed",
-    ) == "Dependabot PR is outside the version-only boundary: a major version update"
+    assert (
+        _evidence_requirement_failure(
+            "app/dependabot",
+            major_failures,
+            "<!-- autonomous-merge -->\n## Verification\n- `make check` → passed",
+        )
+        == "Dependabot PR is outside the version-only boundary: a major version update"
+    )
 
     calls: list[tuple[str, ...]] = []
     original_gh = globals()["gh"]
