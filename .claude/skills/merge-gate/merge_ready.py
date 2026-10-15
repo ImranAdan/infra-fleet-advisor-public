@@ -1654,6 +1654,9 @@ def self_test() -> int:
         "verified": True,
         "signature_state": "VALID",
         "signer": "web-flow",
+        "was_signed_by_github": True,
+        "committer_name": "GitHub",
+        "committer_email": "noreply@github.com",
         "message": (
             "Bumps setup-uv\n---\nupdated-dependencies:\n"
             "- dependency-name: astral-sh/setup-uv\n"
@@ -1697,6 +1700,17 @@ def self_test() -> int:
             f"+        uses: astral-sh/setup-uv@{new_pin} # v10.3.0",
         )
     )
+    reindented_action = "\n".join(
+        _file(
+            ".github/workflows/quality.yml",
+            f"-        uses: astral-sh/setup-uv@{old_pin} # v10.0.1",
+            f"+      uses: astral-sh/setup-uv@{new_pin} # v10.3.0",
+        )
+    )
+    thing_commit = {
+        **bot_commit,
+        "message": bot_commit["message"].replace("astral-sh/setup-uv", "thing"),
+    }
     unsafe_bumps = {
         "human author": ("ImranAdan", branch, [bot_commit], action_bump),
         "human branch": ("app/dependabot", "feature/x", [bot_commit], action_bump),
@@ -1716,8 +1730,14 @@ def self_test() -> int:
         "major diff with mislabeled metadata": (
             "app/dependabot",
             branch,
-            [bot_commit],
+            [thing_commit],
             "\n".join(_file("requirements.txt", "-thing==1.9.0", "+thing==2.0.0")),
+        ),
+        "epoch major diff with mislabeled metadata": (
+            "app/dependabot",
+            branch,
+            [thing_commit],
+            "\n".join(_file("requirements.txt", "-thing==1!1.9.0", "+thing==1!2.0.0")),
         ),
         "dependency absent from signed metadata": (
             "app/dependabot",
@@ -1743,6 +1763,24 @@ def self_test() -> int:
             [{**bot_commit, "signer": "another-user"}],
             action_bump,
         ),
+        "signature not made by GitHub": (
+            "app/dependabot",
+            branch,
+            [{**bot_commit, "was_signed_by_github": False}],
+            action_bump,
+        ),
+        "custom committer": (
+            "app/dependabot",
+            branch,
+            [
+                {
+                    **bot_commit,
+                    "committer_name": "Contributor",
+                    "committer_email": "contributor@example.com",
+                }
+            ],
+            action_bump,
+        ),
         "other action": (
             "app/dependabot",
             branch,
@@ -1756,6 +1794,7 @@ def self_test() -> int:
             ),
         ),
         "moved action": ("app/dependabot", branch, [bot_commit], moved_action),
+        "reindented action": ("app/dependabot", branch, [bot_commit], reindented_action),
         "new file": (
             "app/dependabot",
             branch,
@@ -1798,6 +1837,11 @@ def self_test() -> int:
     }
     for case, args in unsafe_bumps.items():
         assert dependabot_bump_failures(*args), case
+    for case in ("major diff with mislabeled metadata", "epoch major diff with mislabeled metadata"):
+        assert any(
+            "changes major version" in failure
+            for failure in dependabot_bump_failures(*unsafe_bumps[case])
+        ), case
     major_failures = dependabot_bump_failures(*unsafe_bumps["major"])
     assert (
         _evidence_requirement_failure(
