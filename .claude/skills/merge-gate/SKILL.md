@@ -63,6 +63,19 @@ merge. Remove the marker to hold the PR open.
   product requirements. Gate-producing files are merge authority and always
   park for the owner.
 
+## Where the logic lives
+
+The decision logic is the shared Mandate engine, maintained in
+[infra-fleet-public `mandate/`](https://github.com/ImranAdan/infra-fleet-public/tree/main/mandate)
+and installed here at the exact commit pinned in `pyproject.toml` (dependency
+group `gate`; `uv.lock` records it). `merge_ready.py` is this repository's entry
+point: it binds the engine to `decision-policy.toml` and holds this
+repository's self-test fixtures. The worker installs only that group with
+`uv sync --locked`, so a lockfile that disagrees with `pyproject.toml` fails
+closed. Changing the pin is merge authority (`pyproject.toml` parks).
+Verified Dependabot version-only bumps stay off here
+(`[dependabot] version_only = false`) until the owner decides #173.
+
 ## What it cannot check
 
 Judge these yourself. Any one means `PARK`, whatever the script says:
@@ -72,7 +85,8 @@ Judge these yourself. Any one means `PARK`, whatever the script says:
 - it is a security finding where merging means judging your own work;
 - a check failed and the fix was not obvious.
 
-Encode a recurring judgment as a new rule in `merge_ready.py` with a case in
+Encode a recurring judgment as a new rule in the shared engine (a Fleet PR
+under `mandate/`, then bump the pin here) with a case in
 its self-test (`python3 .claude/skills/merge-gate/merge_ready.py --self-test`), not as more prose here.
 
 An agent never adds `owner-approved` and never posts or imitates a

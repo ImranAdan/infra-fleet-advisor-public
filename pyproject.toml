@@ -21,6 +21,15 @@ dev = [
     "mypy>=1.11",
     "types-pyyaml>=6.0",
 ]
+# The shared Mandate decision engine, pinned to one Fleet commit. Changing the
+# pin changes what decides merges here, so this file is merge authority.
+gate = ["mandate"]
+
+[tool.uv]
+default-groups = ["dev", "gate"]
+
+[tool.uv.sources]
+mandate = { git = "https://github.com/ImranAdan/infra-fleet-public", rev = "7cc049525c5687fd861adbba988011a861c84112", subdirectory = "mandate" }
 
 [build-system]
 requires = ["hatchling"]

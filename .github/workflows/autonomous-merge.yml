@@ -45,10 +45,19 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      # Only the shared engine, at the commit pinned in pyproject.toml. --locked
+      # fails if uv.lock disagrees with pyproject.toml, so the pin cannot be
+      # changed through the lockfile alone.
+      - name: Install the pinned Mandate engine
+        run: uv sync --locked --only-group gate --no-install-project
+
       - name: Test the candidate selector and merge gate
         run: |
-          python3 .github/scripts/autonomous_merge.py --self-test
-          python3 .claude/skills/merge-gate/merge_ready.py --self-test
+          .venv/bin/python .github/scripts/autonomous_merge.py --self-test
+          .venv/bin/python .claude/skills/merge-gate/merge_ready.py --self-test
 
       - name: Merge evidence-approved pull requests
         env:
@@ -59,4 +68,4 @@ jobs:
           AUTONOMOUS_MERGE_PRIORITY_SHA: ${{ github.event_name == 'status' && github.event.sha || '' }}
           AUTONOMOUS_MERGE_POST_MERGE_WORKFLOW: fleet-issues.yml
           AUTONOMOUS_MERGE_POST_MERGE_HEAD: advisory/latest
-        run: python3 .github/scripts/autonomous_merge.py
+        run: .venv/bin/python .github/scripts/autonomous_merge.py
