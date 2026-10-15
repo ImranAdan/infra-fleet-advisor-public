@@ -759,6 +759,11 @@ def _version_major(text: str) -> int | None:
     return int(match.group(1)) if match else None
 
 
+def _dependency_identity(value: str) -> str:
+    """Normalize a manifest key for comparison with signed Dependabot metadata."""
+    return value.strip().strip("'\"`").split("[", 1)[0].casefold()
+
+
 def _remote_action_pin(text: str) -> tuple[str, str] | None:
     """Parse one immutable remote-action reference as its action and commit."""
     match = re.fullmatch(r"(?:-\s*)?uses:\s+(\S+)(?:\s+#.*)?", text.strip())
@@ -830,6 +835,7 @@ def dependabot_bump_failures(
 ) -> list[str]:
     """Explain why a PR is not a verified, non-major version-only bump."""
     failures: list[str] = []
+    signed_dependencies: set[str] = set()
     if author not in DEPENDABOT_AUTHORS:
         failures.append(f"author {author} is not Dependabot")
     if not branch.startswith("dependabot/"):
@@ -844,9 +850,16 @@ def dependabot_bump_failures(
             or commit.get("signer") not in DEPENDABOT_SIGNATURE_SIGNERS
         ):
             failures.append("a commit is not GitHub-signed for Dependabot")
-        update_types = re.findall(r"(?m)^\s*update-type:\s*(\S+)\s*$", commit.get("message") or "")
+        metadata = commit.get("message") or ""
+        update_types = re.findall(r"(?m)^\s*update-type:\s*(\S+)\s*$", metadata)
+        dependency_names = re.findall(r"(?m)^\s*(?:-\s*)?dependency-name:\s*(\S+)\s*$", metadata)
         if not update_types:
             failures.append("a commit has no Dependabot update type")
+        if not dependency_names:
+            failures.append("a commit has no Dependabot dependency name")
+        if len(dependency_names) != len(update_types):
+            failures.append("a commit has mismatched Dependabot metadata")
+        signed_dependencies.update(_dependency_identity(name) for name in dependency_names)
         if any(update_type == "version-update:semver-major" for update_type in update_types):
             failures.append("a major version update")
         if any(
@@ -900,10 +913,12 @@ def dependabot_bump_failures(
                 failures.append(f"changes more than a version in {changed}: {new.strip()[:80]}")
                 continue
             recognized_changes += 1
+            if _dependency_identity(key) not in signed_dependencies:
+                failures.append(f"changes a dependency absent from signed metadata: {key}")
             old_major, new_major = _version_major(old), _version_major(new)
             if old_major is not None and new_major is not None and old_major != new_major:
                 failures.append(f"changes major version in {changed}: {old_major} to {new_major}")
-            elif (old_major is None) != (new_major is None):
+            elif old_major is None or new_major is None:
                 failures.append(f"cannot compare major versions in {changed}")
     if not recognized_changes:
         failures.append("contains no recognized dependency version change")
