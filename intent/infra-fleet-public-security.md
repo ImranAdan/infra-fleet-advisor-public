@@ -2,7 +2,7 @@
 
 - Format: `1`
 - Intent ID: `infra_fleet_public_security`
-- Version: `1.7`
+- Version: `1.8`
 - Category: `security`
 
 Source: [`infra-fleet-public@d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0`](https://github.com/ImranAdan/infra-fleet-public/tree/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0)
@@ -246,18 +246,19 @@ for the owner, never corrected by an agent.
 
 ### Intent
 
-The platform message broker accepts connections only from named peers on named
-ports: every ingress rule selecting its pods names namespaces or pods and the
-ports they may reach. It runs without client authentication, so the network is
-its boundary. The fleet admits the application namespace on the client port and
-observability on the metrics port; adding a peer or port is a reviewed change.
+The platform message broker accepts connections only from the `applications`
+namespace on the client port 4222 and from `observability` on the metrics port
+7777. It runs without client authentication, so the network is its boundary.
+A new client namespace or port is a change to this position.
 
 Evidence: [broker NetworkPolicy](https://github.com/ImranAdan/infra-fleet-public/blob/47f88321414e2fef2616e886da7bb7bee2634ec3/k8s/infrastructure/messaging/networkpolicy.yaml)
 
 Caveat: the broker chart is not rendered, so its pods are assumed to carry
 Helm's standard `app.kubernetes.io/name` and `app.kubernetes.io/instance`
 labels; a policy can be shown open, never proven to select the real pods.
-Which namespaces and ports are named is review's call, not the check's.
+Only a namespace-name label (`matchLabels` or an `In` expression) bounds a
+peer; `Exists` or `NotIn` selectors and port items without a single `port`
+count as open.
 
 ### Evaluation
 

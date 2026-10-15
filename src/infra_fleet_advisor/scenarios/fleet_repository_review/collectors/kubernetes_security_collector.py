@@ -41,8 +41,12 @@ _APPLICATIONS = "k8s/applications/"
 _GENERATED = "k8s/flux-system/"
 _ISSUER_ANNOTATIONS = ("cert-manager.io/cluster-issuer", "cert-manager.io/issuer")
 _BROAD_GROUPS = {"system:authenticated", "system:serviceaccounts"}
+# S-015's declared matrix per known broker chart: (peer namespace, port).
+# A new client or port updates S-015 and this adapter together.
 # ponytail: one known broker chart; add a chart here when the fleet runs another.
-_BROKER_CHARTS = frozenset({"nats"})
+_BROKER_PEERS = {"nats": frozenset({("applications", "4222"), ("observability", "7777")})}
+_NAMESPACE_NAME = "kubernetes.io/metadata.name"
+_MAX_BROKER_PAIRS = 64
 _MAX_RESOURCES = 2000
 _MAX_PROFILES = 8
 # Facts that protect: they must hold in every profile. Other booleans are risks
@@ -51,7 +55,7 @@ _PROTECTIVE = frozenset(
     {
         "selected_by_ingress_policy",
         "ingress_restricted",
-        "rules_name_ports",
+        "admits_only_declared_peers",
         "token_grants_nothing",
         "application_namespace",
         "acceptance_bounded",
@@ -211,32 +215,88 @@ def _broker_evidence(release: _Resource, chart: str, policies: list[_Resource]) 
     # Flux names the Helm release <targetNamespace>-<name> when a target is set.
     instance = spec.get("releaseName") or (f"{target}-{release.name}" if target else release.name)
     labels = {"app.kubernetes.io/name": chart, "app.kubernetes.io/instance": instance}
-    selecting, open_rules = _ingress_selection(namespace, labels, policies)
-    # A rule without ports admits every port, including the broker's monitoring
-    # endpoint, so each rule must also name the ports its peers may reach.
-    portless = [
-        policy.name
-        for policy in selecting
-        if any(
-            not (isinstance(rule, Mapping) and rule.get("ports"))
-            for rule in policy.body["spec"].get("ingress") or []
-        )
-    ]
-    restricted = bool(selecting) and not open_rules and not portless
+    selecting, _ = _ingress_selection(namespace, labels, policies)
+    admitted: set[tuple[str, str]] = set()
+    broad = []
+    for policy in selecting:
+        for rule in policy.body["spec"].get("ingress") or []:
+            pairs = _admitted_pairs(rule, policy.namespace)
+            if pairs is None:
+                broad.append(policy.name)
+            else:
+                admitted |= pairs
+    undeclared = sorted(admitted - _BROKER_PEERS[chart])
+    declared_only = not broad and not undeclared
+    shown = [f"{peer}:{port}" for peer, port in sorted(admitted)]
     return _evidence(
         EVIDENCE_KIND_BROKER_INGRESS,
         release,
         "/ingress",
-        f"{chart} broker in {namespace}: {len(selecting)} ingress policy(ies) select its pods"
-        + (f"; open rules in {', '.join(open_rules[:5])}" if open_rules else "")
-        + (f"; rules without ports in {', '.join(portless[:5])}" if portless else ""),
+        f"{chart} broker in {namespace}: {len(selecting)} ingress policy(ies) select its pods; "
+        f"admits {', '.join(shown[:10]) or 'nothing'}"
+        + (f"; unbounded rules in {', '.join(broad[:5])}" if broad else ""),
         {
             "chart": chart,
             "selected_by_ingress_policy": bool(selecting),
-            "rules_name_ports": not portless,
-            "ingress_restricted": restricted,
+            "admitted_peers": ",".join(shown[:20]),
+            "admits_only_declared_peers": declared_only,
+            "ingress_restricted": bool(selecting) and declared_only,
         },
     )
+
+
+def _peer_namespaces(peer: Any, policy_namespace: str) -> set[str] | None:
+    """The namespaces a peer can come from, or None when no name bounds them.
+    Only positive name constraints bound a selector; Exists, NotIn and other
+    labels can only narrow what they already allow."""
+    if not isinstance(peer, Mapping) or "ipBlock" in peer:
+        return None
+    selector = peer.get("namespaceSelector")
+    if selector is None:
+        return {policy_namespace} if "podSelector" in peer else None
+    if not isinstance(selector, Mapping):
+        return None
+    bounds: list[set[str]] = []
+    labels = selector.get("matchLabels") or {}
+    if isinstance(labels, Mapping) and _NAMESPACE_NAME in labels:
+        bounds.append({str(labels[_NAMESPACE_NAME])})
+    for expression in selector.get("matchExpressions") or []:
+        if isinstance(expression, Mapping) and (
+            expression.get("key"),
+            expression.get("operator"),
+        ) == (
+            _NAMESPACE_NAME,
+            "In",
+        ):
+            bounds.append({str(value) for value in expression.get("values") or []})
+    return set.intersection(*bounds) if bounds else None
+
+
+def _admitted_pairs(rule: Any, policy_namespace: str) -> set[tuple[str, str]] | None:
+    """(namespace, port) pairs an ingress rule admits, or None when unbounded:
+    no peers, a peer no namespace name bounds, no ports, or a port item that
+    names no single port (`{}` or an `endPort` range)."""
+    if not isinstance(rule, Mapping):
+        return None
+    peers, ports = rule.get("from"), rule.get("ports")
+    if not peers or not ports:
+        return None
+    namespaces: set[str] = set()
+    for peer in peers:
+        bound = _peer_namespaces(peer, policy_namespace)
+        if bound is None:
+            return None
+        namespaces |= bound
+    named = set()
+    for item in ports:
+        if not isinstance(item, Mapping) or item.get("port") in (None, "") or "endPort" in item:
+            return None
+        named.add(str(item["port"]))
+    # The declared matrix is tiny, so a rule expanding past this cap cannot be
+    # declared-only; treat it as unbounded rather than build the product.
+    if len(namespaces) * len(named) > _MAX_BROKER_PAIRS:
+        return None
+    return {(namespace, port) for namespace in namespaces for port in named}
 
 
 def _workload_evidence(
@@ -457,7 +517,7 @@ def _evaluate(resources: list[_Resource]) -> tuple[list[Evidence], int]:
                 evidence.append(_gateway_https_evidence(resource, resources))
             elif resource.kind == "HelmRelease":
                 chart = _chart(resource, resources)
-                if chart in _BROKER_CHARTS:
+                if chart in _BROKER_PEERS:
                     evidence.append(_broker_evidence(resource, chart, policies))
         except (ValueError, AttributeError, TypeError):
             failures += 1

@@ -71,11 +71,13 @@ drills:
     path: k8s/applications/platform/networkpolicy.yaml
     find: "namespace: applications"
     replace: "namespace: observability"
-  # The broker is reachable only from scoped peers: an ipBlock admits anyone.
+  # The broker admits only S-015's declared matrix: moving the client rule to
+  # another namespace on the admin port must diverge. Broader shapes (ipBlock,
+  # Exists selectors, ports: [{}]) are unit-tested; drills are one per path.
   - proposition: S-015
     path: k8s/infrastructure/messaging/networkpolicy.yaml
-    find: "        - namespaceSelector:\n            matchLabels:\n              kubernetes.io/metadata.name: applications"
-    replace: "        - ipBlock:\n            cidr: 0.0.0.0/0"
+    find: "              kubernetes.io/metadata.name: applications\n      ports:\n        - protocol: TCP\n          port: 4222"
+    replace: "              kubernetes.io/metadata.name: default\n      ports:\n        - protocol: TCP\n          port: 8222"
   - proposition: S-005
     path: k8s/routing/gateway.yaml
     find: "            scheme: https"
