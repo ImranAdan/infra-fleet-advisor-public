@@ -1704,6 +1704,24 @@ def self_test() -> int:
             [bot_commit],
             "\n".join(_file("requirements.txt", "-thing==1.9.0", "+thing==2.0.0")),
         ),
+        "dependency absent from signed metadata": (
+            "app/dependabot",
+            branch,
+            [bot_commit],
+            "\n".join(_file("requirements.txt", "-thing==1.9.0", "+thing==1.10.0")),
+        ),
+        "action pin without comparable versions": (
+            "app/dependabot",
+            branch,
+            [bot_commit],
+            "\n".join(
+                _file(
+                    ".github/workflows/quality.yml",
+                    f"-        uses: astral-sh/setup-uv@{old_pin}",
+                    f"+        uses: astral-sh/setup-uv@{new_pin}",
+                )
+            ),
+        ),
         "untrusted signer": (
             "app/dependabot",
             branch,
