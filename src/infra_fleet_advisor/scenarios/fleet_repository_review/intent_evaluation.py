@@ -11,6 +11,7 @@ from infra_fleet_advisor.core.report import CollectorCoverage
 from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
     CONCERN_AGENT_AUTONOMY_RULES_MISSING,
     CONCERN_AUTONOMOUS_MERGE_INCOMPLETE,
+    CONCERN_BROKER_INGRESS_UNRESTRICTED,
     CONCERN_CI_CREDENTIALS_WITHOUT_OIDC,
     CONCERN_CONTAINER_HARDENING_INCOMPLETE,
     CONCERN_COST_TAGS_MISSING,
@@ -49,6 +50,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     EVIDENCE_KIND_AGENT_AUTONOMY_RULES,
     EVIDENCE_KIND_APPLICATION_COUPLING,
     EVIDENCE_KIND_AUTONOMOUS_MERGE,
+    EVIDENCE_KIND_BROKER_INGRESS,
     EVIDENCE_KIND_CONTAINER_HARDENING,
     EVIDENCE_KIND_COST_TAGS,
     EVIDENCE_KIND_CREDENTIAL_METHOD,
@@ -95,6 +97,7 @@ CHECK_DEPENDENCY_UPDATES_CONFIGURED = "dependency_updates_configured"
 CHECK_APPLICATION_INGRESS_RESTRICTED = "application_ingress_restricted"
 CHECK_PERMISSIVE_EGRESS_BOUNDED = "permissive_egress_bounded"
 CHECK_PUBLIC_INGRESS_HTTPS = "public_ingress_https"
+CHECK_MESSAGE_BROKER_INGRESS_RESTRICTED = "message_broker_ingress_restricted"
 CHECK_SERVICE_ACCOUNT_UNPRIVILEGED = "mounted_token_unprivileged"
 CHECK_EKS_PUBLIC_ENDPOINT_STAGING_ONLY = "eks_public_endpoint_staging_only"
 CHECK_SESSION_COOKIE_CSRF_COMPENSATED = "session_cookie_csrf_compensated"
@@ -372,6 +375,19 @@ INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
                 required_facts={"acceptance_bounded": False},
             ),
             can_prove_satisfaction=True,
+            requires_relevant_evidence=True,
+        ),
+        # Divergence-only: the broker's pods come from an unrendered chart, so
+        # a policy naming the chart's standard labels is the most a render shows.
+        CHECK_MESSAGE_BROKER_INGRESS_RESTRICTED: IntentCheckDefinition(
+            concern_key=CONCERN_BROKER_INGRESS_UNRESTRICTED,
+            rule=ConcernRule(
+                category="security",
+                evidence_kind=EVIDENCE_KIND_BROKER_INGRESS,
+                collector_id=K8S_SECURITY_COLLECTOR_ID,
+                required_facts={"ingress_restricted": False},
+            ),
+            can_prove_satisfaction=False,
             requires_relevant_evidence=True,
         ),
         CHECK_PUBLIC_INGRESS_HTTPS: IntentCheckDefinition(

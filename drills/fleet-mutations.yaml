@@ -71,6 +71,11 @@ drills:
     path: k8s/applications/platform/networkpolicy.yaml
     find: "namespace: applications"
     replace: "namespace: observability"
+  # The broker is reachable only from scoped peers: an ipBlock admits anyone.
+  - proposition: S-015
+    path: k8s/infrastructure/messaging/networkpolicy.yaml
+    find: "        - namespaceSelector:\n            matchLabels:\n              kubernetes.io/metadata.name: applications"
+    replace: "        - ipBlock:\n            cidr: 0.0.0.0/0"
   - proposition: S-005
     path: k8s/routing/gateway.yaml
     find: "            scheme: https"
