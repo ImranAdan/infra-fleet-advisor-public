@@ -23,8 +23,9 @@ Same-repository PRs containing `<!-- autonomous-merge -->` may leave this step
 to `.github/workflows/autonomous-merge.yml`. The trusted default-branch worker
 runs the same command; it cannot convert `PARK`, `JUDGE` or `BLOCKED` into a
 merge. Verified Dependabot branches are also candidates without the marker;
-the gate must still prove their bot author and GitHub `web-flow` signature,
-signed patch-or-minor metadata, and version-only shape. It rejects visible
+the gate must still prove their bot author, GitHub's canonical committer and a
+valid GitHub-created `web-flow` signature, signed patch-or-minor metadata, and
+version-only shape. It rejects visible
 major jumps and unsupported diff records. Remove
 the marker to hold an agent-authored PR open.
 
@@ -62,7 +63,8 @@ the marker to hold an agent-authored PR open.
   the Verification section of `AGENTS.md`). A qualifying Dependabot bump uses
   its exact-head checks as verification because no agent authored its body.
 - **Dependabot:** only a same-repository `dependabot/**` PR whose commits are
-  all GitHub-verified and authored by `dependabot[bot]` can enter the narrow
+  all authored by `dependabot[bot]`, created by GitHub's canonical committer
+  and validly signed through GitHub's `web-flow` identity can enter the narrow
   path. Major updates, new or deleted files, renames, dependency swaps,
   arbitrary lines and action moves across steps fail that classification. A
   marker or Verification section cannot turn a rejected bot PR into an

@@ -29,8 +29,9 @@ event to dispatch the worker rather than using `pull_request_target`.
 Dependabot PRs cannot inherit the agent-authored marker or verification record,
 so the worker also considers same-repository `dependabot/**` branches. This is
 a candidate-selection exception only. The gate proves the Dependabot App
-identity, the bot author and GitHub's `web-flow` signature on every commit,
-signed patch-or-minor update metadata, and a diff limited to same-dependency
+identity, the bot author, GitHub's canonical committer and a valid GitHub-created
+`web-flow` signature on every commit, signed patch-or-minor update metadata,
+and a diff limited to same-dependency
 version changes, lockfiles or same-step immutable action SHA replacements. It
 also compares visible major versions. File additions, deletions, renames,
 binary or mode changes, dependency swaps, action moves and arbitrary edits fail

@@ -269,8 +269,9 @@ its own pull request only by rerunning the gate with `--merge` after it reports
 trusted default-branch worker to run that exact command. Both paths bind the
 merge to the checked head SHA. A Dependabot PR needs neither hand-written
 verification nor the marker only when the gate proves that it comes from the
-Dependabot App, every commit is bot-authored and signed by GitHub's `web-flow`
-signer, its signed metadata declares a patch or minor update, and every changed
+Dependabot App, every commit is bot-authored and created by GitHub's canonical
+committer with a valid `web-flow` signature, its signed metadata declares a
+patch or minor update, and every changed
 line is a same-dependency version or immutable action-pin replacement. Visible
 major-version jumps, action moves, dependency swaps, binary or mode changes and
 arbitrary edits fail closed.
