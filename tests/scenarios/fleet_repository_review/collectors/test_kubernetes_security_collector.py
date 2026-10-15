@@ -146,6 +146,14 @@ def test_broker_ingress_admits_only_the_declared_peer_port_matrix(tmp_path) -> N
         ),
         (APPS, "ports: [{}]", False, ""),
         (APPS, "ports: [{port: ''}]", False, ""),
+        # A rule expanding past the pair cap is unbounded, never materialized.
+        (
+            "{namespaceSelector: {matchExpressions: [{key: kubernetes.io/metadata.name, "
+            "operator: In, values: [" + ", ".join(f"n{i}" for i in range(9)) + "]}]}}",
+            "ports: [" + ", ".join(f"{{port: {p}}}" for p in range(4000, 4008)) + "]",
+            False,
+            "",
+        ),
         # A declared peer on an undeclared port, a port range, and same-namespace pods.
         (APPS, "ports: [{port: 8222}]", False, "applications:8222"),
         (APPS, "ports: [{port: 4222, endPort: 8222}]", False, ""),

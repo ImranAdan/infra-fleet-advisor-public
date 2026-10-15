@@ -46,6 +46,7 @@ _BROAD_GROUPS = {"system:authenticated", "system:serviceaccounts"}
 # ponytail: one known broker chart; add a chart here when the fleet runs another.
 _BROKER_PEERS = {"nats": frozenset({("applications", "4222"), ("observability", "7777")})}
 _NAMESPACE_NAME = "kubernetes.io/metadata.name"
+_MAX_BROKER_PAIRS = 64
 _MAX_RESOURCES = 2000
 _MAX_PROFILES = 8
 # Facts that protect: they must hold in every profile. Other booleans are risks
@@ -291,6 +292,10 @@ def _admitted_pairs(rule: Any, policy_namespace: str) -> set[tuple[str, str]] | 
         if not isinstance(item, Mapping) or item.get("port") in (None, "") or "endPort" in item:
             return None
         named.add(str(item["port"]))
+    # The declared matrix is tiny, so a rule expanding past this cap cannot be
+    # declared-only; treat it as unbounded rather than build the product.
+    if len(namespaces) * len(named) > _MAX_BROKER_PAIRS:
+        return None
     return {(namespace, port) for namespace in namespaces for port in named}
 
 
