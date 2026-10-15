@@ -744,10 +744,10 @@ def _version_major(text: str) -> int | None:
     else:
         stripped = text.strip()
         patterns = (
-            r"^.*\buses:\s*\S+@[0-9a-fA-F]{40}\s+#\s*v?(\d+)(?:\D|$)",
-            r"^[A-Za-z0-9_.-]+(?:\[[A-Za-z0-9_,.-]*\])?==v?(\d+)(?:\D|$)",
-            r'^"[@A-Za-z0-9_./-]+":\s*"[\^~]?v?(\d+)(?:\D|$)',
-            r'^version\s*=\s*"v?(\d+)(?:\D|$)',
+            r"^.*\buses:\s*\S+@[0-9a-fA-F]{40}\s+#\s*([vV]?\d+[^\s#]*)",
+            r"^[A-Za-z0-9_.-]+(?:\[[A-Za-z0-9_,.-]*\])?==([vV]?\d+[^\s;#]*)",
+            r'^"[@A-Za-z0-9_./-]+":\s*"[\^~]?([vV]?\d+[\w.+!-]*)"',
+            r'^version\s*=\s*"([vV]?\d+[^"\s]*)"',
         )
         value = next(
             (match.group(1) for pattern in patterns if (match := re.match(pattern, stripped))),
@@ -755,7 +755,12 @@ def _version_major(text: str) -> int | None:
         )
     if value is None:
         return None
-    match = re.match(r"v?(\d+)(?:\D|$)", value, re.I)
+    normalized = value.removeprefix("v").removeprefix("V")
+    if "!" in normalized:
+        epoch, normalized = normalized.split("!", 1)
+        if not epoch.isdigit():
+            return None
+    match = re.match(r"(\d+)(?:\D|$)", normalized)
     return int(match.group(1)) if match else None
 
 
@@ -764,18 +769,20 @@ def _dependency_identity(value: str) -> str:
     return value.strip().strip("'\"`").split("[", 1)[0].casefold()
 
 
-def _remote_action_pin(text: str) -> tuple[str, str] | None:
-    """Parse one immutable remote-action reference as its action and commit."""
-    match = re.fullmatch(r"(?:-\s*)?uses:\s+(\S+)(?:\s+#.*)?", text.strip())
+def _remote_action_pin(text: str) -> tuple[str, str, str] | None:
+    """Parse one immutable remote-action reference and its YAML position."""
+    match = re.fullmatch(
+        r"(?P<prefix>\s*(?:-\s*)?)uses:\s+(?P<target>\S+)(?:\s+#.*)?", text.rstrip()
+    )
     if not match:
         return None
-    target = match.group(1).strip("'\"")
+    target = match.group("target").strip("'\"")
     if target.startswith(("./", "/", "$/", "docker://")):
         return None
     action, separator, revision = target.rpartition("@")
     if not separator or not action or not re.fullmatch(r"[0-9a-fA-F]{40}", revision):
         return None
-    return action, revision.casefold()
+    return action, revision.casefold(), match.group("prefix")
 
 
 def _pin_only_workflows(diff: str) -> set[str]:
@@ -801,13 +808,14 @@ def _pin_only_workflows(diff: str) -> set[str]:
         if not path or not WORKFLOW.search(path):
             return
         for changed in blocks:
-            removed: list[str] = []
-            added: list[str] = []
+            removed: list[tuple[str, str]] = []
+            added: list[tuple[str, str]] = []
             for prefix, text in changed:
                 parsed = _remote_action_pin(text)
                 if parsed is None:
                     return
-                (added if prefix == "+" else removed).append(parsed[0])
+                identity = (parsed[0], parsed[2])
+                (added if prefix == "+" else removed).append(identity)
             if not removed or not added or removed != added:
                 return
         if blocks:
@@ -823,7 +831,7 @@ def _pin_only_workflows(diff: str) -> set[str]:
         if line.startswith(("+++", "---")):
             continue
         if line.startswith(("+", "-")):
-            block.append((line[0], line[1:].strip()))
+            block.append((line[0], line[1:]))
         else:
             finish_block()
     finish_file()
@@ -848,6 +856,9 @@ def dependabot_bump_failures(
             or not commit.get("verified")
             or commit.get("signature_state") != "VALID"
             or commit.get("signer") not in DEPENDABOT_SIGNATURE_SIGNERS
+            or commit.get("was_signed_by_github") is not True
+            or commit.get("committer_name") != "GitHub"
+            or commit.get("committer_email") != "noreply@github.com"
         ):
             failures.append("a commit is not GitHub-signed for Dependabot")
         metadata = commit.get("message") or ""
@@ -1015,8 +1026,9 @@ def pull_request_commits(owner: str, name: str, number: str) -> list[dict[str, A
             nodes {
               commit {
                 author { user { login } }
+                committer { name email }
                 message
-                signature { isValid state signer { login } }
+                signature { isValid state signer { login } wasSignedByGitHub }
               }
             }
           }
@@ -1038,7 +1050,9 @@ def pull_request_commits(owner: str, name: str, number: str) -> list[dict[str, A
         "--jq",
         ".data.repository.pullRequest.commits.nodes[].commit"
         "|{author:.author.user.login,verified:.signature.isValid,"
-        "signature_state:.signature.state,signer:.signature.signer.login,message}",
+        "signature_state:.signature.state,signer:.signature.signer.login,"
+        "was_signed_by_github:.signature.wasSignedByGitHub,"
+        "committer_name:.committer.name,committer_email:.committer.email,message}",
     )
 
 
@@ -1837,7 +1851,11 @@ def self_test() -> int:
     }
     for case, args in unsafe_bumps.items():
         assert dependabot_bump_failures(*args), case
-    for case in ("major diff with mislabeled metadata", "epoch major diff with mislabeled metadata"):
+    major_diff_cases = (
+        "major diff with mislabeled metadata",
+        "epoch major diff with mislabeled metadata",
+    )
+    for case in major_diff_cases:
         assert any(
             "changes major version" in failure
             for failure in dependabot_bump_failures(*unsafe_bumps[case])
