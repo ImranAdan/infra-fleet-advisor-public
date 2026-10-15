@@ -1,10 +1,10 @@
 # Infra Fleet Advisor report
 
-- Source: `infra-fleet-public` @ `731007dffd0188776fa99d642e3342c6c0e72c46`
+- Source: `infra-fleet-public` @ `55202f0f0ee88196cfbc8a8fca7124313fc1fee1`
 - Advisor version: `0.1.0` · Policy version: `1.1`
-- Model: `stub-synthesizer-v1` · Run started: `2026-10-12T20:07:52.570942+00:00`
-- Intent catalog: `intent-md-v1:80b122a04d3820affea2cec93ccd0002bb11c31b8ec9ae7923c9cc40d5375d98`
-- Lifecycle: 0 new, 0 unchanged, 10 resolved, 0 suppressed (0 rejected)
+- Model: `stub-synthesizer-v1` · Run started: `2026-10-15T09:12:31.514549+00:00`
+- Intent catalog: `intent-md-v1:36a055bb6c6b9968dfb5dafe83d5d01b0e409bbb99d30eff038c8edb43bb7f7b`
+- Lifecycle: 1 new, 0 unchanged, 10 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
 
@@ -12,18 +12,19 @@
 - `terraform_iam_collector`: ok (0 evidence)
 - `terraform_cost_collector`: ok (7 evidence)
 - `kubernetes_deployment_collector`: ok (6 evidence)
-- `kubernetes_security_collector`: ok (6 evidence)
+- `kubernetes_security_collector`: ok (9 evidence)
 - `fleet_lifecycle_collector`: ok (3 evidence)
 - `dependency_update_collector`: ok (10 evidence)
 - `application_config_collector`: ok (1 evidence)
 - `application_contract_collector`: partial (1 evidence) — an on-demand application launcher is declared; its run-time constraints are outside repository evidence
-- `documentation_link_collector`: ok (54 evidence)
+- `documentation_link_collector`: ok (55 evidence)
 - `agent_rules_collector`: ok (2 evidence)
+- `platform_collector`: ok (18 evidence)
 - `repository_settings_collector`: partial (0 evidence) — repository settings unknown (dependabot_alerts, security_updates, secret_scanning, push_protection, default_branch_protected): no settings token was provided
 
 ## Intent evaluation
 
-**Coverage:** 27 of 27 positions have a check — 9 satisfied, 0 divergent, 18 checked but unproven; 0 declared without a check.
+**Coverage:** 37 of 37 positions have a check — 16 satisfied, 1 divergent, 20 checked but unproven; 0 declared without a check.
 
 - `declared_unverified` `infra_fleet_public_cost/C-001` — Staging application worker capacity scales to zero outside an owner-defined
   usage window. A delayed startup of up to 30 minutes is acceptable when it avoids
@@ -45,6 +46,20 @@
   environment, service, and owner tags so billed usage can be attributed. Any
   resource that cannot carry these tags is reported as an explicit coverage gap.
   - Category: `cost` · Priority: `medium` · Check: `aws_cost_allocation_tags` · Reason: `collector_cannot_prove_satisfaction`
+- `declared_unverified` `infra_fleet_public_cost/C-006` — The local profile fits a laptop: the CPU and memory requests it declares in Git,
+  summed over workloads and HelmRelease values, stay within 1 CPU and 2 GiB. A
+  component that needs more is a deliberate change to this budget.
+  
+  Evidence: \[local profile\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d973708aba130e5f23bbf0146c52dfec1185a820/k8s/clusters/local)
+  
+  Caveat: chart defaults are not rendered, so the declared sum is a lower bound
+  and the check can show the budget exceeded, never met.
+  - Category: `cost` · Priority: `medium` · Check: `local_footprint_within_budget` · Reason: `collector_cannot_prove_satisfaction`
+- `satisfied` `infra_fleet_public_cost/C-007` — Prometheus keeps metrics for a bounded time and size, so telemetry never grows
+  until it fills a node's disk.
+  
+  Evidence: \[kube-prometheus-stack values\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d973708aba130e5f23bbf0146c52dfec1185a820/k8s/infrastructure/observability/kube-prometheus-stack.yaml)
+  - Category: `cost` · Priority: `medium` · Check: `metrics_retention_bounded` · Reason: `complete_evidence_supports_intent`
 - `declared_unverified` `infra_fleet_public_maintainability/M-001` — Every supported deployment profile exposes the same three lifecycle commands:
   \`./fleet setup --profile \<profile\>\` prepares and validates the target,
   \`./fleet up --profile \<profile\>\` brings the platform to a ready state, and
@@ -147,10 +162,55 @@
   tracked Markdown resolves to a tracked file or directory. Whether prose still
   describes current behaviour remains a review responsibility.
   - Category: `maintainability` · Priority: `medium` · Check: `documentation_links_resolve` · Reason: `complete_evidence_supports_intent`
+- `satisfied` `infra_fleet_public_maintainability/M-008` — Every application publish workflow (\`.github/workflows/\*-publish.yml\`) feeds
+  the DORA metrics workflow, so a new application's deployments are counted from
+  its first release.
+  
+  Evidence: \[DORA metrics workflow\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d973708aba130e5f23bbf0146c52dfec1185a820/.github/workflows/dora-metrics.yml)
+  - Category: `maintainability` · Priority: `medium` · Check: `publish_workflows_feed_dora` · Reason: `complete_evidence_supports_intent`
+- `satisfied` `infra_fleet_public_maintainability/M-009` — Every platform manifest under \`k8s/\` is applied by at least one deployment
+  profile, so no reviewed change edits a file that nothing deploys. Flux's
+  bootstrap (\`k8s/flux-system/\`) and the on-demand application catalog
+  (\`k8s/applications/\<app\>/\`) are outside this position.
+  
+  Evidence: \[deployment profiles\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d973708aba130e5f23bbf0146c52dfec1185a820/k8s/clusters)
+  - Category: `maintainability` · Priority: `medium` · Check: `platform_manifests_reached` · Reason: `complete_evidence_supports_intent`
 - `satisfied` `infra_fleet_public_reliability/R-001` — Owner-managed application Deployments under \`k8s/applications/\` retain enough
   healthy capacity during rollout. Temporary capacity cost is acceptable when it
   prevents user-visible interruption.
   - Category: `reliability` · Priority: `high` · Check: `deployment_rollout_capacity` · Reason: `complete_evidence_supports_intent`
+- `satisfied` `infra_fleet_public_reliability/R-002` — Every HelmRelease a deployment profile applies sets a timeout and retries both
+  a failed install and a failed upgrade, rolling an upgrade back rather than
+  uninstalling it. A slow or failed chart upgrade recovers without an operator.
+  
+  Evidence: \[kube-prometheus-stack HelmRelease\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d973708aba130e5f23bbf0146c52dfec1185a820/k8s/infrastructure/observability/kube-prometheus-stack.yaml)
+  
+  Caveat: retries can mask a genuinely broken chart until they run out; the
+  HelmRelease's Ready condition still reports the failure.
+  - Category: `reliability` · Priority: `high` · Check: `helm_releases_self_heal` · Reason: `complete_evidence_supports_intent`
+- `satisfied` `infra_fleet_public_reliability/R-003` — Every application Deployment the platform delivers is the target of a Flagger
+  Canary whose analysis checks metrics, fails after a threshold, and never shifts
+  all traffic at once, so a bad release rolls back automatically.
+  
+  Evidence: \[shared Canary template\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d973708aba130e5f23bbf0146c52dfec1185a820/k8s/applications/platform/canary.yaml)
+  - Category: `reliability` · Priority: `high` · Check: `delivered_apps_canary_with_rollback` · Reason: `complete_evidence_supports_intent`
+- `satisfied` `infra_fleet_public_reliability/R-004` — An application that uses the platform broker (its manifests set \`NATS\_URL\`)
+  declares \`APP\_MESSAGING\_PREFIX\` in its \`fleet-app.yaml\` contract, and names its
+  subjects, streams and buckets with that prefix, so applications sharing the
+  broker cannot collide and every subject has a recorded owner.
+  
+  Evidence: \[messaging guide\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d973708aba130e5f23bbf0146c52dfec1185a820/docs/MESSAGING.md)
+  
+  Caveat: the check reads the declaration, not runtime subject names, and a
+  prefix is not isolation (see S-015).
+  - Category: `reliability` · Priority: `medium` · Check: `messaging_apps_declare_channels` · Reason: `complete_evidence_supports_intent`
+- `satisfied` `infra_fleet_public_reliability/R-005` — On the AWS staging profile every application keeps at least two replicas and
+  a PodDisruptionBudget, so cluster-autoscaler scale-down and node upgrades never
+  take an application fully offline. The extra replica's cost is accepted. The
+  local single-node profile is exempt.
+  
+  Evidence: \[AWS staging profile\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d973708aba130e5f23bbf0146c52dfec1185a820/k8s/profiles/aws-staging)
+  - Category: `reliability` · Priority: `medium` · Check: `aws_apps_survive_node_drains` · Reason: `complete_evidence_supports_intent`
 - `declared_unverified` `infra_fleet_public_security/S-001` — GitHub Actions uses short-lived OIDC credentials; long-lived AWS access keys are not allowed.
   
   Evidence: \[OIDC design\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0/docs/GITHUB-OIDC-SETUP.md)
@@ -257,8 +317,47 @@
   Caveat: protection settings are owner-only to change; a divergence is reported
   for the owner, never corrected by an agent.
   - Category: `security` · Priority: `high` · Check: `default_branch_protected` · Reason: `collector_incomplete`
+- `declared_unverified` `infra_fleet_public_security/S-015` — The platform message broker accepts connections only from the \`applications\`
+  namespace on the client port 4222 and from \`observability\` on the metrics port
+  7777\. It runs without client authentication, so the network is its boundary.
+  A new client namespace or port is a change to this position.
+  
+  Evidence: \[broker NetworkPolicy\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/47f88321414e2fef2616e886da7bb7bee2634ec3/k8s/infrastructure/messaging/networkpolicy.yaml)
+  
+  Caveat: the broker chart is not rendered, so its pods are assumed to carry
+  Helm's standard \`app.kubernetes.io/name\` and \`app.kubernetes.io/instance\`
+  labels; a policy can be shown open, never proven to select the real pods.
+  Only a namespace-name label (\`matchLabels\` or an \`In\` expression) bounds a
+  peer; \`Exists\` or \`NotIn\` selectors and port items without a single \`port\`
+  count as open.
+  - Category: `security` · Priority: `high` · Check: `message_broker_ingress_restricted` · Reason: `collector_cannot_prove_satisfaction`
+- `divergent` `infra_fleet_public_security/S-016` — Every namespace that runs application Deployments enforces Pod Security
+  \`restricted\` (\`pod-security.kubernetes.io/enforce: restricted\`), so admission
+  rejects a privileged, root or host-namespace application pod even when its
+  manifest regresses.
+  
+  Evidence: \[applications namespace\](https&#58;//github.com/ImranAdan/infra-fleet-public/blob/d973708aba130e5f23bbf0146c52dfec1185a820/k8s/infrastructure/namespaces/applications.yaml)
+  
+  Caveat: the label is desired state; whether every canary and load-test pod
+  admits under it is proven on a live cluster, not here.
+  - Category: `security` · Priority: `high` · Check: `app_namespaces_enforce_restricted` · Reason: `evidence_conflicts_with_intent`
+  - Evidence: `platform_collector:ae9c78eb6384533a`
 
 ## Recommendations
+
+### #1 [new] An application namespace does not enforce Pod Security restricted
+
+- Category: `security` · Priority: `high` · Confidence: 0.95
+- Fingerprint: `fp_51422acc6541b061859ad9a1`
+- Evidence: `platform_collector:ae9c78eb6384533a`
+
+A namespace that runs application Deployments lacks pod-security.kubernetes.io/enforce: restricted.
+
+**Impact:** A new or changed application can run privileged, root or host-namespace pods; nothing at admission stops the regression.
+
+**Suggested change:** Label the application namespace with pod-security.kubernetes.io/enforce: restricted, after checking canary and load-test pods meet it.
+
+**Trade-offs:** Any pod in the namespace that needs more privilege must move elsewhere.
 
 ### [resolved] Public ingress can serve application traffic over plain HTTP
 
