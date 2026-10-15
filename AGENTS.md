@@ -267,9 +267,19 @@ and what they showed (see `.github/pull_request_template.md`). An agent merges
 its own pull request only by rerunning the gate with `--merge` after it reports
 `READY`, or by leaving the template's `<!-- autonomous-merge -->` marker for the
 trusted default-branch worker to run that exact command. Both paths bind the
-merge to the checked head SHA. Remove the marker to hold a PR open. An agent
-never adds the `owner-approved` label and never posts or imitates a merge-judge
-comment. An owner approval is the repository owner replying
+merge to the checked head SHA. A Dependabot PR needs neither hand-written
+verification nor the marker only when the gate proves that it comes from the
+Dependabot App, every commit is bot-authored and created by GitHub's canonical
+committer with a valid `web-flow` signature, its signed metadata declares a
+patch or minor update, and every changed
+line is a same-dependency version or immutable action-pin replacement. Visible
+major-version jumps, action moves, dependency swaps, binary or mode changes and
+arbitrary edits fail closed.
+Editable marker or Verification prose cannot opt a rejected bot PR back in;
+recreate an intentionally reviewed major update on an agent-authored branch.
+Remove the marker to hold an agent PR open. An agent never adds the
+`owner-approved` label and never posts or imitates a merge-judge comment. An
+owner approval is the repository owner replying
 `/approve <full-head-sha>` after every check run on that head started, or adding
 `owner-approved` under the same timing rule. GitHub records both with server
 time, and the command names the head, so a push unbinds either form. The trusted
@@ -293,10 +303,11 @@ The autonomous worker runs after Quality, when an external status completes,
 when the owner posts the head-bound approval command, and on explicit
 report-workflow dispatch. A six-hour schedule is a
 recovery backstop. It considers only non-draft PRs whose head branch belongs to
-this repository and whose body contains the opt-in marker. `READY` merges;
-`PARK`, `JUDGE`, failed evidence and unresolved review stay open. Report PRs opt
-in by default; their merge is the machine-validated decision record for issue
-publication.
+this repository and either contain the opt-in marker or come from a Dependabot
+branch. The selector grants no authority: the gate independently proves the
+closed Dependabot boundary. `READY` merges; `PARK`, `JUDGE`, failed evidence and
+unresolved review stay open. Report PRs opt in by default; their merge is the
+machine-validated decision record for issue publication.
 
 When a verification lesson recurs, encode it as a check (a test, a drill, a
 doctor line) rather than another paragraph here.
@@ -342,6 +353,27 @@ answered, so the owner never has to report back. At the start of work, run
 holds the record, `<!-- decisions {"D1": "A", ...} -->`. Act on it, then close
 the issue with a comment linking the pull request that carries it out. Never
 post `D1:`-style answers yourself: only the owner's count.
+
+## Shared resource locks
+
+Use two records for any shared mutable resource. Fleet issue
+[`#175`](https://github.com/ImranAdan/infra-fleet-public/issues/175) is the
+global record across terminals, sessions and machines. A `.lock` file under the
+Fleet repository's shared Git directory is the atomic local mutex. Both must
+name the same owner before work starts; missing, stale or conflicting state
+fails closed.
+
+For the local cluster, resolve the Fleet checkout even when working from this
+Advisor repository, then use
+`<fleet-git-common-dir>/fleet/locks/cluster.lock`, where the common directory is
+reported by `git -C <fleet-checkout> rev-parse --path-format=absolute
+--git-common-dir`. Create the parent directory, acquire the file with shell
+`noclobber`, and record `owner`, UTC `since`, `purpose` and the #175 URL. Post
+`LOCKED cluster` with the same details on #175, re-read the issue for an earlier
+unreleased contender, and only then drive the cluster. On completion, post
+`released cluster` and remove the file only after confirming it still names
+you. Never create an Advisor-local cluster lock: it would not coordinate with
+Fleet worktrees.
 
 ## Review feedback
 

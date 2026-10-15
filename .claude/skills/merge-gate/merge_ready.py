@@ -416,7 +416,7 @@ def scope_findings(diff: str) -> list[Finding]:
         )
         is_rbac_key = (
             bool(YAML.search(path))
-            and bool(rbac_match)
+            and rbac_match is not None
             and (
                 rbac_match.group(1) != "resources"
                 or bool(RBAC_FILE.search(path))
@@ -694,6 +694,275 @@ def has_verification(body: str) -> bool:
     )
 
 
+DEPENDABOT_AUTHORS = {"app/dependabot", "dependabot[bot]"}
+DEPENDABOT_SIGNATURE_SIGNERS = {"web-flow"}
+LOCKFILE = re.compile(r"(?:^|/)(?:package-lock\.json|uv\.lock|go\.sum)$")
+# A version-only diff must retain the dependency identity on each changed line.
+VERSION_LINES = (
+    re.compile(
+        r"^FROM\s+(?:--platform=\S+\s+)?(?P<key>[^\s:@]+)(?::\S+?)?"
+        r"(?:@sha256:[0-9a-f]{64})?(?:\s+AS\s+\S+)?$",
+        re.I,
+    ),
+    re.compile(r"^(?:-\s*)?uses:\s*(?P<key>[^\s@]+)@[0-9a-f]{40}(?:\s+#\s*\S+)?$"),
+    re.compile(r"^(?P<key>[A-Za-z0-9_.-]+(?:\[[A-Za-z0-9_,.-]*\])?)==\d[^\s;#]*$"),
+    re.compile(r'^"(?P<key>[@A-Za-z0-9_./-]+)":\s*"[\^~]?\d[\w.+-]*",?$'),
+    re.compile(r'^(?P<key>version)\s*=\s*"[^"]+"$'),
+)
+
+
+def _version_key(text: str) -> str | None:
+    if parsed := _from_reference(text):
+        return parsed[0]
+    for pattern in VERSION_LINES:
+        if match := pattern.match(text.strip()):
+            return match.group("key")
+    return None
+
+
+def _from_reference(text: str) -> tuple[str, str | None] | None:
+    """Return a Docker base-image identity and tag without confusing registry ports."""
+    match = re.fullmatch(
+        r"FROM\s+(?:--platform=\S+\s+)?(?P<reference>\S+)(?:\s+AS\s+\S+)?",
+        text.strip(),
+        re.I,
+    )
+    if not match:
+        return None
+    reference = match.group("reference").split("@", 1)[0]
+    slash = reference.rfind("/")
+    colon = reference.rfind(":")
+    if colon > slash:
+        return reference[:colon], reference[colon + 1 :]
+    return reference, None
+
+
+def _version_major(text: str) -> int | None:
+    """Extract a visible major version from one supported dependency line."""
+    if parsed := _from_reference(text):
+        value = parsed[1]
+    else:
+        stripped = text.strip()
+        patterns = (
+            r"^.*\buses:\s*\S+@[0-9a-fA-F]{40}\s+#\s*([vV]?\d+[^\s#]*)",
+            r"^[A-Za-z0-9_.-]+(?:\[[A-Za-z0-9_,.-]*\])?==([vV]?\d+[^\s;#]*)",
+            r'^"[@A-Za-z0-9_./-]+":\s*"[\^~]?([vV]?\d+[\w.+!-]*)"',
+            r'^version\s*=\s*"([vV]?\d+[^"\s]*)"',
+        )
+        value = next(
+            (match.group(1) for pattern in patterns if (match := re.match(pattern, stripped))),
+            None,
+        )
+    if value is None:
+        return None
+    normalized = value.removeprefix("v").removeprefix("V")
+    if "!" in normalized:
+        epoch, normalized = normalized.split("!", 1)
+        if not epoch.isdigit():
+            return None
+    match = re.match(r"(\d+)(?:\D|$)", normalized)
+    return int(match.group(1)) if match else None
+
+
+def _dependency_identity(value: str) -> str:
+    """Normalize a manifest key for comparison with signed Dependabot metadata."""
+    return value.strip().strip("'\"`").split("[", 1)[0].casefold()
+
+
+def _remote_action_pin(text: str) -> tuple[str, str, str] | None:
+    """Parse one immutable remote-action reference and its YAML position."""
+    match = re.fullmatch(
+        r"(?P<prefix>\s*(?:-\s*)?)uses:\s+(?P<target>\S+)(?:\s+#.*)?", text.rstrip()
+    )
+    if not match:
+        return None
+    target = match.group("target").strip("'\"")
+    if target.startswith(("./", "/", "$/", "docker://")):
+        return None
+    action, separator, revision = target.rpartition("@")
+    if not separator or not action or not re.fullmatch(r"[0-9a-fA-F]{40}", revision):
+        return None
+    return action, revision.casefold(), match.group("prefix")
+
+
+def _pin_only_workflows(diff: str) -> set[str]:
+    """Find workflows whose changed blocks only replace same-action SHA pins.
+
+    Each contiguous block must remove and add the same action identities in the
+    same order. Context splits blocks, so moving an action to another step or
+    job fails closed even when the old and new action names happen to match.
+    """
+    paths: set[str] = set()
+    path = ""
+    blocks: list[list[tuple[str, str]]] = []
+    block: list[tuple[str, str]] = []
+
+    def finish_block() -> None:
+        nonlocal block
+        if block:
+            blocks.append(block)
+            block = []
+
+    def finish_file() -> None:
+        finish_block()
+        if not path or not WORKFLOW.search(path):
+            return
+        for changed in blocks:
+            removed: list[tuple[str, str]] = []
+            added: list[tuple[str, str]] = []
+            for prefix, text in changed:
+                parsed = _remote_action_pin(text)
+                if parsed is None:
+                    return
+                identity = (parsed[0], parsed[2])
+                (added if prefix == "+" else removed).append(identity)
+            if not removed or not added or removed != added:
+                return
+        if blocks:
+            paths.add(path)
+
+    for line in diff.splitlines():
+        header = re.match(r"^diff --git a/(.*) b/(.*)$", line)
+        if header:
+            finish_file()
+            path = header.group(2)
+            blocks = []
+            continue
+        if line.startswith(("+++", "---")):
+            continue
+        if line.startswith(("+", "-")):
+            block.append((line[0], line[1:]))
+        else:
+            finish_block()
+    finish_file()
+    return paths
+
+
+def dependabot_bump_failures(
+    author: str, branch: str, commits: list[dict[str, Any]], diff: str
+) -> list[str]:
+    """Explain why a PR is not a verified, non-major version-only bump."""
+    failures: list[str] = []
+    signed_dependencies: set[str] = set()
+    if author not in DEPENDABOT_AUTHORS:
+        failures.append(f"author {author} is not Dependabot")
+    if not branch.startswith("dependabot/"):
+        failures.append(f"branch {branch} is not a Dependabot branch")
+    if not commits:
+        failures.append("no commits")
+    for commit in commits:
+        if (
+            commit.get("author") != "dependabot[bot]"
+            or not commit.get("verified")
+            or commit.get("signature_state") != "VALID"
+            or commit.get("signer") not in DEPENDABOT_SIGNATURE_SIGNERS
+            or commit.get("was_signed_by_github") is not True
+            or commit.get("committer_name") != "GitHub"
+            or commit.get("committer_email") != "noreply@github.com"
+        ):
+            failures.append("a commit is not GitHub-signed for Dependabot")
+        metadata = commit.get("message") or ""
+        update_types = re.findall(r"(?m)^\s*update-type:\s*(\S+)\s*$", metadata)
+        dependency_names = re.findall(r"(?m)^\s*(?:-\s*)?dependency-name:\s*(\S+)\s*$", metadata)
+        if not update_types:
+            failures.append("a commit has no Dependabot update type")
+        if not dependency_names:
+            failures.append("a commit has no Dependabot dependency name")
+        if len(dependency_names) != len(update_types):
+            failures.append("a commit has mismatched Dependabot metadata")
+        signed_dependencies.update(_dependency_identity(name) for name in dependency_names)
+        if any(update_type == "version-update:semver-major" for update_type in update_types):
+            failures.append("a major version update")
+        if any(
+            update_type
+            not in {
+                "version-update:semver-major",
+                "version-update:semver-minor",
+                "version-update:semver-patch",
+            }
+            for update_type in update_types
+        ):
+            failures.append("a commit has an unsupported Dependabot update type")
+
+    path = ""
+    workflow_paths: set[str] = set()
+    removed: dict[str, list[str]] = {}
+    added: dict[str, list[str]] = {}
+    recognized_changes = 0
+    for line in diff.splitlines():
+        if header := re.match(r"^diff --git a/(.*) b/(.*)$", line):
+            path = header.group(2)
+            if header.group(1) != path:
+                failures.append(f"renames a file: {path}")
+            if WORKFLOW.search(path):
+                workflow_paths.add(path)
+            continue
+        if re.match(r"^(?:new|deleted) file mode ", line):
+            failures.append(f"adds or deletes a file: {path}")
+        if line.startswith(("old mode ", "new mode ")):
+            failures.append(f"changes file mode: {path}")
+        if line.startswith("GIT binary patch") or re.match(r"^Binary files .* differ$", line):
+            failures.append(f"changes binary content: {path}")
+        if line.startswith(("+++", "---")) or not line.startswith(("+", "-")):
+            continue
+        if LOCKFILE.search(path):
+            recognized_changes += 1
+            continue
+        (added if line.startswith("+") else removed).setdefault(path, []).append(line[1:])
+
+    pin_only_workflows = _pin_only_workflows(diff)
+    for changed in sorted(workflow_paths - pin_only_workflows):
+        failures.append(f"changes more than same-step action pins in {changed}")
+    for changed in sorted(set(removed) | set(added)):
+        before, after = removed.get(changed, []), added.get(changed, [])
+        if len(before) != len(after):
+            failures.append(f"changes more than versions in {changed}")
+            continue
+        for old, new in zip(before, after, strict=True):
+            key = _version_key(old)
+            if key is None or key != _version_key(new):
+                failures.append(f"changes more than a version in {changed}: {new.strip()[:80]}")
+                continue
+            recognized_changes += 1
+            if _dependency_identity(key) not in signed_dependencies:
+                failures.append(f"changes a dependency absent from signed metadata: {key}")
+            old_major, new_major = _version_major(old), _version_major(new)
+            if old_major is not None and new_major is not None and old_major != new_major:
+                failures.append(f"changes major version in {changed}: {old_major} to {new_major}")
+            elif old_major is None or new_major is None:
+                failures.append(f"cannot compare major versions in {changed}")
+    if not recognized_changes:
+        failures.append("contains no recognized dependency version change")
+    return list(dict.fromkeys(failures))
+
+
+def dependabot_scope(findings: list[Finding], diff: str) -> list[Finding]:
+    """Remove only authority created by proven action-pin replacements."""
+    pin_only_workflows = _pin_only_workflows(diff)
+    scoped: list[Finding] = []
+    for category, description in findings:
+        if category == "merge-authority" and any(
+            description == f"merge authority changed: {path}" for path in pin_only_workflows
+        ):
+            continue
+        if category == "permanent-infrastructure" and LOCKFILE.search(description):
+            scoped.append(_finding("dependency-manifest", description))
+        else:
+            scoped.append((category, description))
+    return scoped
+
+
+def _evidence_requirement_failure(author: str, bump_failures: list[str], body: str) -> str | None:
+    """Return the PR-evidence failure without trusting editable bot metadata."""
+    if author in DEPENDABOT_AUTHORS:
+        if bump_failures:
+            return f"Dependabot PR is outside the version-only boundary: {'; '.join(bump_failures)}"
+        return None
+    if not has_verification(body):
+        return "no '## Verification' section with commands and results"
+    return None
+
+
 def gh(*args: str) -> str:
     result = subprocess.run(["gh", *args], check=True, capture_output=True, text=True)  # noqa: S603, S607
     return result.stdout
@@ -746,6 +1015,47 @@ def review_threads(owner: str, name: str, number: str) -> list[dict[str, Any]]:
     )
 
 
+def pull_request_commits(owner: str, name: str, number: str) -> list[dict[str, Any]]:
+    """Read commit authors and signature signers from GitHub's typed commit data."""
+    query = """
+    query($owner: String!, $name: String!, $number: Int!, $endCursor: String) {
+      repository(owner: $owner, name: $name) {
+        pullRequest(number: $number) {
+          commits(first: 100, after: $endCursor) {
+            pageInfo { hasNextPage endCursor }
+            nodes {
+              commit {
+                author { user { login } }
+                committer { name email }
+                message
+                signature { isValid state signer { login } wasSignedByGitHub }
+              }
+            }
+          }
+        }
+      }
+    }"""
+    return gh_json_lines(
+        "api",
+        "graphql",
+        "--paginate",
+        "-F",
+        f"owner={owner}",
+        "-F",
+        f"name={name}",
+        "-F",
+        f"number={number}",
+        "-f",
+        f"query={query}",
+        "--jq",
+        ".data.repository.pullRequest.commits.nodes[].commit"
+        "|{author:.author.user.login,verified:.signature.isValid,"
+        "signature_state:.signature.state,signer:.signature.signer.login,"
+        "was_signed_by_github:.signature.wasSignedByGitHub,"
+        "committer_name:.committer.name,committer_email:.committer.email,message}",
+    )
+
+
 def main(argv: list[str]) -> int:
     if argv == ["--self-test"]:
         return self_test()
@@ -767,7 +1077,7 @@ def main(argv: list[str]) -> int:
             "-R",
             repo,
             "--json",
-            "state,isDraft,mergeStateStatus,body,headRefOid,author,labels",
+            "state,isDraft,mergeStateStatus,body,headRefOid,headRefName,author,labels",
         )
     )
     blocked: list[str] = []
@@ -842,11 +1152,20 @@ def main(argv: list[str]) -> int:
         blocked.append(f"{unresolved} review thread(s) unresolved")
     if silent:
         blocked.append(f"{silent} thread(s) resolved without a reply from {author}")
-    if not has_verification(pr["body"] or ""):
-        blocked.append("no '## Verification' section with commands and results")
 
     diff = gh("pr", "diff", number, "-R", repo)
     findings = scope_findings(diff)
+    bump_failures = ["not Dependabot"]
+    if author in DEPENDABOT_AUTHORS:
+        commits = pull_request_commits(owner, name, number)
+        bump_failures = dependabot_bump_failures(author, pr["headRefName"], commits, diff)
+        for reason in bump_failures:
+            print(f"NOTE  not a Dependabot version-only bump: {reason}")
+    if not bump_failures:
+        print("NOTE  Dependabot version-only bump: exact-head checks are its verification")
+        findings = dependabot_scope(findings, diff)
+    if evidence_failure := _evidence_requirement_failure(author, bump_failures, pr["body"] or ""):
+        blocked.append(evidence_failure)
     print(f"{repo}#{number} at {sha[:12]}: {len(runs)} check runs, {len(threads)} threads")
     for category, description in findings:
         print(f"DECISION {category}: {description}")
@@ -1343,6 +1662,213 @@ def self_test() -> int:
     assert has_verification("## Verification\n- `./fleet test` -> passed all six stages\n")
     assert not has_verification("## Verification\n\n- `command` → result\n")
     assert not has_verification("Verified locally: `make check` → 594 passed.")
+
+    bot_commit: dict[str, Any] = {
+        "author": "dependabot[bot]",
+        "verified": True,
+        "signature_state": "VALID",
+        "signer": "web-flow",
+        "was_signed_by_github": True,
+        "committer_name": "GitHub",
+        "committer_email": "noreply@github.com",
+        "message": (
+            "Bumps setup-uv\n---\nupdated-dependencies:\n"
+            "- dependency-name: astral-sh/setup-uv\n"
+            "  update-type: version-update:semver-minor\n"
+        ),
+    }
+    old_pin = "a" * 40
+    new_pin = "b" * 40
+    action_bump = "\n".join(
+        _file(
+            ".github/workflows/quality.yml",
+            f"-        uses: astral-sh/setup-uv@{old_pin} # v10.0.1",
+            f"+        uses: astral-sh/setup-uv@{new_pin} # v10.3.0",
+        )
+    )
+    branch = "dependabot/github_actions/actions-a055b02c66"
+    assert dependabot_bump_failures("app/dependabot", branch, [bot_commit], action_bump) == []
+    scoped_bump = dependabot_scope(scope_findings(action_bump), action_bump)
+    assert not any(category == "merge-authority" for category, _ in scoped_bump), scoped_bump
+    assert decide(scoped_bump, rules, set(), None)[0] == "READY"
+
+    lock_bump = "\n".join(
+        _file(
+            "uv.lock",
+            '-version = "2.3.1"',
+            '+version = "2.4.0"',
+            '-sdist = { hash = "sha256:old" }',
+            '+sdist = { hash = "sha256:new" }',
+        )
+    )
+    assert (
+        dependabot_bump_failures("dependabot[bot]", "dependabot/uv/python", [bot_commit], lock_bump)
+        == []
+    )
+
+    moved_action = "\n".join(
+        _file(
+            ".github/workflows/quality.yml",
+            f"-        uses: astral-sh/setup-uv@{old_pin} # v10.0.1",
+            "         - name: Run checks",
+            f"+        uses: astral-sh/setup-uv@{new_pin} # v10.3.0",
+        )
+    )
+    reindented_action = "\n".join(
+        _file(
+            ".github/workflows/quality.yml",
+            f"-        uses: astral-sh/setup-uv@{old_pin} # v10.0.1",
+            f"+      uses: astral-sh/setup-uv@{new_pin} # v10.3.0",
+        )
+    )
+    thing_commit = {
+        **bot_commit,
+        "message": bot_commit["message"].replace("astral-sh/setup-uv", "thing"),
+    }
+    unsafe_bumps = {
+        "human author": ("ImranAdan", branch, [bot_commit], action_bump),
+        "human branch": ("app/dependabot", "feature/x", [bot_commit], action_bump),
+        "no commits": ("app/dependabot", branch, [], action_bump),
+        "unsigned": (
+            "app/dependabot",
+            branch,
+            [{**bot_commit, "verified": False}],
+            action_bump,
+        ),
+        "major": (
+            "app/dependabot",
+            branch,
+            [{**bot_commit, "message": bot_commit["message"].replace("minor", "major")}],
+            action_bump,
+        ),
+        "major diff with mislabeled metadata": (
+            "app/dependabot",
+            branch,
+            [thing_commit],
+            "\n".join(_file("requirements.txt", "-thing==1.9.0", "+thing==2.0.0")),
+        ),
+        "epoch major diff with mislabeled metadata": (
+            "app/dependabot",
+            branch,
+            [thing_commit],
+            "\n".join(_file("requirements.txt", "-thing==1!1.9.0", "+thing==1!2.0.0")),
+        ),
+        "dependency absent from signed metadata": (
+            "app/dependabot",
+            branch,
+            [bot_commit],
+            "\n".join(_file("requirements.txt", "-thing==1.9.0", "+thing==1.10.0")),
+        ),
+        "action pin without comparable versions": (
+            "app/dependabot",
+            branch,
+            [bot_commit],
+            "\n".join(
+                _file(
+                    ".github/workflows/quality.yml",
+                    f"-        uses: astral-sh/setup-uv@{old_pin}",
+                    f"+        uses: astral-sh/setup-uv@{new_pin}",
+                )
+            ),
+        ),
+        "untrusted signer": (
+            "app/dependabot",
+            branch,
+            [{**bot_commit, "signer": "another-user"}],
+            action_bump,
+        ),
+        "signature not made by GitHub": (
+            "app/dependabot",
+            branch,
+            [{**bot_commit, "was_signed_by_github": False}],
+            action_bump,
+        ),
+        "custom committer": (
+            "app/dependabot",
+            branch,
+            [
+                {
+                    **bot_commit,
+                    "committer_name": "Contributor",
+                    "committer_email": "contributor@example.com",
+                }
+            ],
+            action_bump,
+        ),
+        "other action": (
+            "app/dependabot",
+            branch,
+            [bot_commit],
+            "\n".join(
+                _file(
+                    ".github/workflows/quality.yml",
+                    f"-        uses: astral-sh/setup-uv@{old_pin}",
+                    f"+        uses: evil/setup-uv@{new_pin}",
+                )
+            ),
+        ),
+        "moved action": ("app/dependabot", branch, [bot_commit], moved_action),
+        "reindented action": ("app/dependabot", branch, [bot_commit], reindented_action),
+        "new file": (
+            "app/dependabot",
+            branch,
+            [bot_commit],
+            "\n".join(
+                [
+                    "diff --git a/x.sh b/x.sh",
+                    "new file mode 100755",
+                    "--- /dev/null",
+                    "+++ b/x.sh",
+                    "@@ -0,0 +1 @@",
+                    "+curl evil",
+                ]
+            ),
+        ),
+        "mode only": (
+            "app/dependabot",
+            branch,
+            [bot_commit],
+            "\n".join(
+                [
+                    "diff --git a/requirements.txt b/requirements.txt",
+                    "old mode 100644",
+                    "new mode 100755",
+                ]
+            ),
+        ),
+        "binary": (
+            "app/dependabot",
+            branch,
+            [bot_commit],
+            "\n".join(
+                [
+                    "diff --git a/data.bin b/data.bin",
+                    "index 1111111..2222222 100644",
+                    "Binary files a/data.bin and b/data.bin differ",
+                ]
+            ),
+        ),
+    }
+    for case, args in unsafe_bumps.items():
+        assert dependabot_bump_failures(*args), case
+    major_diff_cases = (
+        "major diff with mislabeled metadata",
+        "epoch major diff with mislabeled metadata",
+    )
+    for case in major_diff_cases:
+        assert any(
+            "changes major version" in failure
+            for failure in dependabot_bump_failures(*unsafe_bumps[case])
+        ), case
+    major_failures = dependabot_bump_failures(*unsafe_bumps["major"])
+    assert (
+        _evidence_requirement_failure(
+            "app/dependabot",
+            major_failures,
+            "<!-- autonomous-merge -->\n## Verification\n- `make check` → passed",
+        )
+        == "Dependabot PR is outside the version-only boundary: a major version update"
+    )
 
     calls: list[tuple[str, ...]] = []
     original_gh = globals()["gh"]

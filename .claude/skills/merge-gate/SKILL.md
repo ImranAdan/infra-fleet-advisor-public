@@ -22,7 +22,12 @@ python3 .claude/skills/merge-gate/merge_ready.py <PR_NUMBER> --merge
 Same-repository PRs containing `<!-- autonomous-merge -->` may leave this step
 to `.github/workflows/autonomous-merge.yml`. The trusted default-branch worker
 runs the same command; it cannot convert `PARK`, `JUDGE` or `BLOCKED` into a
-merge. Remove the marker to hold the PR open.
+merge. Verified Dependabot branches are also candidates without the marker;
+the gate must still prove their bot author, GitHub's canonical committer and a
+valid GitHub-created `web-flow` signature, signed patch-or-minor metadata, and
+version-only shape. It rejects visible
+major jumps and unsupported diff records. Remove
+the marker to hold an agent-authored PR open.
 
 | Verdict | Exit | Meaning | What to do |
 |---|---|---|---|
@@ -55,13 +60,23 @@ merge. Remove the marker to hold the PR open.
   what changed or why a finding was declined surfaces.
 - **Evidence:** the body has a `## Verification` section with at least one
   line of the form `` `command` → result``: what was run and what it showed (see the pull request template and
-  the Verification section of `AGENTS.md`).
+  the Verification section of `AGENTS.md`). A qualifying Dependabot bump uses
+  its exact-head checks as verification because no agent authored its body.
+- **Dependabot:** only a same-repository `dependabot/**` PR whose commits are
+  all authored by `dependabot[bot]`, created by GitHub's canonical committer
+  and validly signed through GitHub's `web-flow` identity can enter the narrow
+  path. Major updates, new or deleted files, renames, dependency swaps,
+  arbitrary lines and action moves across steps fail that classification. A
+  marker or Verification section cannot turn a rejected bot PR into an
+  ordinary candidate; recreate an intentionally reviewed update on an agent
+  branch.
 - **Scope:** changes the policy assigns to evidence or the owner, found in the diff: a workflow
   permission or `write` scope, a new `secrets.` reference, a remote action, a
   base image, a chart or dependency version, a dependency manifest, IAM,
   permanent infrastructure, migration, intent, policy, a decision record or
-  product requirements. Gate-producing files are merge authority and always
-  park for the owner.
+  product requirements. Gate-producing files are merge authority. A proven
+  same-step immutable action-pin replacement remains a dependency update; all
+  other edits to those files park for the owner.
 
 ## What it cannot check
 
