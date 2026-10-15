@@ -530,7 +530,8 @@ CONCERN_TEMPLATES: dict[str, ConcernTemplate] = {
         title="Message broker accepts ingress beyond declared peers",
         summary=(
             "A message broker HelmRelease's pods are not selected by an ingress NetworkPolicy "
-            "in its namespace, or a selecting policy has a rule with no peers or an ipBlock peer."
+            "in its namespace, or a selecting policy has a rule with no peers, an ipBlock "
+            "peer or no ports."
         ),
         impact=(
             "Any pod or address that can route to the broker can publish, consume or delete "
@@ -538,7 +539,8 @@ CONCERN_TEMPLATES: dict[str, ConcernTemplate] = {
         ),
         suggested_change=(
             "Select the broker pods by the chart's app.kubernetes.io/name label with an Ingress "
-            "NetworkPolicy whose every rule names peers by namespaceSelector or podSelector."
+            "NetworkPolicy whose every rule names peers by namespaceSelector or podSelector "
+            "and the ports they may reach."
         ),
         trade_offs="New broker clients need an explicit rule before they can connect.",
         confidence=0.8,

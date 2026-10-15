@@ -246,15 +246,18 @@ for the owner, never corrected by an agent.
 
 ### Intent
 
-The platform message broker accepts connections only from declared peers: the
-application namespace on the client port and observability on the metrics
-port. It runs without client authentication, so the network is its boundary.
+The platform message broker accepts connections only from named peers on named
+ports: every ingress rule selecting its pods names namespaces or pods and the
+ports they may reach. It runs without client authentication, so the network is
+its boundary. The fleet admits the application namespace on the client port and
+observability on the metrics port; adding a peer or port is a reviewed change.
 
 Evidence: [broker NetworkPolicy](https://github.com/ImranAdan/infra-fleet-public/blob/47f88321414e2fef2616e886da7bb7bee2634ec3/k8s/infrastructure/messaging/networkpolicy.yaml)
 
 Caveat: the broker chart is not rendered, so its pods are assumed to carry
 Helm's standard `app.kubernetes.io/name` and `app.kubernetes.io/instance`
 labels; a policy can be shown open, never proven to select the real pods.
+Which namespaces and ports are named is review's call, not the check's.
 
 ### Evaluation
 

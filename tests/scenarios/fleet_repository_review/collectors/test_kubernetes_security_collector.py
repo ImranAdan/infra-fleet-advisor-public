@@ -98,17 +98,21 @@ spec:
   policyTypes: [Ingress]
   ingress:
     - from: [%s]
+      %s
 """
+PORTS = "ports: [{protocol: TCP, port: 4222}]"
 
 
 def test_broker_ingress_is_restricted_by_policies_selecting_chart_labels(tmp_path) -> None:
     name = "app.kubernetes.io/name: nats"
     cases = [
-        (("messaging", name, SCOPED), True),
-        (("messaging", "app.kubernetes.io/instance: nats", SCOPED), True),
-        (("messaging", name, "{ipBlock: {cidr: 0.0.0.0/0}}"), False),
-        (("messaging", "app.kubernetes.io/name: nats-box", SCOPED), False),
-        (("applications", name, SCOPED), False),
+        (("messaging", name, SCOPED, PORTS), True),
+        (("messaging", "app.kubernetes.io/instance: nats", SCOPED, PORTS), True),
+        # Omitted ports admit every port.
+        (("messaging", name, SCOPED, ""), False),
+        (("messaging", name, "{ipBlock: {cidr: 0.0.0.0/0}}", PORTS), False),
+        (("messaging", "app.kubernetes.io/name: nats-box", SCOPED, PORTS), False),
+        (("applications", name, SCOPED, PORTS), False),
     ]
     for policy, restricted in cases:
         [fact] = _facts(
@@ -120,6 +124,45 @@ def test_broker_ingress_is_restricted_by_policies_selecting_chart_labels(tmp_pat
             EVIDENCE_KIND_BROKER_INGRESS,
         )
         assert fact["ingress_restricted"] is restricted, policy
+
+
+CHART_REF = """apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata: {name: nats, namespace: messaging}
+spec:
+  chartRef: {kind: %s, name: nats-chart}
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: %s
+metadata: {name: nats-chart, namespace: messaging}
+spec: %s
+"""
+
+
+def test_broker_charts_resolve_through_chart_ref(tmp_path) -> None:
+    sources = {
+        "HelmChart": "{chart: nats}",
+        "OCIRepository": "{url: 'oci://registry.example/charts/nats'}",
+    }
+    for kind, source in sources.items():
+        [fact] = _facts(
+            tmp_path,
+            {"k8s/infrastructure/nats.yaml": CHART_REF % (kind, kind, source)},
+            EVIDENCE_KIND_BROKER_INGRESS,
+        )
+        assert fact["chart"] == "nats", kind
+        assert fact["selected_by_ingress_policy"] is False
+
+
+def test_an_unresolved_chart_ref_is_reported_not_skipped(tmp_path) -> None:
+    path = tmp_path / "k8s/infrastructure/nats.yaml"
+    path.parent.mkdir(parents=True)
+    path.write_text(CHART_REF % ("HelmChart", "OCIRepository", "{}"), encoding="utf-8")
+
+    result = collector.collect(tmp_path, LIMITS)
+
+    assert result.coverage.status == "partial"
+    assert "1 manifest or resource(s) could not be evaluated" in str(result.coverage.error_summary)
 
 
 def test_only_broker_charts_yield_broker_evidence(tmp_path) -> None:

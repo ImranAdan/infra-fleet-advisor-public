@@ -51,6 +51,7 @@ _PROTECTIVE = frozenset(
     {
         "selected_by_ingress_policy",
         "ingress_restricted",
+        "rules_name_ports",
         "token_grants_nothing",
         "application_namespace",
         "acceptance_bounded",
@@ -179,31 +180,60 @@ def _ingress_selection(
     return selecting, open_rules
 
 
-def _chart(release: _Resource) -> Any:
-    return (((release.body.get("spec") or {}).get("chart") or {}).get("spec") or {}).get("chart")
+def _chart(release: _Resource, resources: list[_Resource]) -> Any:
+    """The chart a HelmRelease installs, inline or through spec.chartRef."""
+    spec = release.body.get("spec") or {}
+    if "chartRef" not in spec:
+        return ((spec.get("chart") or {}).get("spec") or {}).get("chart")
+    ref = spec["chartRef"]
+    namespace = ref.get("namespace") or release.namespace
+    for source in resources:
+        if (source.kind, source.namespace, source.name) == (
+            ref.get("kind"),
+            namespace,
+            ref.get("name"),
+        ):
+            source_spec = source.body.get("spec") or {}
+            if source.kind == "HelmChart":
+                return source_spec.get("chart")
+            # An OCI chart's name is the last path segment of its URL.
+            return str(source_spec.get("url") or "").rstrip("/").rsplit("/", 1)[-1] or None
+    # A chart that cannot be identified may be a broker this collector misses.
+    raise ValueError("HelmRelease chartRef does not resolve in Git")
 
 
-def _broker_evidence(release: _Resource, policies: list[_Resource]) -> Evidence:
+def _broker_evidence(release: _Resource, chart: str, policies: list[_Resource]) -> Evidence:
     """Ingress for a message broker installed by HelmRelease. The chart is not
     rendered, so its pods are assumed to carry Helm's standard selector labels."""
     spec = release.body.get("spec") or {}
-    chart = _chart(release)
     target = spec.get("targetNamespace")
     namespace = str(target or release.namespace)
     # Flux names the Helm release <targetNamespace>-<name> when a target is set.
     instance = spec.get("releaseName") or (f"{target}-{release.name}" if target else release.name)
     labels = {"app.kubernetes.io/name": chart, "app.kubernetes.io/instance": instance}
     selecting, open_rules = _ingress_selection(namespace, labels, policies)
-    restricted = bool(selecting) and not open_rules
+    # A rule without ports admits every port, including the broker's monitoring
+    # endpoint, so each rule must also name the ports its peers may reach.
+    portless = [
+        policy.name
+        for policy in selecting
+        if any(
+            not (isinstance(rule, Mapping) and rule.get("ports"))
+            for rule in policy.body["spec"].get("ingress") or []
+        )
+    ]
+    restricted = bool(selecting) and not open_rules and not portless
     return _evidence(
         EVIDENCE_KIND_BROKER_INGRESS,
         release,
         "/ingress",
         f"{chart} broker in {namespace}: {len(selecting)} ingress policy(ies) select its pods"
-        + (f"; open rules in {', '.join(open_rules[:5])}" if open_rules else ""),
+        + (f"; open rules in {', '.join(open_rules[:5])}" if open_rules else "")
+        + (f"; rules without ports in {', '.join(portless[:5])}" if portless else ""),
         {
             "chart": chart,
             "selected_by_ingress_policy": bool(selecting),
+            "rules_name_ports": not portless,
             "ingress_restricted": restricted,
         },
     )
@@ -425,8 +455,10 @@ def _evaluate(resources: list[_Resource]) -> tuple[list[Evidence], int]:
                 evidence.append(_https_evidence(resource))
             elif resource.kind == "Gateway":
                 evidence.append(_gateway_https_evidence(resource, resources))
-            elif resource.kind == "HelmRelease" and _chart(resource) in _BROKER_CHARTS:
-                evidence.append(_broker_evidence(resource, policies))
+            elif resource.kind == "HelmRelease":
+                chart = _chart(resource, resources)
+                if chart in _BROKER_CHARTS:
+                    evidence.append(_broker_evidence(resource, chart, policies))
         except (ValueError, AttributeError, TypeError):
             failures += 1
 
