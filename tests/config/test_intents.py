@@ -188,7 +188,7 @@ def test_rejects_symlinked_intent_documents(tmp_path: Path) -> None:
 def test_production_markdown_is_the_authoritative_catalog() -> None:
     catalog = load_intent_catalog(PRODUCTION_INTENTS, TAXONOMY)
 
-    assert len(catalog.propositions) == 27
+    assert len(catalog.propositions) == 28
     assert {item.check_key for item in catalog.propositions if item.check_key is not None} == {
         "application_containers_hardened",
         "application_ingress_restricted",
@@ -207,6 +207,7 @@ def test_production_markdown_is_the_authoritative_catalog() -> None:
         "fleet_local_first_use",
         "fleet_profiles_expose_lifecycle",
         "github_actions_uses_oidc",
+        "message_broker_ingress_restricted",
         "mounted_token_unprivileged",
         "permissive_egress_bounded",
         "persistent_iam_avoids_wildcards",

@@ -111,7 +111,7 @@ def test_authoritative_markdown_drives_the_production_review(git_checkout) -> No
     )
 
     evaluations = {item.proposition_id: item for item in report.intent_evaluations}
-    assert len(evaluations) == 27
+    assert len(evaluations) == 28
     # No settings snapshot was given, so S-012 is unknown, never satisfied.
     assert evaluations["S-012"].status == "declared_unverified"
     assert evaluations["S-012"].reason == "collector_not_run"
@@ -128,6 +128,8 @@ def test_authoritative_markdown_drives_the_production_review(git_checkout) -> No
     assert evaluations["C-005"].reason == "no_relevant_evidence"
     assert evaluations["C-002"].reason == "no_relevant_evidence"
     assert evaluations["S-011"].reason == "no_relevant_evidence"
+    # The fixture runs no message broker.
+    assert evaluations["S-015"].reason == "no_relevant_evidence"
     assert evaluations["M-001"].status == "declared_unverified"
     assert evaluations["M-001"].reason == "no_relevant_evidence"
     assert evaluations["M-002"].status == "declared_unverified"

@@ -6,7 +6,7 @@ across profiles: a protective fact must hold in every profile and a risky one
 counts if any profile has it, so evidence identities stay stable. Without
 profiles, raw manifests are evaluated as one set. HelmRelease chart output is
 not rendered. Application workloads are Deployments sourced from
-`k8s/applications/`.
+`k8s/applications/`; a message broker is a HelmRelease of a known broker chart.
 """
 
 from collections.abc import Mapping
@@ -20,6 +20,7 @@ from infra_fleet_advisor.core.evidence import Evidence, build_evidence
 from infra_fleet_advisor.core.limits import ExecutionLimits
 from infra_fleet_advisor.core.report import CollectorCoverage
 from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
+    EVIDENCE_KIND_BROKER_INGRESS,
     EVIDENCE_KIND_EGRESS_ACCEPTANCE,
     EVIDENCE_KIND_INGRESS_HTTPS,
     EVIDENCE_KIND_INGRESS_RESTRICTION,
@@ -40,6 +41,8 @@ _APPLICATIONS = "k8s/applications/"
 _GENERATED = "k8s/flux-system/"
 _ISSUER_ANNOTATIONS = ("cert-manager.io/cluster-issuer", "cert-manager.io/issuer")
 _BROAD_GROUPS = {"system:authenticated", "system:serviceaccounts"}
+# ponytail: one known broker chart; add a chart here when the fleet runs another.
+_BROKER_CHARTS = frozenset({"nats"})
 _MAX_RESOURCES = 2000
 _MAX_PROFILES = 8
 # Facts that protect: they must hold in every profile. Other booleans are risks
@@ -153,22 +156,14 @@ def _evidence(
     )
 
 
-def _workload_evidence(
-    deployment: _Resource,
-    policies: list[_Resource],
-    bindings: list[_Resource],
-    accounts: dict[tuple[str, str], Mapping[str, Any]],
-) -> list[Evidence]:
-    template = (deployment.body.get("spec") or {}).get("template") or {}
-    labels = (template.get("metadata") or {}).get("labels") or {}
-    pod = template.get("spec") or {}
-    if not isinstance(labels, Mapping) or not isinstance(pod, Mapping):
-        raise ValueError("deployment template is malformed")
-
+def _ingress_selection(
+    namespace: str, labels: Mapping[str, Any], policies: list[_Resource]
+) -> tuple[list[_Resource], list[str]]:
+    """Ingress policies selecting pods with these labels, and those with open rules."""
     selecting = []
     for policy in policies:
         spec = policy.body.get("spec") or {}
-        if policy.namespace != deployment.namespace or not _governs(spec, "Ingress"):
+        if policy.namespace != namespace or not _governs(spec, "Ingress"):
             continue
         selected = _selects(spec.get("podSelector"), labels)
         if selected is None:
@@ -181,6 +176,52 @@ def _workload_evidence(
         for policy in selecting
         if any(_rule_is_open(rule, "from") for rule in (policy.body["spec"].get("ingress") or []))
     ]
+    return selecting, open_rules
+
+
+def _chart(release: _Resource) -> Any:
+    return (((release.body.get("spec") or {}).get("chart") or {}).get("spec") or {}).get("chart")
+
+
+def _broker_evidence(release: _Resource, policies: list[_Resource]) -> Evidence:
+    """Ingress for a message broker installed by HelmRelease. The chart is not
+    rendered, so its pods are assumed to carry Helm's standard selector labels."""
+    spec = release.body.get("spec") or {}
+    chart = _chart(release)
+    target = spec.get("targetNamespace")
+    namespace = str(target or release.namespace)
+    # Flux names the Helm release <targetNamespace>-<name> when a target is set.
+    instance = spec.get("releaseName") or (f"{target}-{release.name}" if target else release.name)
+    labels = {"app.kubernetes.io/name": chart, "app.kubernetes.io/instance": instance}
+    selecting, open_rules = _ingress_selection(namespace, labels, policies)
+    restricted = bool(selecting) and not open_rules
+    return _evidence(
+        EVIDENCE_KIND_BROKER_INGRESS,
+        release,
+        "/ingress",
+        f"{chart} broker in {namespace}: {len(selecting)} ingress policy(ies) select its pods"
+        + (f"; open rules in {', '.join(open_rules[:5])}" if open_rules else ""),
+        {
+            "chart": chart,
+            "selected_by_ingress_policy": bool(selecting),
+            "ingress_restricted": restricted,
+        },
+    )
+
+
+def _workload_evidence(
+    deployment: _Resource,
+    policies: list[_Resource],
+    bindings: list[_Resource],
+    accounts: dict[tuple[str, str], Mapping[str, Any]],
+) -> list[Evidence]:
+    template = (deployment.body.get("spec") or {}).get("template") or {}
+    labels = (template.get("metadata") or {}).get("labels") or {}
+    pod = template.get("spec") or {}
+    if not isinstance(labels, Mapping) or not isinstance(pod, Mapping):
+        raise ValueError("deployment template is malformed")
+
+    selecting, open_rules = _ingress_selection(deployment.namespace, labels, policies)
     restricted = bool(selecting) and not open_rules
 
     account = str(pod.get("serviceAccountName") or "default")
@@ -384,7 +425,9 @@ def _evaluate(resources: list[_Resource]) -> tuple[list[Evidence], int]:
                 evidence.append(_https_evidence(resource))
             elif resource.kind == "Gateway":
                 evidence.append(_gateway_https_evidence(resource, resources))
-        except (AttributeError, TypeError):
+            elif resource.kind == "HelmRelease" and _chart(resource) in _BROKER_CHARTS:
+                evidence.append(_broker_evidence(resource, policies))
+        except (ValueError, AttributeError, TypeError):
             failures += 1
 
     # Two declarations of one object in the same set carry conflicting facts;

@@ -32,6 +32,7 @@ CONCERN_AGENT_AUTONOMY_RULES_MISSING = "agent_autonomy_rules_missing"
 CONCERN_INGRESS_UNRESTRICTED = "application_ingress_unrestricted"
 CONCERN_EGRESS_ACCEPTANCE_EXCEEDED = "permissive_egress_beyond_applications"
 CONCERN_INGRESS_HTTP_ALLOWED = "public_ingress_allows_plain_http"
+CONCERN_BROKER_INGRESS_UNRESTRICTED = "message_broker_ingress_unrestricted"
 CONCERN_SERVICE_ACCOUNT_GRANTS_ACCESS = "mounted_token_grants_access"
 CONCERN_EKS_EXPOSURE_BEYOND_STAGING = "public_eks_endpoint_beyond_staging"
 CONCERN_CSRF_UNCOMPENSATED = "session_cookie_lacks_csrf_compensation"
@@ -522,6 +523,29 @@ CONCERN_TEMPLATES: dict[str, ConcernTemplate] = {
         trade_offs="Tight egress needs every dependency, including DNS, listed explicitly.",
         confidence=0.9,
         confidence_explanation="Read from the policy's egress rules and namespace.",
+    ),
+    CONCERN_BROKER_INGRESS_UNRESTRICTED: ConcernTemplate(
+        category="security",
+        priority="high",
+        title="Message broker accepts ingress beyond declared peers",
+        summary=(
+            "A message broker HelmRelease's pods are not selected by an ingress NetworkPolicy "
+            "in its namespace, or a selecting policy has a rule with no peers or an ipBlock peer."
+        ),
+        impact=(
+            "Any pod or address that can route to the broker can publish, consume or delete "
+            "streams, since the broker runs without client authentication."
+        ),
+        suggested_change=(
+            "Select the broker pods by the chart's app.kubernetes.io/name label with an Ingress "
+            "NetworkPolicy whose every rule names peers by namespaceSelector or podSelector."
+        ),
+        trade_offs="New broker clients need an explicit rule before they can connect.",
+        confidence=0.8,
+        confidence_explanation=(
+            "Chart output is not rendered, so the pods are assumed to carry Helm's standard "
+            "app.kubernetes.io/name and app.kubernetes.io/instance labels."
+        ),
     ),
     CONCERN_INGRESS_HTTP_ALLOWED: ConcernTemplate(
         category="security",
