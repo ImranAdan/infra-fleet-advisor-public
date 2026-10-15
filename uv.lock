@@ -300,8 +300,8 @@ name = "httpcore2"
 version = "2.12.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "h11" },
-    { name = "truststore" },
+    { name = "h11", marker = "python_full_version < '3.12' or python_full_version >= '3.15' or sys_platform != 'emscripten'" },
+    { name = "truststore", marker = "python_full_version < '3.12' or python_full_version >= '3.15' or sys_platform != 'emscripten'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/be/ad/f4f0e57345f1870f3e8cb624e058d7eca6e5a27d33bcc3311d9b618734cd/httpcore2-2.12.0.tar.gz", hash = "sha256:9293522bba0aa7c4c8e9e3f040c16575bd8868e155a77fa30c7a9085a5eae648", size = 67548, upload-time = "2026-08-18T13:22:08.211Z" }
 wheels = [
@@ -361,6 +361,9 @@ dev = [
     { name = "ruff" },
     { name = "types-pyyaml" },
 ]
+gate = [
+    { name = "mandate" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -377,6 +380,7 @@ dev = [
     { name = "ruff", specifier = ">=0.6" },
     { name = "types-pyyaml", specifier = ">=6.0" },
 ]
+gate = [{ name = "mandate", git = "https://github.com/ImranAdan/infra-fleet-public?subdirectory=mandate&rev=7cc049525c5687fd861adbba988011a861c84112" }]
 
 [[package]]
 name = "iniconfig"
@@ -588,6 +592,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/85/6d/7c31a506eb847bc58aeb2402d58e17605e821f68ab5df5e66fe274a6df41/librt-0.16.0-cp315-cp315t-win_amd64.whl", hash = "sha256:bd3150023d3dc2bc70f3784e59ffa1140d56ddba3d8125b3d6f9f85221279bfc", size = 126134, upload-time = "2026-09-29T00:55:06.017Z" },
     { url = "https://files.pythonhosted.org/packages/36/69/7a5d10ac409c4da0355e054a14371871da9b5557fcc42772cd00181c6cce/librt-0.16.0-cp315-cp315t-win_arm64.whl", hash = "sha256:8ceafb70f2a4f0826f11031942e59c0728fd98da112dc346d4352bde1e486866", size = 116391, upload-time = "2026-09-29T00:55:07.484Z" },
 ]
+
+[[package]]
+name = "mandate"
+version = "0.1.0"
+source = { git = "https://github.com/ImranAdan/infra-fleet-public?subdirectory=mandate&rev=7cc049525c5687fd861adbba988011a861c84112#7cc049525c5687fd861adbba988011a861c84112" }
 
 [[package]]
 name = "mypy"

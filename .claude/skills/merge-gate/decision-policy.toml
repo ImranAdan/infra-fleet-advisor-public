@@ -94,6 +94,25 @@ category = "merge-authority"
 decider = "owner"
 guidance = "The gate, judge, policy and merge rules determine agent authority."
 
+[scope]
+# Paths whose change is merge authority in this repository (category
+# merge-authority, decided by the owner). pyproject.toml pins the shared engine.
+merge_authority = [
+  '^\.claude/skills/merge-gate/',
+  '^\.github/workflows/(?:autonomous-merge|owner-approval|fleet-advisory|fleet-remediation|merge-judge|quality)\.ya?ml$',
+  '^\.github/scripts/autonomous_merge\.py$',
+  '^\.github/actions/intent-gate/',
+  '^scripts/(?:intent-gate|ratchet-guard)\.sh$',
+  '^src/infra_fleet_advisor/runtime/(?:cli|intent_gate|ratchet)\.py$',
+  '^src/infra_fleet_advisor/scenarios/fleet_repository_review/remediation\.py$',
+  '^pyproject\.toml$',
+  '^(?:AGENTS|CLAUDE)\.md$',
+]
+
+[dependabot]
+# Off until the owner decides Advisor #173 (verified Dependabot updates).
+version_only = false
+
 [judge]
 trusted_author = "github-actions[bot]"
 model = "claude-opus-5-5"
