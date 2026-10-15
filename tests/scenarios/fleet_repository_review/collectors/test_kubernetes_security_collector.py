@@ -72,6 +72,31 @@ def test_ingress_is_restricted_only_when_every_selecting_rule_names_peers(tmp_pa
         assert fact["ingress_restricted"] is restricted, peers
 
 
+def test_only_positive_label_constraints_scope_a_peer(tmp_path) -> None:
+    expression = "{namespaceSelector: {matchExpressions: [{key: name, operator: %s%s}]}}"
+    cases = {
+        expression % ("In", ", values: [ingress]"): True,
+        # Exists, NotIn and DoesNotExist can match nearly every namespace.
+        expression % ("Exists", ""): False,
+        expression % ("NotIn", ", values: [ingress]"): False,
+        expression % ("DoesNotExist", ""): False,
+        expression % ("In", ", values: []"): False,
+        "{podSelector: {matchExpressions: [{key: app, operator: Exists}]}}": False,
+        "{namespaceSelector: {matchLabels: {name: ingress}, "
+        "matchExpressions: [{key: team, operator: Exists}]}}": True,
+    }
+    for peers, restricted in cases.items():
+        [fact] = _facts(
+            tmp_path,
+            {
+                "k8s/applications/app.yaml": DEPLOYMENT,
+                "k8s/applications/policy.yaml": POLICY % ("applications", peers),
+            },
+            EVIDENCE_KIND_INGRESS_RESTRICTION,
+        )
+        assert fact["ingress_restricted"] is restricted, peers
+
+
 def test_unselected_pods_are_not_restricted(tmp_path) -> None:
     other = (POLICY % ("applications", SCOPED)).replace("values: [web]", "values: [api]")
     [fact] = _facts(
