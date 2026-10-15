@@ -101,18 +101,19 @@ spec:
       %s
 """
 PORTS = "ports: [{protocol: TCP, port: 4222}]"
+APPS = "{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: applications}}}"
 
 
 def test_broker_ingress_is_restricted_by_policies_selecting_chart_labels(tmp_path) -> None:
     name = "app.kubernetes.io/name: nats"
     cases = [
-        (("messaging", name, SCOPED, PORTS), True),
-        (("messaging", "app.kubernetes.io/instance: nats", SCOPED, PORTS), True),
+        (("messaging", name, APPS, PORTS), True),
+        (("messaging", "app.kubernetes.io/instance: nats", APPS, PORTS), True),
         # Omitted ports admit every port.
-        (("messaging", name, SCOPED, ""), False),
+        (("messaging", name, APPS, ""), False),
         (("messaging", name, "{ipBlock: {cidr: 0.0.0.0/0}}", PORTS), False),
-        (("messaging", "app.kubernetes.io/name: nats-box", SCOPED, PORTS), False),
-        (("applications", name, SCOPED, PORTS), False),
+        (("messaging", "app.kubernetes.io/name: nats-box", APPS, PORTS), False),
+        (("applications", name, APPS, PORTS), False),
     ]
     for policy, restricted in cases:
         [fact] = _facts(
@@ -124,6 +125,53 @@ def test_broker_ingress_is_restricted_by_policies_selecting_chart_labels(tmp_pat
             EVIDENCE_KIND_BROKER_INGRESS,
         )
         assert fact["ingress_restricted"] is restricted, policy
+
+
+def test_broker_ingress_admits_only_the_declared_peer_port_matrix(tmp_path) -> None:
+    name = "app.kubernetes.io/name: nats"
+    observability = APPS.replace("applications", "observability")
+    cases = [
+        # The declared matrix, as the fleet writes it.
+        (APPS, PORTS, True, "applications:4222"),
+        (observability, "ports: [{port: 7777}]", True, "observability:7777"),
+        # Codex's reproducers on #175: wrong peer and admin port, an Exists
+        # selector, and a port item that names no port.
+        (APPS.replace("applications", "default"), "ports: [{port: 8222}]", False, "default:8222"),
+        (
+            "{namespaceSelector: {matchExpressions: "
+            "[{key: kubernetes.io/metadata.name, operator: Exists}]}}",
+            PORTS,
+            False,
+            "",
+        ),
+        (APPS, "ports: [{}]", False, ""),
+        (APPS, "ports: [{port: ''}]", False, ""),
+        # A declared peer on an undeclared port, a port range, and same-namespace pods.
+        (APPS, "ports: [{port: 8222}]", False, "applications:8222"),
+        (APPS, "ports: [{port: 4222, endPort: 8222}]", False, ""),
+        ("{podSelector: {matchLabels: {app: box}}}", PORTS, False, "messaging:4222"),
+        # An In expression bounds the namespace; extra labels only narrow it.
+        (
+            "{namespaceSelector: {matchLabels: {team: a}, matchExpressions: "
+            "[{key: kubernetes.io/metadata.name, operator: In, values: [applications]}]}}",
+            PORTS,
+            True,
+            "applications:4222",
+        ),
+    ]
+    for peers, ports, restricted, admitted in cases:
+        [fact] = _facts(
+            tmp_path,
+            {
+                "k8s/infrastructure/nats.yaml": BROKER % "nats",
+                "k8s/infrastructure/policy.yaml": BROKER_POLICY % ("messaging", name, peers, ports),
+            },
+            EVIDENCE_KIND_BROKER_INGRESS,
+        )
+        assert (fact["ingress_restricted"], fact["admitted_peers"]) == (restricted, admitted), (
+            peers,
+            ports,
+        )
 
 
 CHART_REF = """apiVersion: helm.toolkit.fluxcd.io/v2
