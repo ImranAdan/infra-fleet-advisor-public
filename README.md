@@ -15,7 +15,7 @@ quality, intent, and merge gates.
 ```mermaid
 flowchart LR
     Fleet[(Verified Fleet revision)] --> Collect["Bounded collectors"]
-    Intent["28 declared positions"] --> Evaluate["Deterministic evaluation"]
+    Intent["37 declared positions"] --> Evaluate["Deterministic evaluation"]
     Policy["Policy and publication limits"] --> Evaluate
     Collect --> Evidence["Typed evidence"] --> Evaluate
 
@@ -95,18 +95,18 @@ See [local setup](docs/setup.md) for custom source paths and troubleshooting.
 
 ## What is evaluated
 
-The current catalog contains **28 declared positions**, all with registered
+The current catalog contains **37 declared positions**, all with registered
 checks:
 
 | Domain | Coverage |
 |---|---|
-| Security | workflow credentials, workload identity and hardening, network ingress and egress, external transport, EKS endpoint exposure, IAM scope, CSRF, service-account tokens, dependency security updates, image scanning, repository security settings, branch protection, and broker ingress |
-| Reliability | rollout capacity during updates |
-| Cost | idle staging capacity, worker bounds, log retention, image lifecycle, and cost-allocation tags |
-| Maintainability | profile lifecycle, local first use, AWS onboarding and teardown, swappable applications, risk-aware autonomous merges, agent completion rules, and documentation link health |
+| Security | workflow credentials, workload identity and hardening, network ingress and egress, external transport, EKS endpoint exposure, IAM scope, CSRF, service-account tokens, dependency security updates, image scanning, repository security settings, branch protection, broker ingress, and Pod Security on application namespaces |
+| Reliability | rollout capacity during updates, self-recovering HelmReleases, canary rollback, the messaging contract, and surviving node drains on AWS |
+| Cost | idle staging capacity, worker bounds, log retention, image lifecycle, cost-allocation tags, the local footprint budget, and metrics retention |
+| Maintainability | profile lifecycle, local first use, AWS onboarding and teardown, swappable applications, risk-aware autonomous merges, agent completion rules, documentation link health, DORA coverage of every app, and no dead platform manifests |
 
-Thirteen checks can prove their positions satisfied from complete repository or
-prefetched settings evidence. The remaining fifteen are divergence-only: clean
+Twenty-one checks can prove their positions satisfied from complete repository or
+prefetched settings evidence. The remaining sixteen are divergence-only: clean
 desired state cannot prove live behavior, external configuration, or an agent's
 future conduct. The report labels those positions `declared_unverified` rather
 than converting absence of a detected problem into a pass.
@@ -115,7 +115,9 @@ The Kubernetes collectors evaluate the resources each deployment profile
 actually composes, including Flux substitutions used by the application
 contract. Terraform, workflows, application configuration, repository settings,
 documentation links, lifecycle scripts, and agent rules use separate bounded
-collectors. Exact support and limitations are maintained in [scope and
+collectors. A platform collector reads operability from the same renders:
+release recovery, canaries, disruption budgets, Pod Security, footprint,
+retention, manifest reachability, messaging contracts and DORA coverage. Exact support and limitations are maintained in [scope and
 coverage](docs/status.md).
 
 ## Evidence and safety boundaries

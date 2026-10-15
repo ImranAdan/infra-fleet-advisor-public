@@ -30,12 +30,14 @@ issue-creation decision record. See the [workflow](WORKFLOW.md) and
 | Repository settings (PDR 0009) | The nightly snapshot of the fleet's security settings taken before the review: Dependabot alerts and security updates, secret scanning and push protection, and default-branch protection (S-012, S-013, S-014) | Runs only when `review --repository-settings` is given, so the pre-merge intent gate reports `collector_not_run`. An unknown value (no token or permission) leaves every settings proof unverified, never satisfied |
 | Documentation links | Every tracked Markdown file, one record each, stating whether all its relative links resolve to tracked files or directories (M-007) | Links only: absolute URLs, site-absolute paths and anchors are skipped, and whether prose still describes current behaviour is a review responsibility |
 | Agent rules | The fleet's `AGENTS.md` Autonomy grant and Owner-only list, and the `<!-- autonomous-merge -->` opt-in in `.github/pull_request_template.md`; one record per file that exists (M-006) | Literal headings and marker: a reworded heading reads as missing. Declared rules cannot show that agents followed them, so M-006 is divergence-only |
+| Platform operability | What each deployment profile applies, rendered in-process like the Kubernetes collectors: HelmRelease timeout and install/upgrade remediation (R-002), a Flagger Canary with metrics, a threshold and `maxWeight` below 100 for each application Deployment (R-003), on `aws-staging` at least two replicas and a PodDisruptionBudget on the pods or the Flagger primary (R-005), Pod Security `enforce: restricted` on application namespaces (S-016), the local profile's Git-declared requests against 1 CPU / 2 GiB (C-006), Prometheus `retention` and `retentionSize` (C-007), and every platform manifest read by some render (M-009). Outside the renders: catalog apps setting `NATS_URL` declare `APP_MESSAGING_PREFIX` (R-004), and every `*-publish.yml` is listed in the DORA workflow's `workflow_run` trigger (M-008) | Chart output is unrendered, so C-006 counts Git values only and is divergence-only. Reachability is reported only when every profile renders completely; Flux's bootstrap and the on-demand app catalog are out of M-009's scope. PDB selectors are read as `matchLabels` only |
 | Fleet lifecycle | The tracked `fleet` facade and fixed local and AWS strategy modules; closed lifecycle dispatch plus local pinned-tool, checkout-state, explicit-context, and next-command controls | Static shell structure only; it detects absent controls but cannot prove downloads, idempotence, runtime readiness, credential behavior, or teardown effects |
 
 The security, reliability, cost and maintainability catalogs contain
-twenty-eight positions, all with registered checks. Thirteen can prove a
+thirty-seven positions, all with registered checks. Twenty-one can prove a
 position satisfied: S-002, S-003, S-004, S-007, S-009, S-012, S-013, S-014,
-R-001, C-004, M-004, M-005 and M-007. The other fifteen, including M-006 (agents
+S-016, R-001 to R-005, C-004, C-007, M-004, M-005, M-007, M-008 and M-009. The
+other sixteen, including C-006 and M-006 (agents
 work end to end, whose pausing is not repository evidence), are
 divergence-only: complete, clean evidence leaves them
 `declared_unverified` (`collector_cannot_prove_satisfaction`). Unverified

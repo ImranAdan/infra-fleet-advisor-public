@@ -122,6 +122,15 @@ stating whether it still declares the Autonomy grant and Owner-only list, or
 the `<!-- autonomous-merge -->` opt-in. It backs M-006 and cannot prove it:
 declared rules do not show that agents followed them.
 
+`platform_collector` renders every profile once and reads operability from the
+result: HelmRelease recovery, canary rollback, AWS disruption budgets, Pod
+Security on application namespaces, Prometheus retention, the local profile's
+declared requests, and which platform manifests no render read (the renderer
+records each profile's `read_paths`). It also reads catalog contracts for a
+messaging prefix and publish workflows for DORA coverage. Facts are combined
+across profiles as in the Kubernetes collectors; the AWS budget and local
+footprint records come from their one profile.
+
 `documentation_link_collector` reads every tracked Markdown file and emits one
 record per file stating whether all its relative links resolve to tracked files
 or directories. Links in fenced code, absolute URLs and anchors are not file

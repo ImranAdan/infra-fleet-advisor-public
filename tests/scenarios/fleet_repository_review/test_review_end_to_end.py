@@ -111,7 +111,7 @@ def test_authoritative_markdown_drives_the_production_review(git_checkout) -> No
     )
 
     evaluations = {item.proposition_id: item for item in report.intent_evaluations}
-    assert len(evaluations) == 28
+    assert len(evaluations) == 37
     # No settings snapshot was given, so S-012 is unknown, never satisfied.
     assert evaluations["S-012"].status == "declared_unverified"
     assert evaluations["S-012"].reason == "collector_not_run"
@@ -130,6 +130,9 @@ def test_authoritative_markdown_drives_the_production_review(git_checkout) -> No
     assert evaluations["S-011"].reason == "no_relevant_evidence"
     # The fixture runs no message broker.
     assert evaluations["S-015"].reason == "no_relevant_evidence"
+    # The fixture has no profiles, apps or publish workflows to read.
+    for key in ("R-002", "R-003", "R-004", "R-005", "S-016", "C-006", "C-007", "M-008", "M-009"):
+        assert evaluations[key].reason == "no_relevant_evidence", key
     assert evaluations["M-001"].status == "declared_unverified"
     assert evaluations["M-001"].reason == "no_relevant_evidence"
     assert evaluations["M-002"].status == "declared_unverified"
@@ -498,7 +501,7 @@ def test_registered_collectors_contribute_to_one_report(git_checkout) -> None:
     concern_keys = {r.concern_key for r in report.recommendations}
     assert "trivy_ignore_unfixed" in concern_keys
     assert "wildcard_iam_permissions" in concern_keys
-    assert len(report.coverage) == 11
+    assert len(report.coverage) == 12
     assert all(c.status == "ok" for c in report.coverage)
     assert len(report.evidence) == 2
 

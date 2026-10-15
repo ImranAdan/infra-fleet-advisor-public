@@ -139,3 +139,61 @@ drills:
     path: .github/pull_request_template.md
     find: "<!-- autonomous-merge -->"
     replace: "<!-- held for review -->"
+  # Platform operability (platform_collector). R-002, R-004, R-005 and S-016
+  # list a second variant for the fleet before its fix landed, where the
+  # position is already divergent; the first variant is the real drill.
+  - proposition: R-002
+    variants:
+      - path: k8s/infrastructure/messaging/nats.yaml
+        find: "  upgrade:\n    remediation:\n      retries: 3"
+        replace: "  upgrade:\n    remediation:\n      retries: 0"
+      - path: k8s/infrastructure/messaging/nats.yaml
+        find: "# NATS JetStream - the platform's message broker"
+        replace: "# NATS JetStream broker"
+  - proposition: R-003
+    path: k8s/applications/platform/canary.yaml
+    find: "maxWeight: 50"
+    replace: "maxWeight: 100"
+  - proposition: R-004
+    variants:
+      - path: k8s/applications/load-harness/fleet-app.yaml
+        find: "  APP_MESSAGING_PREFIX: eip"
+        replace: "  APP_MESSAGING_PREFIX: Eip!"
+      - path: k8s/applications/load-harness/fleet-app.yaml
+        find: "  APP_FAULT_ENV: FAIL_RATE=1.0"
+        replace: "  APP_FAULT_ENV: FAIL_RATE=0.9"
+  # Budgeting the canary's pods instead of the Flagger primary protects nothing.
+  - proposition: R-005
+    variants:
+      - path: k8s/profiles/aws-staging/applications/pdb.yaml
+        find: "      app: ${APP_NAME}-primary"
+        replace: "      app: ${APP_NAME}-standby"
+      - path: k8s/profiles/aws-staging/applications/kustomization.yaml
+        find: "this tag on the newest release"
+        replace: "this tag on the latest release"
+  - proposition: S-016
+    variants:
+      - path: k8s/infrastructure/namespaces/applications.yaml
+        find: "pod-security.kubernetes.io/enforce: restricted"
+        replace: "pod-security.kubernetes.io/enforce: baseline"
+      - path: k8s/infrastructure/namespaces/applications.yaml
+        find: "# Namespace for application workloads"
+        replace: "# Application workloads namespace"
+  # Every 256Mi request becomes 2Gi: the local profile exceeds its budget.
+  - proposition: C-006
+    path: k8s/infrastructure/observability/kube-prometheus-stack.yaml
+    find: "memory: 256Mi"
+    replace: "memory: 2Gi"
+  - proposition: C-007
+    path: k8s/infrastructure/observability/kube-prometheus-stack.yaml
+    find: 'retentionSize: "1GB"'
+    replace: 'retentionSize: ""'
+  - proposition: M-008
+    path: .github/workflows/dora-metrics.yml
+    find: "      - Load Harness Publish\n"
+    replace: "      - Load Harness Release\n"
+  # Dropping a reference leaves the broker's NetworkPolicy applied by nothing.
+  - proposition: M-009
+    path: k8s/infrastructure/messaging/kustomization.yaml
+    find: "  - networkpolicy.yaml\n"
+    replace: "  # networkpolicy.yaml is no longer applied\n"

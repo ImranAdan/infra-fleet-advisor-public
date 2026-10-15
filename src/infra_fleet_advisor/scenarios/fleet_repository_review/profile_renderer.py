@@ -95,6 +95,9 @@ class ProfileRender:
     profile: str
     resources: list[RenderedResource] = field(default_factory=list)
     gaps: list[str] = field(default_factory=list)
+    # Every file this profile's render read: manifests, kustomizations, patches
+    # and generator inputs.
+    read_paths: set[str] = field(default_factory=set)
 
     @property
     def complete(self) -> bool:
@@ -121,8 +124,10 @@ class _Renderer:
         # One budget of distinct files for every profile rendered here; profiles
         # share their base, so a cached re-read costs nothing.
         self.cache: dict[str, str] = {}
+        self.touched: set[str] = set()
 
     def _read(self, rel_path: str) -> str:
+        self.touched.add(rel_path)
         if rel_path in self.cache:
             return self.cache[rel_path]
         path = self.root / rel_path
@@ -524,6 +529,7 @@ def render_profile(
 def _render(renderer: _Renderer, profile: str, sources: set[tuple[str, str]]) -> ProfileRender:
     """Everything the profile's Flux Kustomizations would apply, from Git alone."""
     render = ProfileRender(profile)
+    renderer.touched = render.read_paths
     failures = (
         _Incomplete,
         yaml.YAMLError,

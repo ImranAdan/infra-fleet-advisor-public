@@ -2,7 +2,7 @@
 
 - Format: `1`
 - Intent ID: `infra_fleet_public_cost`
-- Version: `1.4`
+- Version: `1.5`
 - Category: `cost`
 
 This document declares the fleet owner's initial AWS cost position. It does not
@@ -73,4 +73,36 @@ resource that cannot carry these tags is reported as an explicit coverage gap.
 ### Evaluation
 
 - Check: `aws_cost_allocation_tags`
+- Priority: `medium`
+
+## C-006 · Local footprint budget
+
+### Intent
+
+The local profile fits a laptop: the CPU and memory requests it declares in Git,
+summed over workloads and HelmRelease values, stay within 1 CPU and 2 GiB. A
+component that needs more is a deliberate change to this budget.
+
+Evidence: [local profile](https://github.com/ImranAdan/infra-fleet-public/blob/d973708aba130e5f23bbf0146c52dfec1185a820/k8s/clusters/local)
+
+Caveat: chart defaults are not rendered, so the declared sum is a lower bound
+and the check can show the budget exceeded, never met.
+
+### Evaluation
+
+- Check: `local_footprint_within_budget`
+- Priority: `medium`
+
+## C-007 · Bounded metrics retention
+
+### Intent
+
+Prometheus keeps metrics for a bounded time and size, so telemetry never grows
+until it fills a node's disk.
+
+Evidence: [kube-prometheus-stack values](https://github.com/ImranAdan/infra-fleet-public/blob/d973708aba130e5f23bbf0146c52dfec1185a820/k8s/infrastructure/observability/kube-prometheus-stack.yaml)
+
+### Evaluation
+
+- Check: `metrics_retention_bounded`
 - Priority: `medium`
