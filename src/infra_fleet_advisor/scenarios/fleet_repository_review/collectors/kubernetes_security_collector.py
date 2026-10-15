@@ -119,9 +119,19 @@ def _selects(selector: Any, labels: Mapping[str, Any]) -> bool | None:
 
 
 def _constrains(selector: Any) -> bool:
-    """An empty selector ({}) matches everything, so it names no peer."""
-    return isinstance(selector, Mapping) and bool(
-        selector.get("matchLabels") or selector.get("matchExpressions")
+    """A selector names peers only through a positive constraint: a matchLabels
+    entry or an In expression with values. An empty selector, Exists, NotIn and
+    DoesNotExist can match nearly everything, so on their own they name no peer."""
+    if not isinstance(selector, Mapping):
+        return False
+    labels = selector.get("matchLabels")
+    if isinstance(labels, Mapping) and labels:
+        return True
+    return any(
+        isinstance(expression, Mapping)
+        and expression.get("operator") == "In"
+        and bool(expression.get("values"))
+        for expression in selector.get("matchExpressions") or []
     )
 
 

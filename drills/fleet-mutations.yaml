@@ -78,6 +78,12 @@ drills:
     path: k8s/infrastructure/messaging/networkpolicy.yaml
     find: "              kubernetes.io/metadata.name: applications\n      ports:\n        - protocol: TCP\n          port: 4222"
     replace: "              kubernetes.io/metadata.name: default\n      ports:\n        - protocol: TCP\n          port: 8222"
+  # A namespace selector that only says the name label Exists admits every
+  # namespace; it must not count as a named peer.
+  - proposition: S-003
+    path: k8s/applications/platform/networkpolicy.yaml
+    find: "            matchLabels:\n              kubernetes.io/metadata.name: observability"
+    replace: "            matchExpressions:\n              - key: kubernetes.io/metadata.name\n                operator: Exists"
   - proposition: S-005
     path: k8s/routing/gateway.yaml
     find: "            scheme: https"
