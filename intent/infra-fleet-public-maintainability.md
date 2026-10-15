@@ -2,7 +2,7 @@
 
 - Format: `1`
 - Intent ID: `infra_fleet_public_maintainability`
-- Version: `1.6`
+- Version: `1.7`
 - Category: `maintainability`
 
 This document declares the fleet owner's adoption experience for the public
@@ -174,3 +174,33 @@ describes current behaviour remains a review responsibility.
 - Check: `documentation_links_resolve`
 - Priority: `medium`
 
+## M-008 · Delivery metrics cover every application
+
+### Intent
+
+Every application publish workflow (`.github/workflows/*-publish.yml`) feeds
+the DORA metrics workflow, so a new application's deployments are counted from
+its first release.
+
+Evidence: [DORA metrics workflow](https://github.com/ImranAdan/infra-fleet-public/blob/d973708aba130e5f23bbf0146c52dfec1185a820/.github/workflows/dora-metrics.yml)
+
+### Evaluation
+
+- Check: `publish_workflows_feed_dora`
+- Priority: `medium`
+
+## M-009 · No dead platform manifests
+
+### Intent
+
+Every platform manifest under `k8s/` is applied by at least one deployment
+profile, so no reviewed change edits a file that nothing deploys. Flux's
+bootstrap (`k8s/flux-system/`) and the on-demand application catalog
+(`k8s/applications/<app>/`) are outside this position.
+
+Evidence: [deployment profiles](https://github.com/ImranAdan/infra-fleet-public/blob/d973708aba130e5f23bbf0146c52dfec1185a820/k8s/clusters)
+
+### Evaluation
+
+- Check: `platform_manifests_reached`
+- Priority: `medium`

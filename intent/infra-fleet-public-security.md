@@ -2,7 +2,7 @@
 
 - Format: `1`
 - Intent ID: `infra_fleet_public_security`
-- Version: `1.8`
+- Version: `1.9`
 - Category: `security`
 
 Source: [`infra-fleet-public@d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0`](https://github.com/ImranAdan/infra-fleet-public/tree/d052789bd2e43b2c4be08d54e4ea1db6af4bd2b0)
@@ -263,4 +263,23 @@ count as open.
 ### Evaluation
 
 - Check: `message_broker_ingress_restricted`
+- Priority: `high`
+
+## S-016 · Pod Security for applications
+
+### Intent
+
+Every namespace that runs application Deployments enforces Pod Security
+`restricted` (`pod-security.kubernetes.io/enforce: restricted`), so admission
+rejects a privileged, root or host-namespace application pod even when its
+manifest regresses.
+
+Evidence: [applications namespace](https://github.com/ImranAdan/infra-fleet-public/blob/d973708aba130e5f23bbf0146c52dfec1185a820/k8s/infrastructure/namespaces/applications.yaml)
+
+Caveat: the label is desired state; whether every canary and load-test pod
+admits under it is proven on a live cluster, not here.
+
+### Evaluation
+
+- Check: `app_namespaces_enforce_restricted`
 - Priority: `high`

@@ -42,6 +42,15 @@ CONCERN_COST_TAGS_MISSING = "cost_allocation_tags_missing"
 CONCERN_ECR_PUBLICATION_UNGATED = "ecr_publication_not_scan_gated"
 CONCERN_PLATFORM_NAMES_APPLICATION = "platform_names_an_application"
 CONCERN_AUTONOMOUS_MERGE_INCOMPLETE = "autonomous_merge_incomplete"
+CONCERN_HELM_RELEASE_UNRECOVERABLE = "helm_release_cannot_self_heal"
+CONCERN_CANARY_MISSING = "delivered_app_without_canary_rollback"
+CONCERN_MESSAGING_CONTRACT_INCOMPLETE = "messaging_app_undeclared_channels"
+CONCERN_DRAIN_INTERRUPTS_APP = "aws_app_interrupted_by_drains"
+CONCERN_POD_SECURITY_UNENFORCED = "app_namespace_pod_security_unenforced"
+CONCERN_LOCAL_FOOTPRINT_EXCEEDED = "local_footprint_over_budget"
+CONCERN_METRICS_RETENTION_UNBOUNDED = "metrics_retention_unbounded"
+CONCERN_DORA_COVERAGE_MISSING = "publish_workflow_not_in_dora"
+CONCERN_MANIFEST_UNREACHED = "platform_manifest_unreached"
 
 # The deterministic support conditions for each concern: which evidence kind
 # can back it, and which collector-derived facts must hold. A collector emits
@@ -777,6 +786,194 @@ CONCERN_TEMPLATES: dict[str, ConcernTemplate] = {
         confidence=0.95,
         confidence_explanation=(
             "Read directly from the tracked workflow triggers, permissions and worker command."
+        ),
+    ),
+    CONCERN_HELM_RELEASE_UNRECOVERABLE: ConcernTemplate(
+        category="reliability",
+        priority="high",
+        title="A platform HelmRelease cannot recover from a failed install or upgrade",
+        summary=(
+            "A HelmRelease that a profile applies lacks a timeout, install or upgrade remediation "
+            "retries, or rolls back by uninstalling."
+        ),
+        impact=(
+            "A slow or failed chart upgrade leaves the release stuck in a failed state until "
+            "someone intervenes, as the kube-prometheus-stack upgrade did when Grafana outran "
+            "Helm's default timeout."
+        ),
+        suggested_change=(
+            "Set spec.timeout, spec.install.remediation.retries and "
+            "spec.upgrade.remediation.retries (rollback is the default strategy) on every "
+            "HelmRelease."
+        ),
+        trade_offs=(
+            "A genuinely broken chart is retried and rolled back automatically, which can hide a "
+            "failure until the retries run out."
+        ),
+        confidence=0.95,
+        confidence_explanation="Read from literal HelmRelease fields in every rendered profile.",
+    ),
+    CONCERN_CANARY_MISSING: ConcernTemplate(
+        category="reliability",
+        priority="high",
+        title="A delivered application rolls out without canary analysis",
+        summary=(
+            "An application Deployment is not the target of a Flagger Canary whose analysis has "
+            "metrics, a failure threshold and a maximum weight below 100."
+        ),
+        impact=("A bad release reaches every user at once, with no automatic rollback."),
+        suggested_change=(
+            "Target the Deployment with the shared Canary template: metrics, analysis.threshold of"
+            " at least 1 and maxWeight below 100."
+        ),
+        trade_offs="Each release takes the analysis window to promote.",
+        confidence=0.9,
+        confidence_explanation="Read from rendered Canary objects and their targetRef.",
+    ),
+    CONCERN_MESSAGING_CONTRACT_INCOMPLETE: ConcernTemplate(
+        category="reliability",
+        priority="medium",
+        title="An application uses the broker without declaring its channel prefix",
+        summary=(
+            "An application catalog entry sets NATS_URL but its fleet-app contract has no valid "
+            "APP_MESSAGING_PREFIX."
+        ),
+        impact=(
+            "Two applications can collide on subject, stream or bucket names on the shared broker,"
+            " and nothing records which subjects an application owns."
+        ),
+        suggested_change=(
+            "Add APP_MESSAGING_PREFIX (lower-case, at most 32 characters) to the app's "
+            "fleet-app.yaml and prefix every subject, stream and bucket with it."
+        ),
+        trade_offs=(
+            "A prefix is a convention the broker does not enforce; isolation still needs NATS "
+            "accounts."
+        ),
+        confidence=0.9,
+        confidence_explanation=(
+            "Read from the catalog entry's manifests and its contract ConfigMap."
+        ),
+    ),
+    CONCERN_DRAIN_INTERRUPTS_APP: ConcernTemplate(
+        category="reliability",
+        priority="medium",
+        title="An AWS staging application is interrupted by every node drain",
+        summary=(
+            "On the aws-staging profile an application Deployment runs fewer than two minimum "
+            "replicas or no PodDisruptionBudget selects its pods."
+        ),
+        impact=(
+            "Cluster-autoscaler scale-down and node upgrades evict the only pod, so the app is "
+            "briefly unavailable on every drain."
+        ),
+        suggested_change=(
+            "In the aws-staging profile, raise the HPA's minReplicas to 2 and add a "
+            "PodDisruptionBudget with minAvailable: 1 selecting the app's pods."
+        ),
+        trade_offs="About one extra application pod per app while AWS staging runs.",
+        confidence=0.9,
+        confidence_explanation=(
+            "Read from the rendered aws-staging HPA, Deployment and PodDisruptionBudget objects."
+        ),
+    ),
+    CONCERN_POD_SECURITY_UNENFORCED: ConcernTemplate(
+        category="security",
+        priority="high",
+        title="An application namespace does not enforce Pod Security restricted",
+        summary=(
+            "A namespace that runs application Deployments lacks "
+            "pod-security.kubernetes.io/enforce: restricted."
+        ),
+        impact=(
+            "A new or changed application can run privileged, root or host-namespace pods; nothing"
+            " at admission stops the regression."
+        ),
+        suggested_change=(
+            "Label the application namespace with pod-security.kubernetes.io/enforce: restricted, "
+            "after checking canary and load-test pods meet it."
+        ),
+        trade_offs="Any pod in the namespace that needs more privilege must move elsewhere.",
+        confidence=0.95,
+        confidence_explanation="Read from the rendered Namespace labels.",
+    ),
+    CONCERN_LOCAL_FOOTPRINT_EXCEEDED: ConcernTemplate(
+        category="cost",
+        priority="medium",
+        title="The local profile requests more than its declared footprint budget",
+        summary=(
+            "The CPU or memory requests declared in Git for the local profile, summed over "
+            "workloads and HelmRelease values, exceed 1 CPU or 2 GiB."
+        ),
+        impact=(
+            "A laptop-sized kind cluster contends for CPU, probes time out, and verification runs "
+            "give misleading results."
+        ),
+        suggested_change=(
+            "Lower the requests, drop an optional component from the local profile, or raise the "
+            "budget in C-006 deliberately."
+        ),
+        trade_offs="Tighter requests can starve a component under real load.",
+        confidence=0.7,
+        confidence_explanation=(
+            "Chart defaults and app replicas beyond Git values are not counted, so the real "
+            "footprint is higher."
+        ),
+    ),
+    CONCERN_METRICS_RETENTION_UNBOUNDED: ConcernTemplate(
+        category="cost",
+        priority="medium",
+        title="Prometheus retention is not bounded by time and size",
+        summary=(
+            "A kube-prometheus-stack HelmRelease lacks prometheusSpec.retention or retentionSize."
+        ),
+        impact=(
+            "Metrics grow until they fill the node's disk, which evicts pods on a single-node "
+            "cluster."
+        ),
+        suggested_change=(
+            "Set prometheus.prometheusSpec.retention and retentionSize in the HelmRelease values."
+        ),
+        trade_offs="Older metrics are dropped.",
+        confidence=0.95,
+        confidence_explanation="Read from literal HelmRelease values.",
+    ),
+    CONCERN_DORA_COVERAGE_MISSING: ConcernTemplate(
+        category="maintainability",
+        priority="medium",
+        title="An application publish workflow does not feed DORA metrics",
+        summary=(
+            "A *-publish.yml workflow's name is not listed in dora-metrics.yml's workflow_run "
+            "trigger."
+        ),
+        impact=(
+            "Deployments of that application never reach the DORA dashboard, so delivery metrics "
+            "silently undercount."
+        ),
+        suggested_change=(
+            "Add the publish workflow's name to dora-metrics.yml under on.workflow_run.workflows."
+        ),
+        trade_offs="None beyond one more trigger entry.",
+        confidence=0.95,
+        confidence_explanation="Read from the literal workflow names and trigger list.",
+    ),
+    CONCERN_MANIFEST_UNREACHED: ConcernTemplate(
+        category="maintainability",
+        priority="medium",
+        title="A platform manifest is not reached by any deployment profile",
+        summary=(
+            "A tracked YAML file under k8s/, outside Flux's bootstrap and the application catalog,"
+            " is read by no profile's render."
+        ),
+        impact=(
+            "A reviewer edits a file that nothing applies, so the change looks deployed but never "
+            "reaches a cluster."
+        ),
+        suggested_change=("Reference the file from a profile's kustomization, or delete it."),
+        trade_offs="None.",
+        confidence=0.9,
+        confidence_explanation=(
+            "Every profile rendered completely; a file no render read is applied by no profile."
         ),
     ),
 }

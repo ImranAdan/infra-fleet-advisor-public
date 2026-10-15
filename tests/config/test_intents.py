@@ -188,30 +188,39 @@ def test_rejects_symlinked_intent_documents(tmp_path: Path) -> None:
 def test_production_markdown_is_the_authoritative_catalog() -> None:
     catalog = load_intent_catalog(PRODUCTION_INTENTS, TAXONOMY)
 
-    assert len(catalog.propositions) == 28
+    assert len(catalog.propositions) == 37
     assert {item.check_key for item in catalog.propositions if item.check_key is not None} == {
+        "app_namespaces_enforce_restricted",
         "application_containers_hardened",
         "application_ingress_restricted",
+        "aws_apps_survive_node_drains",
         "aws_cost_allocation_tags",
         "default_branch_protected",
+        "delivered_apps_canary_with_rollback",
         "dependency_updates_configured",
         "deployment_rollout_capacity",
         "documentation_links_resolve",
         "ecr_lifecycle_bounded",
         "ecr_publication_scan_gated",
         "eks_public_endpoint_staging_only",
-        "fleet_application_swappable",
         "fleet_agent_autonomy_declared",
+        "fleet_application_swappable",
         "fleet_autonomous_merge",
         "fleet_aws_onboarding",
         "fleet_local_first_use",
         "fleet_profiles_expose_lifecycle",
         "github_actions_uses_oidc",
+        "helm_releases_self_heal",
+        "local_footprint_within_budget",
         "message_broker_ingress_restricted",
+        "messaging_apps_declare_channels",
+        "metrics_retention_bounded",
         "mounted_token_unprivileged",
         "permissive_egress_bounded",
         "persistent_iam_avoids_wildcards",
+        "platform_manifests_reached",
         "public_ingress_https",
+        "publish_workflows_feed_dora",
         "repository_secret_protection_enabled",
         "repository_security_updates_enabled",
         "session_cookie_csrf_compensated",
@@ -236,7 +245,7 @@ def test_production_markdown_is_the_authoritative_catalog() -> None:
     cost = tuple(
         item for item in catalog.propositions if item.document_id == "infra_fleet_public_cost"
     )
-    assert len(cost) == 5
+    assert len(cost) == 7
     assert all(item.category == "cost" for item in cost)
     assert [item.check_key for item in cost] == [
         "staging_capacity_released_on_schedule",
@@ -244,13 +253,15 @@ def test_production_markdown_is_the_authoritative_catalog() -> None:
         "staging_log_retention_bounded",
         "ecr_lifecycle_bounded",
         "aws_cost_allocation_tags",
+        "local_footprint_within_budget",
+        "metrics_retention_bounded",
     ]
     maintainability = tuple(
         item
         for item in catalog.propositions
         if item.document_id == "infra_fleet_public_maintainability"
     )
-    assert len(maintainability) == 7
+    assert len(maintainability) == 9
     assert all(item.category == "maintainability" for item in maintainability)
     assert maintainability[0].check_key == "fleet_profiles_expose_lifecycle"
     assert maintainability[1].check_key == "fleet_local_first_use"

@@ -25,6 +25,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
     dependency_update_collector,
     documentation_link_collector,
     fleet_lifecycle_collector,
+    platform_collector,
     repository_settings_collector,
 )
 from infra_fleet_advisor.scenarios.fleet_repository_review.collectors import (
@@ -62,6 +63,8 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     K8S_DEPLOYMENT_COLLECTOR_VERSION,
     K8S_SECURITY_COLLECTOR_ID,
     K8S_SECURITY_COLLECTOR_VERSION,
+    PLATFORM_COLLECTOR_ID,
+    PLATFORM_COLLECTOR_VERSION,
     REPOSITORY_SETTINGS_COLLECTOR_ID,
     REPOSITORY_SETTINGS_COLLECTOR_VERSION,
     TF_COST_COLLECTOR_ID,
@@ -191,6 +194,13 @@ def run_review(
         excluded_paths=excluded_paths,
         tracked_paths=list_tracked_paths(checkout_root, "."),
     )
+    platform_result = platform_collector.collect(
+        checkout_root,
+        limits,
+        excluded_paths=excluded_paths,
+        # Profile overlays can include manifests from outside k8s/.
+        tracked_paths=list_tracked_paths(checkout_root, "."),
+    )
     # Only a nightly review is handed a settings snapshot (PDR 0009); without
     # one the collector does not run and S-012 reads collector_not_run.
     settings_results = (
@@ -210,6 +220,7 @@ def run_review(
         + app_contract_result.evidence
         + docs_result.evidence
         + agent_rules_result.evidence
+        + platform_result.evidence
         + tuple(e for result in settings_results for e in result.evidence)
     )
     evidence_by_id = {e.evidence_id: e for e in all_evidence}
@@ -225,6 +236,7 @@ def run_review(
         app_contract_result.coverage,
         docs_result.coverage,
         agent_rules_result.coverage,
+        platform_result.coverage,
         *(result.coverage for result in settings_results),
     ]
 
@@ -288,6 +300,7 @@ def run_review(
             REPOSITORY_SETTINGS_COLLECTOR_ID: REPOSITORY_SETTINGS_COLLECTOR_VERSION,
             DOCUMENTATION_LINK_COLLECTOR_ID: DOCUMENTATION_LINK_COLLECTOR_VERSION,
             AGENT_RULES_COLLECTOR_ID: AGENT_RULES_COLLECTOR_VERSION,
+            PLATFORM_COLLECTOR_ID: PLATFORM_COLLECTOR_VERSION,
         },
         model_identifier=synthesis_response.model_identifier,
         run_started_at=run_started_at,

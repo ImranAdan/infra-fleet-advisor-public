@@ -12,6 +12,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
     CONCERN_AGENT_AUTONOMY_RULES_MISSING,
     CONCERN_AUTONOMOUS_MERGE_INCOMPLETE,
     CONCERN_BROKER_INGRESS_UNRESTRICTED,
+    CONCERN_CANARY_MISSING,
     CONCERN_CI_CREDENTIALS_WITHOUT_OIDC,
     CONCERN_CONTAINER_HARDENING_INCOMPLETE,
     CONCERN_COST_TAGS_MISSING,
@@ -20,6 +21,8 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
     CONCERN_DEPENDENCY_UPDATES_MISSING,
     CONCERN_DEPLOYMENT_ROLLOUT_CAPACITY,
     CONCERN_DOCUMENTATION_LINKS_BROKEN,
+    CONCERN_DORA_COVERAGE_MISSING,
+    CONCERN_DRAIN_INTERRUPTS_APP,
     CONCERN_ECR_PUBLICATION_UNGATED,
     CONCERN_ECR_RETENTION_UNBOUNDED,
     CONCERN_EGRESS_ACCEPTANCE_EXCEEDED,
@@ -27,11 +30,17 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.concerns import (
     CONCERN_FLEET_AWS_ONBOARDING_INCOMPLETE,
     CONCERN_FLEET_LIFECYCLE_INCOMPLETE,
     CONCERN_FLEET_LOCAL_FIRST_USE_INCOMPLETE,
+    CONCERN_HELM_RELEASE_UNRECOVERABLE,
     CONCERN_IDLE_CAPACITY_UNSCHEDULED,
     CONCERN_INGRESS_HTTP_ALLOWED,
     CONCERN_INGRESS_UNRESTRICTED,
+    CONCERN_LOCAL_FOOTPRINT_EXCEEDED,
     CONCERN_LOG_RETENTION_UNBOUNDED,
+    CONCERN_MANIFEST_UNREACHED,
+    CONCERN_MESSAGING_CONTRACT_INCOMPLETE,
+    CONCERN_METRICS_RETENTION_UNBOUNDED,
     CONCERN_PLATFORM_NAMES_APPLICATION,
+    CONCERN_POD_SECURITY_UNENFORCED,
     CONCERN_SECRET_PROTECTION_DISABLED,
     CONCERN_SECURITY_UPDATES_DISABLED,
     CONCERN_SERVICE_ACCOUNT_GRANTS_ACCESS,
@@ -51,23 +60,32 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     EVIDENCE_KIND_APPLICATION_COUPLING,
     EVIDENCE_KIND_AUTONOMOUS_MERGE,
     EVIDENCE_KIND_BROKER_INGRESS,
+    EVIDENCE_KIND_CANARY_ROLLBACK,
     EVIDENCE_KIND_CONTAINER_HARDENING,
     EVIDENCE_KIND_COST_TAGS,
     EVIDENCE_KIND_CREDENTIAL_METHOD,
+    EVIDENCE_KIND_DECLARED_FOOTPRINT,
     EVIDENCE_KIND_DEFAULT_BRANCH_PROTECTION,
     EVIDENCE_KIND_DEPENDENCY_UPDATES,
     EVIDENCE_KIND_DEPLOYMENT_ROLLOUT_CAPACITY,
+    EVIDENCE_KIND_DISRUPTION_BUDGET,
     EVIDENCE_KIND_DOCUMENTATION_LINKS,
+    EVIDENCE_KIND_DORA_COVERAGE,
     EVIDENCE_KIND_ECR_LIFECYCLE,
     EVIDENCE_KIND_ECR_PUBLICATION_GATE,
     EVIDENCE_KIND_EGRESS_ACCEPTANCE,
     EVIDENCE_KIND_EKS_ENDPOINT,
     EVIDENCE_KIND_FLEET_LIFECYCLE,
+    EVIDENCE_KIND_HELM_RECOVERY,
     EVIDENCE_KIND_IAM_WILDCARD,
     EVIDENCE_KIND_IDLE_CAPACITY,
     EVIDENCE_KIND_INGRESS_HTTPS,
     EVIDENCE_KIND_INGRESS_RESTRICTION,
     EVIDENCE_KIND_LOG_RETENTION,
+    EVIDENCE_KIND_MANIFEST_REACHABILITY,
+    EVIDENCE_KIND_MESSAGING_CONTRACT,
+    EVIDENCE_KIND_METRICS_RETENTION,
+    EVIDENCE_KIND_POD_SECURITY,
     EVIDENCE_KIND_REPOSITORY_SECRET_PROTECTION,
     EVIDENCE_KIND_REPOSITORY_SECURITY_SETTINGS,
     EVIDENCE_KIND_SERVICE_ACCOUNT_PRIVILEGE,
@@ -78,6 +96,7 @@ from infra_fleet_advisor.scenarios.fleet_repository_review.constants import (
     GHA_COLLECTOR_ID,
     K8S_DEPLOYMENT_COLLECTOR_ID,
     K8S_SECURITY_COLLECTOR_ID,
+    PLATFORM_COLLECTOR_ID,
     REPOSITORY_SETTINGS_COLLECTOR_ID,
     TF_COST_COLLECTOR_ID,
     TF_IAM_COLLECTOR_ID,
@@ -112,6 +131,15 @@ CHECK_FLEET_AGENT_AUTONOMY_DECLARED = "fleet_agent_autonomy_declared"
 CHECK_ECR_PUBLICATION_SCAN_GATED = "ecr_publication_scan_gated"
 CHECK_APPLICATION_SWAPPABLE = "fleet_application_swappable"
 CHECK_FLEET_AUTONOMOUS_MERGE = "fleet_autonomous_merge"
+CHECK_HELM_RELEASES_SELF_HEAL = "helm_releases_self_heal"
+CHECK_DELIVERED_APPS_CANARY = "delivered_apps_canary_with_rollback"
+CHECK_MESSAGING_APPS_DECLARE_CHANNELS = "messaging_apps_declare_channels"
+CHECK_AWS_APPS_SURVIVE_DRAINS = "aws_apps_survive_node_drains"
+CHECK_APP_NAMESPACES_RESTRICTED = "app_namespaces_enforce_restricted"
+CHECK_LOCAL_FOOTPRINT_BUDGET = "local_footprint_within_budget"
+CHECK_METRICS_RETENTION_BOUNDED = "metrics_retention_bounded"
+CHECK_PUBLISH_WORKFLOWS_FEED_DORA = "publish_workflows_feed_dora"
+CHECK_PLATFORM_MANIFESTS_REACHED = "platform_manifests_reached"
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,6 +176,107 @@ class IntentRuleSet:
 
 INTENT_CHECKS: Mapping[str, IntentCheckDefinition] = MappingProxyType(
     {
+        # Platform operability (platform_collector). C-006 is divergence-only:
+        # chart defaults are unrendered, so the declared sum is a lower bound.
+        CHECK_HELM_RELEASES_SELF_HEAL: IntentCheckDefinition(
+            concern_key=CONCERN_HELM_RELEASE_UNRECOVERABLE,
+            rule=ConcernRule(
+                category="reliability",
+                evidence_kind=EVIDENCE_KIND_HELM_RECOVERY,
+                collector_id=PLATFORM_COLLECTOR_ID,
+                required_facts={"recovers": False},
+            ),
+            can_prove_satisfaction=True,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_DELIVERED_APPS_CANARY: IntentCheckDefinition(
+            concern_key=CONCERN_CANARY_MISSING,
+            rule=ConcernRule(
+                category="reliability",
+                evidence_kind=EVIDENCE_KIND_CANARY_ROLLBACK,
+                collector_id=PLATFORM_COLLECTOR_ID,
+                required_facts={"canary_rolls_back": False},
+            ),
+            can_prove_satisfaction=True,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_MESSAGING_APPS_DECLARE_CHANNELS: IntentCheckDefinition(
+            concern_key=CONCERN_MESSAGING_CONTRACT_INCOMPLETE,
+            rule=ConcernRule(
+                category="reliability",
+                evidence_kind=EVIDENCE_KIND_MESSAGING_CONTRACT,
+                collector_id=PLATFORM_COLLECTOR_ID,
+                required_facts={"declares_prefix": False},
+            ),
+            can_prove_satisfaction=True,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_AWS_APPS_SURVIVE_DRAINS: IntentCheckDefinition(
+            concern_key=CONCERN_DRAIN_INTERRUPTS_APP,
+            rule=ConcernRule(
+                category="reliability",
+                evidence_kind=EVIDENCE_KIND_DISRUPTION_BUDGET,
+                collector_id=PLATFORM_COLLECTOR_ID,
+                required_facts={"survives_drain": False},
+            ),
+            can_prove_satisfaction=True,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_APP_NAMESPACES_RESTRICTED: IntentCheckDefinition(
+            concern_key=CONCERN_POD_SECURITY_UNENFORCED,
+            rule=ConcernRule(
+                category="security",
+                evidence_kind=EVIDENCE_KIND_POD_SECURITY,
+                collector_id=PLATFORM_COLLECTOR_ID,
+                required_facts={"enforces_restricted": False},
+            ),
+            can_prove_satisfaction=True,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_LOCAL_FOOTPRINT_BUDGET: IntentCheckDefinition(
+            concern_key=CONCERN_LOCAL_FOOTPRINT_EXCEEDED,
+            rule=ConcernRule(
+                category="cost",
+                evidence_kind=EVIDENCE_KIND_DECLARED_FOOTPRINT,
+                collector_id=PLATFORM_COLLECTOR_ID,
+                required_facts={"within_budget": False},
+            ),
+            can_prove_satisfaction=False,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_METRICS_RETENTION_BOUNDED: IntentCheckDefinition(
+            concern_key=CONCERN_METRICS_RETENTION_UNBOUNDED,
+            rule=ConcernRule(
+                category="cost",
+                evidence_kind=EVIDENCE_KIND_METRICS_RETENTION,
+                collector_id=PLATFORM_COLLECTOR_ID,
+                required_facts={"retention_bounded": False},
+            ),
+            can_prove_satisfaction=True,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_PUBLISH_WORKFLOWS_FEED_DORA: IntentCheckDefinition(
+            concern_key=CONCERN_DORA_COVERAGE_MISSING,
+            rule=ConcernRule(
+                category="maintainability",
+                evidence_kind=EVIDENCE_KIND_DORA_COVERAGE,
+                collector_id=PLATFORM_COLLECTOR_ID,
+                required_facts={"feeds_dora": False},
+            ),
+            can_prove_satisfaction=True,
+            requires_relevant_evidence=True,
+        ),
+        CHECK_PLATFORM_MANIFESTS_REACHED: IntentCheckDefinition(
+            concern_key=CONCERN_MANIFEST_UNREACHED,
+            rule=ConcernRule(
+                category="maintainability",
+                evidence_kind=EVIDENCE_KIND_MANIFEST_REACHABILITY,
+                collector_id=PLATFORM_COLLECTOR_ID,
+                required_facts={"all_reached": False},
+            ),
+            can_prove_satisfaction=True,
+            requires_relevant_evidence=True,
+        ),
         CHECK_GITHUB_ACTIONS_USES_OIDC: IntentCheckDefinition(
             concern_key=CONCERN_CI_CREDENTIALS_WITHOUT_OIDC,
             rule=ConcernRule(
