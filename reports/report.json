@@ -27,7 +27,7 @@
     {
       "collector_id": "kubernetes_security_collector",
       "error_summary": null,
-      "evidence_count": 6,
+      "evidence_count": 9,
       "status": "ok"
     },
     {
@@ -57,13 +57,19 @@
     {
       "collector_id": "documentation_link_collector",
       "error_summary": null,
-      "evidence_count": 54,
+      "evidence_count": 55,
       "status": "ok"
     },
     {
       "collector_id": "agent_rules_collector",
       "error_summary": null,
       "evidence_count": 2,
+      "status": "ok"
+    },
+    {
+      "collector_id": "platform_collector",
+      "error_summary": null,
+      "evidence_count": 18,
       "status": "ok"
     },
     {
@@ -153,6 +159,21 @@
       "kind": "k8s_ingress_https",
       "locator": "Ingress/applications/load-harness/https",
       "source_path": "k8s/profiles/aws-staging/applications/ingress-nginx.yaml"
+    },
+    {
+      "collector_id": "platform_collector",
+      "collector_version": "1.0.0",
+      "evidence_id": "platform_collector:ae9c78eb6384533a",
+      "excerpt": "[aws-staging, local] application namespace applications enforces Pod Security: nothing",
+      "fact": {
+        "enforce_level": "",
+        "enforces_restricted": false,
+        "failing_profiles": "aws-staging, local",
+        "profiles": "aws-staging, local"
+      },
+      "kind": "k8s_pod_security",
+      "locator": "Namespace/applications/pod-security",
+      "source_path": "k8s/infrastructure/namespaces/applications.yaml"
     },
     {
       "collector_id": "terraform_cost_collector",
@@ -309,6 +330,28 @@
       "status": "declared_unverified"
     },
     {
+      "category": "cost",
+      "check_key": "local_footprint_within_budget",
+      "document_id": "infra_fleet_public_cost",
+      "evidence_ids": [],
+      "priority": "medium",
+      "proposition_id": "C-006",
+      "reason": "collector_cannot_prove_satisfaction",
+      "statement": "The local profile fits a laptop: the CPU and memory requests it declares in Git,\nsummed over workloads and HelmRelease values, stay within 1 CPU and 2 GiB. A\ncomponent that needs more is a deliberate change to this budget.\n\nEvidence: [local profile](https://github.com/ImranAdan/infra-fleet-public/blob/d973708aba130e5f23bbf0146c52dfec1185a820/k8s/clusters/local)\n\nCaveat: chart defaults are not rendered, so the declared sum is a lower bound\nand the check can show the budget exceeded, never met.",
+      "status": "declared_unverified"
+    },
+    {
+      "category": "cost",
+      "check_key": "metrics_retention_bounded",
+      "document_id": "infra_fleet_public_cost",
+      "evidence_ids": [],
+      "priority": "medium",
+      "proposition_id": "C-007",
+      "reason": "complete_evidence_supports_intent",
+      "statement": "Prometheus keeps metrics for a bounded time and size, so telemetry never grows\nuntil it fills a node's disk.\n\nEvidence: [kube-prometheus-stack values](https://github.com/ImranAdan/infra-fleet-public/blob/d973708aba130e5f23bbf0146c52dfec1185a820/k8s/infrastructure/observability/kube-prometheus-stack.yaml)",
+      "status": "satisfied"
+    },
+    {
       "category": "maintainability",
       "check_key": "fleet_profiles_expose_lifecycle",
       "document_id": "infra_fleet_public_maintainability",
@@ -386,6 +429,28 @@
       "status": "satisfied"
     },
     {
+      "category": "maintainability",
+      "check_key": "publish_workflows_feed_dora",
+      "document_id": "infra_fleet_public_maintainability",
+      "evidence_ids": [],
+      "priority": "medium",
+      "proposition_id": "M-008",
+      "reason": "complete_evidence_supports_intent",
+      "statement": "Every application publish workflow (`.github/workflows/*-publish.yml`) feeds\nthe DORA metrics workflow, so a new application's deployments are counted from\nits first release.\n\nEvidence: [DORA metrics workflow](https://github.com/ImranAdan/infra-fleet-public/blob/d973708aba130e5f23bbf0146c52dfec1185a820/.github/workflows/dora-metrics.yml)",
+      "status": "satisfied"
+    },
+    {
+      "category": "maintainability",
+      "check_key": "platform_manifests_reached",
+      "document_id": "infra_fleet_public_maintainability",
+      "evidence_ids": [],
+      "priority": "medium",
+      "proposition_id": "M-009",
+      "reason": "complete_evidence_supports_intent",
+      "statement": "Every platform manifest under `k8s/` is applied by at least one deployment\nprofile, so no reviewed change edits a file that nothing deploys. Flux's\nbootstrap (`k8s/flux-system/`) and the on-demand application catalog\n(`k8s/applications/<app>/`) are outside this position.\n\nEvidence: [deployment profiles](https://github.com/ImranAdan/infra-fleet-public/blob/d973708aba130e5f23bbf0146c52dfec1185a820/k8s/clusters)",
+      "status": "satisfied"
+    },
+    {
       "category": "reliability",
       "check_key": "deployment_rollout_capacity",
       "document_id": "infra_fleet_public_reliability",
@@ -394,6 +459,50 @@
       "proposition_id": "R-001",
       "reason": "complete_evidence_supports_intent",
       "statement": "Owner-managed application Deployments under `k8s/applications/` retain enough\nhealthy capacity during rollout. Temporary capacity cost is acceptable when it\nprevents user-visible interruption.",
+      "status": "satisfied"
+    },
+    {
+      "category": "reliability",
+      "check_key": "helm_releases_self_heal",
+      "document_id": "infra_fleet_public_reliability",
+      "evidence_ids": [],
+      "priority": "high",
+      "proposition_id": "R-002",
+      "reason": "complete_evidence_supports_intent",
+      "statement": "Every HelmRelease a deployment profile applies sets a timeout and retries both\na failed install and a failed upgrade, rolling an upgrade back rather than\nuninstalling it. A slow or failed chart upgrade recovers without an operator.\n\nEvidence: [kube-prometheus-stack HelmRelease](https://github.com/ImranAdan/infra-fleet-public/blob/d973708aba130e5f23bbf0146c52dfec1185a820/k8s/infrastructure/observability/kube-prometheus-stack.yaml)\n\nCaveat: retries can mask a genuinely broken chart until they run out; the\nHelmRelease's Ready condition still reports the failure.",
+      "status": "satisfied"
+    },
+    {
+      "category": "reliability",
+      "check_key": "delivered_apps_canary_with_rollback",
+      "document_id": "infra_fleet_public_reliability",
+      "evidence_ids": [],
+      "priority": "high",
+      "proposition_id": "R-003",
+      "reason": "complete_evidence_supports_intent",
+      "statement": "Every application Deployment the platform delivers is the target of a Flagger\nCanary whose analysis checks metrics, fails after a threshold, and never shifts\nall traffic at once, so a bad release rolls back automatically.\n\nEvidence: [shared Canary template](https://github.com/ImranAdan/infra-fleet-public/blob/d973708aba130e5f23bbf0146c52dfec1185a820/k8s/applications/platform/canary.yaml)",
+      "status": "satisfied"
+    },
+    {
+      "category": "reliability",
+      "check_key": "messaging_apps_declare_channels",
+      "document_id": "infra_fleet_public_reliability",
+      "evidence_ids": [],
+      "priority": "medium",
+      "proposition_id": "R-004",
+      "reason": "complete_evidence_supports_intent",
+      "statement": "An application that uses the platform broker (its manifests set `NATS_URL`)\ndeclares `APP_MESSAGING_PREFIX` in its `fleet-app.yaml` contract, and names its\nsubjects, streams and buckets with that prefix, so applications sharing the\nbroker cannot collide and every subject has a recorded owner.\n\nEvidence: [messaging guide](https://github.com/ImranAdan/infra-fleet-public/blob/d973708aba130e5f23bbf0146c52dfec1185a820/docs/MESSAGING.md)\n\nCaveat: the check reads the declaration, not runtime subject names, and a\nprefix is not isolation (see S-015).",
+      "status": "satisfied"
+    },
+    {
+      "category": "reliability",
+      "check_key": "aws_apps_survive_node_drains",
+      "document_id": "infra_fleet_public_reliability",
+      "evidence_ids": [],
+      "priority": "medium",
+      "proposition_id": "R-005",
+      "reason": "complete_evidence_supports_intent",
+      "statement": "On the AWS staging profile every application keeps at least two replicas and\na PodDisruptionBudget, so cluster-autoscaler scale-down and node upgrades never\ntake an application fully offline. The extra replica's cost is accepted. The\nlocal single-node profile is exempt.\n\nEvidence: [AWS staging profile](https://github.com/ImranAdan/infra-fleet-public/blob/d973708aba130e5f23bbf0146c52dfec1185a820/k8s/profiles/aws-staging)",
       "status": "satisfied"
     },
     {
@@ -549,9 +658,33 @@
       "reason": "collector_incomplete",
       "statement": "The fleet's default branch accepts changes only through pull requests and\ncannot be force-pushed or deleted, so every change on it has passed the merge\ngate's checks and its history cannot be rewritten.\n\nEvidence: [Repository settings snapshot (PDR 0009)](https://github.com/ImranAdan/infra-fleet-advisor-public/blob/main/docs/decisions/0009-repository-settings-evidence.md)\n\nCaveat: protection settings are owner-only to change; a divergence is reported\nfor the owner, never corrected by an agent.",
       "status": "declared_unverified"
+    },
+    {
+      "category": "security",
+      "check_key": "message_broker_ingress_restricted",
+      "document_id": "infra_fleet_public_security",
+      "evidence_ids": [],
+      "priority": "high",
+      "proposition_id": "S-015",
+      "reason": "collector_cannot_prove_satisfaction",
+      "statement": "The platform message broker accepts connections only from the `applications`\nnamespace on the client port 4222 and from `observability` on the metrics port\n7777. It runs without client authentication, so the network is its boundary.\nA new client namespace or port is a change to this position.\n\nEvidence: [broker NetworkPolicy](https://github.com/ImranAdan/infra-fleet-public/blob/47f88321414e2fef2616e886da7bb7bee2634ec3/k8s/infrastructure/messaging/networkpolicy.yaml)\n\nCaveat: the broker chart is not rendered, so its pods are assumed to carry\nHelm's standard `app.kubernetes.io/name` and `app.kubernetes.io/instance`\nlabels; a policy can be shown open, never proven to select the real pods.\nOnly a namespace-name label (`matchLabels` or an `In` expression) bounds a\npeer; `Exists` or `NotIn` selectors and port items without a single `port`\ncount as open.",
+      "status": "declared_unverified"
+    },
+    {
+      "category": "security",
+      "check_key": "app_namespaces_enforce_restricted",
+      "document_id": "infra_fleet_public_security",
+      "evidence_ids": [
+        "platform_collector:ae9c78eb6384533a"
+      ],
+      "priority": "high",
+      "proposition_id": "S-016",
+      "reason": "evidence_conflicts_with_intent",
+      "statement": "Every namespace that runs application Deployments enforces Pod Security\n`restricted` (`pod-security.kubernetes.io/enforce: restricted`), so admission\nrejects a privileged, root or host-namespace application pod even when its\nmanifest regresses.\n\nEvidence: [applications namespace](https://github.com/ImranAdan/infra-fleet-public/blob/d973708aba130e5f23bbf0146c52dfec1185a820/k8s/infrastructure/namespaces/applications.yaml)\n\nCaveat: the label is desired state; whether every canary and load-test pod\nadmits under it is proven on a live cluster, not here.",
+      "status": "divergent"
     }
   ],
-  "new_count": 0,
+  "new_count": 1,
   "provenance": {
     "advisor_version": "0.1.0",
     "collector_versions": {
@@ -561,21 +694,42 @@
       "dependency_update_collector": "1.0.0",
       "documentation_link_collector": "1.0.0",
       "fleet_lifecycle_collector": "1.4.0",
-      "github_actions_workflow_collector": "1.6.1",
+      "github_actions_workflow_collector": "1.7.0",
       "kubernetes_deployment_collector": "2.0.0",
-      "kubernetes_security_collector": "2.0.0",
+      "kubernetes_security_collector": "2.1.0",
+      "platform_collector": "1.0.0",
       "repository_settings_collector": "2.0.0",
       "terraform_cost_collector": "1.4.0",
       "terraform_iam_collector": "1.5.0"
     },
-    "intent_digest": "intent-md-v1:80b122a04d3820affea2cec93ccd0002bb11c31b8ec9ae7923c9cc40d5375d98",
+    "intent_digest": "intent-md-v1:36a055bb6c6b9968dfb5dafe83d5d01b0e409bbb99d30eff038c8edb43bb7f7b",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.1",
-    "run_started_at": "2026-10-12T20:07:52.570942+00:00",
-    "source_commit_sha": "731007dffd0188776fa99d642e3342c6c0e72c46",
+    "run_started_at": "2026-10-15T09:12:31.514549+00:00",
+    "source_commit_sha": "55202f0f0ee88196cfbc8a8fca7124313fc1fee1",
     "source_label": "infra-fleet-public"
   },
   "recommendations": [
+    {
+      "category": "security",
+      "concern_key": "app_namespace_pod_security_unenforced",
+      "confidence": 0.95,
+      "confidence_explanation": "Read from the rendered Namespace labels.",
+      "evidence_ids": [
+        "platform_collector:ae9c78eb6384533a"
+      ],
+      "fingerprint": "fp_51422acc6541b061859ad9a1",
+      "impact": "A new or changed application can run privileged, root or host-namespace pods; nothing at admission stops the regression.",
+      "owner_accepted_trade_off": null,
+      "priority": "high",
+      "rank": 1,
+      "rank_rationale": "priority=high, category_weight=10, confidence=0.95",
+      "status": "new",
+      "suggested_change": "Label the application namespace with pod-security.kubernetes.io/enforce: restricted, after checking canary and load-test pods meet it.",
+      "summary": "A namespace that runs application Deployments lacks pod-security.kubernetes.io/enforce: restricted.",
+      "title": "An application namespace does not enforce Pod Security restricted",
+      "trade_offs": "Any pod in the namespace that needs more privilege must move elsewhere."
+    },
     {
       "category": "security",
       "concern_key": "public_ingress_allows_plain_http",
