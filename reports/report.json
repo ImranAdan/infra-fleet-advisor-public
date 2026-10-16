@@ -39,7 +39,7 @@
     {
       "collector_id": "dependency_update_collector",
       "error_summary": null,
-      "evidence_count": 10,
+      "evidence_count": 11,
       "status": "ok"
     },
     {
@@ -57,7 +57,7 @@
     {
       "collector_id": "documentation_link_collector",
       "error_summary": null,
-      "evidence_count": 55,
+      "evidence_count": 56,
       "status": "ok"
     },
     {
@@ -684,7 +684,7 @@
       "status": "divergent"
     }
   ],
-  "new_count": 1,
+  "new_count": 0,
   "provenance": {
     "advisor_version": "0.1.0",
     "collector_versions": {
@@ -705,8 +705,8 @@
     "intent_digest": "intent-md-v1:36a055bb6c6b9968dfb5dafe83d5d01b0e409bbb99d30eff038c8edb43bb7f7b",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.1",
-    "run_started_at": "2026-10-15T09:12:31.514549+00:00",
-    "source_commit_sha": "55202f0f0ee88196cfbc8a8fca7124313fc1fee1",
+    "run_started_at": "2026-10-16T09:05:12.232133+00:00",
+    "source_commit_sha": "a0dd1178159dd04bbb2449c6019cb6b77074b1e0",
     "source_label": "infra-fleet-public"
   },
   "recommendations": [
@@ -724,7 +724,7 @@
       "priority": "high",
       "rank": 1,
       "rank_rationale": "priority=high, category_weight=10, confidence=0.95",
-      "status": "new",
+      "status": "unchanged",
       "suggested_change": "Label the application namespace with pod-security.kubernetes.io/enforce: restricted, after checking canary and load-test pods meet it.",
       "summary": "A namespace that runs application Deployments lacks pod-security.kubernetes.io/enforce: restricted.",
       "title": "An application namespace does not enforce Pod Security restricted",
@@ -938,5 +938,5 @@
   "rejected_count": 0,
   "resolved_count": 10,
   "suppressed_count": 0,
-  "unchanged_count": 0
+  "unchanged_count": 1
 }
