@@ -1,8 +1,8 @@
 # Infra Fleet Advisor report
 
-- Source: `infra-fleet-public` @ `a0dd1178159dd04bbb2449c6019cb6b77074b1e0`
+- Source: `infra-fleet-public` @ `b6a59be8546adc97eac0bfee39d902f6671e6d19`
 - Advisor version: `0.1.0` · Policy version: `1.1`
-- Model: `stub-synthesizer-v1` · Run started: `2026-10-16T09:05:12.232133+00:00`
+- Model: `stub-synthesizer-v1` · Run started: `2026-10-21T09:24:54.211997+00:00`
 - Intent catalog: `intent-md-v1:36a055bb6c6b9968dfb5dafe83d5d01b0e409bbb99d30eff038c8edb43bb7f7b`
 - Lifecycle: 0 new, 1 unchanged, 10 resolved, 0 suppressed (0 rejected)
 
@@ -17,7 +17,7 @@
 - `dependency_update_collector`: ok (11 evidence)
 - `application_config_collector`: ok (1 evidence)
 - `application_contract_collector`: partial (1 evidence) — an on-demand application launcher is declared; its run-time constraints are outside repository evidence
-- `documentation_link_collector`: ok (56 evidence)
+- `documentation_link_collector`: ok (57 evidence)
 - `agent_rules_collector`: ok (2 evidence)
 - `platform_collector`: ok (18 evidence)
 - `repository_settings_collector`: partial (0 evidence) — repository settings unknown (dependabot_alerts, security_updates, secret_scanning, push_protection, default_branch_protected): no settings token was provided
