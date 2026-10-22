@@ -57,7 +57,7 @@
     {
       "collector_id": "documentation_link_collector",
       "error_summary": null,
-      "evidence_count": 56,
+      "evidence_count": 57,
       "status": "ok"
     },
     {
@@ -705,8 +705,8 @@
     "intent_digest": "intent-md-v1:36a055bb6c6b9968dfb5dafe83d5d01b0e409bbb99d30eff038c8edb43bb7f7b",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.1",
-    "run_started_at": "2026-10-16T09:05:12.232133+00:00",
-    "source_commit_sha": "a0dd1178159dd04bbb2449c6019cb6b77074b1e0",
+    "run_started_at": "2026-10-21T09:24:54.211997+00:00",
+    "source_commit_sha": "b6a59be8546adc97eac0bfee39d902f6671e6d19",
     "source_label": "infra-fleet-public"
   },
   "recommendations": [
