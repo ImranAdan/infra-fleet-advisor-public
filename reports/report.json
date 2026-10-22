@@ -674,14 +674,12 @@
       "category": "security",
       "check_key": "app_namespaces_enforce_restricted",
       "document_id": "infra_fleet_public_security",
-      "evidence_ids": [
-        "platform_collector:ae9c78eb6384533a"
-      ],
+      "evidence_ids": [],
       "priority": "high",
       "proposition_id": "S-016",
-      "reason": "evidence_conflicts_with_intent",
+      "reason": "complete_evidence_supports_intent",
       "statement": "Every namespace that runs application Deployments enforces Pod Security\n`restricted` (`pod-security.kubernetes.io/enforce: restricted`), so admission\nrejects a privileged, root or host-namespace application pod even when its\nmanifest regresses.\n\nEvidence: [applications namespace](https://github.com/ImranAdan/infra-fleet-public/blob/d973708aba130e5f23bbf0146c52dfec1185a820/k8s/infrastructure/namespaces/applications.yaml)\n\nCaveat: the label is desired state; whether every canary and load-test pod\nadmits under it is proven on a live cluster, not here.",
-      "status": "divergent"
+      "status": "satisfied"
     }
   ],
   "new_count": 0,
@@ -705,8 +703,8 @@
     "intent_digest": "intent-md-v1:36a055bb6c6b9968dfb5dafe83d5d01b0e409bbb99d30eff038c8edb43bb7f7b",
     "model_identifier": "stub-synthesizer-v1",
     "policy_version": "1.1",
-    "run_started_at": "2026-10-21T09:24:54.211997+00:00",
-    "source_commit_sha": "b6a59be8546adc97eac0bfee39d902f6671e6d19",
+    "run_started_at": "2026-10-22T09:28:10.573914+00:00",
+    "source_commit_sha": "9da742b3017d1a8f20fce0c872de251ed4b4d6a0",
     "source_label": "infra-fleet-public"
   },
   "recommendations": [
@@ -722,9 +720,9 @@
       "impact": "A new or changed application can run privileged, root or host-namespace pods; nothing at admission stops the regression.",
       "owner_accepted_trade_off": null,
       "priority": "high",
-      "rank": 1,
-      "rank_rationale": "priority=high, category_weight=10, confidence=0.95",
-      "status": "unchanged",
+      "rank": null,
+      "rank_rationale": null,
+      "status": "resolved",
       "suggested_change": "Label the application namespace with pod-security.kubernetes.io/enforce: restricted, after checking canary and load-test pods meet it.",
       "summary": "A namespace that runs application Deployments lacks pod-security.kubernetes.io/enforce: restricted.",
       "title": "An application namespace does not enforce Pod Security restricted",
@@ -936,7 +934,7 @@
   ],
   "rejected": [],
   "rejected_count": 0,
-  "resolved_count": 10,
+  "resolved_count": 11,
   "suppressed_count": 0,
-  "unchanged_count": 1
+  "unchanged_count": 0
 }
