@@ -146,8 +146,10 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: false
           # Fixtures are intentionally insecure, and target is the separately
-          # reviewed Fleet checkout used only by drills and the ratchet.
-          skip-dirs: tests/fixtures,target
+          # reviewed Fleet checkout used only by drills and the ratchet. .venv
+          # is the job's own install: its dependencies are scanned via uv.lock,
+          # and third-party docs inside it carry example tokens.
+          skip-dirs: tests/fixtures,target,.venv
           exit-code: "1"
           format: table
           timeout: 10m0s
