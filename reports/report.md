@@ -1,10 +1,10 @@
 # Infra Fleet Advisor report
 
-- Source: `infra-fleet-public` @ `b6a59be8546adc97eac0bfee39d902f6671e6d19`
+- Source: `infra-fleet-public` @ `9da742b3017d1a8f20fce0c872de251ed4b4d6a0`
 - Advisor version: `0.1.0` · Policy version: `1.1`
-- Model: `stub-synthesizer-v1` · Run started: `2026-10-21T09:24:54.211997+00:00`
+- Model: `stub-synthesizer-v1` · Run started: `2026-10-22T09:28:10.573914+00:00`
 - Intent catalog: `intent-md-v1:36a055bb6c6b9968dfb5dafe83d5d01b0e409bbb99d30eff038c8edb43bb7f7b`
-- Lifecycle: 0 new, 1 unchanged, 10 resolved, 0 suppressed (0 rejected)
+- Lifecycle: 0 new, 0 unchanged, 11 resolved, 0 suppressed (0 rejected)
 
 ## Collector coverage
 
@@ -24,7 +24,7 @@
 
 ## Intent evaluation
 
-**Coverage:** 37 of 37 positions have a check — 16 satisfied, 1 divergent, 20 checked but unproven; 0 declared without a check.
+**Coverage:** 37 of 37 positions have a check — 17 satisfied, 0 divergent, 20 checked but unproven; 0 declared without a check.
 
 - `declared_unverified` `infra_fleet_public_cost/C-001` — Staging application worker capacity scales to zero outside an owner-defined
   usage window. A delayed startup of up to 30 minutes is acceptable when it avoids
@@ -331,7 +331,7 @@
   peer; \`Exists\` or \`NotIn\` selectors and port items without a single \`port\`
   count as open.
   - Category: `security` · Priority: `high` · Check: `message_broker_ingress_restricted` · Reason: `collector_cannot_prove_satisfaction`
-- `divergent` `infra_fleet_public_security/S-016` — Every namespace that runs application Deployments enforces Pod Security
+- `satisfied` `infra_fleet_public_security/S-016` — Every namespace that runs application Deployments enforces Pod Security
   \`restricted\` (\`pod-security.kubernetes.io/enforce: restricted\`), so admission
   rejects a privileged, root or host-namespace application pod even when its
   manifest regresses.
@@ -340,12 +340,11 @@
   
   Caveat: the label is desired state; whether every canary and load-test pod
   admits under it is proven on a live cluster, not here.
-  - Category: `security` · Priority: `high` · Check: `app_namespaces_enforce_restricted` · Reason: `evidence_conflicts_with_intent`
-  - Evidence: `platform_collector:ae9c78eb6384533a`
+  - Category: `security` · Priority: `high` · Check: `app_namespaces_enforce_restricted` · Reason: `complete_evidence_supports_intent`
 
 ## Recommendations
 
-### #1 [unchanged] An application namespace does not enforce Pod Security restricted
+### [resolved] An application namespace does not enforce Pod Security restricted
 
 - Category: `security` · Priority: `high` · Confidence: 0.95
 - Fingerprint: `fp_51422acc6541b061859ad9a1`
